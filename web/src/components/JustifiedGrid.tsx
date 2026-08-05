@@ -184,11 +184,15 @@ export function JustifiedGrid({
                   )}
                 />
 
-                {/* Top gradient carries the selection control without a border. */}
+                {/* Top gradient carries the selection control without a border.
+                    Only where a control is actually showing: keying it off
+                    `selecting` darkened the top of every photo in the library
+                    the moment one was picked, which read as a shadow cast over
+                    the untouched ones. */}
                 <div
                   className={clsx(
                     'pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/45 to-transparent transition-opacity',
-                    isSelected || selecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                    isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                   )}
                 />
 

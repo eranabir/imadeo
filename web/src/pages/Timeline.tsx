@@ -138,15 +138,24 @@ export function Timeline() {
                 same left edge as the photos below it — the check first, matching
                 where the check sits on each photo. */}
             {day && (
-              <h2 className="sticky top-[65px] z-10 mb-2 -ml-3 flex w-fit items-center gap-2 rounded-full bg-surface/85 px-3 py-1 text-[15px] font-semibold backdrop-blur">
-                {/* Stays mounted and only fades, so the heading never changes
-                    width and the dates below it never shift as the pointer
-                    moves down the page. Kept visible once the day is taken, or
-                    there would be no way to see what is selected. */}
+              <h2 className="group/head sticky top-[65px] z-10 mb-0.5 -ml-3 flex w-fit items-center rounded-full bg-surface/85 px-3 py-1 text-[15px] font-semibold backdrop-blur">
+                {/* Collapses to nothing when idle rather than merely fading, so
+                    the date sits flush with the left edge of its photos; the
+                    check then opens and pushes the date across. Kept open once
+                    the day is taken, or there would be no way to see what is
+                    selected.
+
+                    `:has(img:hover)` rather than a plain group hover: a section
+                    is a full-width block, so hovering the empty space beside a
+                    short row counted as hovering the day. Keyed to the images,
+                    it only appears over an actual photo — plus over the heading
+                    itself, or the check would vanish on the way to clicking it. */}
                 <span
                   className={clsx(
-                    'transition-opacity focus-within:opacity-100',
-                    allSelected ? 'opacity-100' : 'opacity-0 group-hover/day:opacity-100',
+                    'shrink-0 overflow-hidden transition-all',
+                    allSelected
+                      ? 'w-8 opacity-100'
+                      : 'w-0 opacity-0 focus-within:w-8 focus-within:opacity-100 group-hover/head:w-8 group-hover/head:opacity-100 group-[:has(img:hover)]/day:w-8 group-[:has(img:hover)]/day:opacity-100',
                   )}
                 >
                   <SelectionCheck
