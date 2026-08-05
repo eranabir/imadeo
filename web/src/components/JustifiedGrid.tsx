@@ -1,10 +1,11 @@
 import clsx from 'clsx';
-import { Check, Heart, Play } from 'lucide-react';
+import { Heart, Play } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mediaUrl } from '../lib/api';
 import { startDrag } from '../lib/dnd';
 import { formatDuration } from '../lib/format';
 import type { Asset } from '../types';
+import { SelectionCheck } from '../ui';
 
 interface Props {
   assets: Asset[];
@@ -191,19 +192,16 @@ export function JustifiedGrid({
                   )}
                 />
 
-                <button
-                  type="button"
-                  onClick={() => onToggleSelect?.(asset)}
-                  aria-label={isSelected ? 'Deselect' : 'Select'}
+                <SelectionCheck
+                  tone="media"
+                  checked={isSelected}
+                  onChange={() => onToggleSelect?.(asset)}
+                  label={isSelected ? 'Deselect' : 'Select'}
                   className={clsx(
-                    'absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full border-2 transition',
-                    isSelected
-                      ? 'border-accent bg-accent text-white'
-                      : 'border-white/85 bg-black/25 text-transparent opacity-0 group-hover:opacity-100',
+                    'absolute left-2 top-2',
+                    !isSelected && 'opacity-0 group-hover:opacity-100',
                   )}
-                >
-                  <Check size={14} strokeWidth={3} />
-                </button>
+                />
 
                 {asset.type === 'VIDEO' && (
                   <span className="pointer-events-none absolute bottom-1.5 right-2 flex items-center gap-1 text-[11px] font-medium text-white drop-shadow-md">

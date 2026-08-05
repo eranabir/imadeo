@@ -13,7 +13,7 @@ import { formatDate, groupByDay } from '../lib/format';
 import { useSelection } from '../lib/useSelection';
 import { useAuth } from '../store/auth';
 import type { Asset, Paginated } from '../types';
-import { Checkbox, EmptyState, GridSkeleton, IconButton, Select, Tooltip } from '../ui';
+import { EmptyState, GridSkeleton, IconButton, Select, SelectionCheck, Tooltip } from '../ui';
 
 export function Timeline() {
   const { user } = useAuth();
@@ -134,12 +134,11 @@ export function Timeline() {
             {/* Sticks below the page header rather than under it. The offset was
                 53px, less than the header's real height, so a date slid up
                 against the bottom edge with nothing between them. The negative
-                margin cancels the pill's own padding, so the date's first letter
-                lines up with the left edge of the photos below it rather than
-                sitting indented from them. */}
+                margin cancels the pill's own padding, so the row starts on the
+                same left edge as the photos below it — the check first, matching
+                where the check sits on each photo. */}
             {day && (
               <h2 className="sticky top-[65px] z-10 mb-2 -ml-3 flex w-fit items-center gap-2 rounded-full bg-surface/85 px-3 py-1 text-[15px] font-semibold backdrop-blur">
-                {formatDate(day, user?.preferences.locale)}
                 {/* Stays mounted and only fades, so the heading never changes
                     width and the dates below it never shift as the pointer
                     moves down the page. Kept visible once the day is taken, or
@@ -150,17 +149,13 @@ export function Timeline() {
                     allSelected ? 'opacity-100' : 'opacity-0 group-hover/day:opacity-100',
                   )}
                 >
-                  <Checkbox
+                  <SelectionCheck
                     checked={allSelected}
                     onChange={(on) => toggleDay(items, on)}
-                    label={
-                      <span className="sr-only">
-                        Select the {items.length} photos from{' '}
-                        {formatDate(day, user?.preferences.locale)}
-                      </span>
-                    }
+                    label={`${allSelected ? 'Deselect' : 'Select'} the ${items.length} photos from ${formatDate(day, user?.preferences.locale)}`}
                   />
                 </span>
+                {formatDate(day, user?.preferences.locale)}
               </h2>
             )}
             <JustifiedGrid

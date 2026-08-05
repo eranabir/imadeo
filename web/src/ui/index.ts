@@ -7,6 +7,7 @@
  */
 export { Button, IconButton, type ButtonSize, type ButtonVariant } from './Button';
 export { Checkbox, Radio } from './Choice';
+export { SelectionCheck } from './SelectionCheck';
 export { Chip } from './Chip';
 export { ConfirmDialog, Dialog } from './Dialog';
 export { EmptyState } from './EmptyState';
