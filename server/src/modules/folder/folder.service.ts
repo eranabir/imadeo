@@ -1,0 +1,574 @@
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AssetVisibility, Prisma } from '../../db';
+import sanitize from 'sanitize-filename';
+import { PrismaService } from '../../infra/prisma/prisma.service';
+import { ALBUM_COVER_INCLUDE, pickCover } from '../album/album.service';
+import type {
+  CreateFolderDto,
+  FolderContentsQueryDto,
+  FolderTreeQueryDto,
+  UpdateFolderDto,
+} from './folder.dto';
+
+/** An album as it appears nested inside the sidebar folder tree. */
+export interface FolderTreeAlbum {
+  id: string;
+  name: string;
+  assetCount: number;
+  coverAssetId: string | null;
+  coverAssetIds: string[];
+}
+
+export interface FolderNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  path: string;
+  depth: number;
+  isLocked: boolean;
+  color: string | null;
+  icon: string | null;
+  sortOrder: number;
+  assetCount: number;
+  albumCount: number;
+  /** Populated by `getTree`; empty for leaves. */
+  children: FolderNode[];
+  /** The albums filed directly in this folder, so the tree shows them in place. */
+  albums: FolderTreeAlbum[];
+}
+
+/** Shape returned by the raw tree query; COUNT() comes back as bigint. */
+interface FlatFolderRow
+  extends Omit<FolderNode, 'children' | 'albums' | 'assetCount' | 'albumCount'> {
+  assetCount: bigint;
+  albumCount: bigint;
+}
+
+const MAX_DEPTH = 32;
+
+@Injectable()
+export class FolderService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // -- reads ----------------------------------------------------------------
+
+  /**
+   * Returns the whole tree for a user in one query, assembled in memory.
+   * A library with tens of thousands of folders still round-trips once.
+   */
+  async getTree(userId: string, query: FolderTreeQueryDto = {}): Promise<FolderNode[]> {
+    const lockedFilter = query.includeLocked
+      ? Prisma.empty
+      : Prisma.sql`AND f."isLocked" = false`;
+
+    const assetCount = query.recursiveCounts
+      ? Prisma.sql`(
+          SELECT COUNT(*) FROM assets a
+          JOIN folders d ON a."folderId" = d.id
+          WHERE d."ownerId" = f."ownerId"
+            AND d.path LIKE f.path || '%'
+            AND a."deletedAt" IS NULL
+        )`
+      : Prisma.sql`(
+          SELECT COUNT(*) FROM assets a
+          WHERE a."folderId" = f.id AND a."deletedAt" IS NULL
+        )`;
+
+    const rows = await this.prisma.$queryRaw<FlatFolderRow[]>`
+      SELECT
+        f.id, f.name, f."parentId", f.path, f.depth, f."isLocked",
+        f.color, f.icon, f."sortOrder",
+        ${assetCount}::bigint AS "assetCount",
+        (SELECT COUNT(*) FROM albums al
+          WHERE al."folderId" = f.id AND al."deletedAt" IS NULL)::bigint AS "albumCount"
+      FROM folders f
+      WHERE f."ownerId" = ${userId}::uuid AND f."deletedAt" IS NULL ${lockedFilter}
+      ORDER BY f.depth ASC, f."sortOrder" ASC, f.name ASC
+    `;
+
+    const nodes = new Map<string, FolderNode>();
+    for (const row of rows) {
+      nodes.set(row.id, {
+        ...row,
+        assetCount: Number(row.assetCount),
+        albumCount: Number(row.albumCount),
+        children: [],
+        albums: [],
+      });
+    }
+
+    // Albums hang off the tree in the folder they are filed under, so the
+    // sidebar can show them in place with a cover rather than only as counts.
+    const albums = await this.prisma.album.findMany({
+      where: {
+        ownerId: userId,
+        deletedAt: null,
+        folderId: { not: null },
+        ...(query.includeLocked ? {} : { isLocked: false }),
+      },
+      include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+      orderBy: { name: 'asc' },
+    });
+
+    for (const album of albums) {
+      const parent = nodes.get(album.folderId!);
+      if (!parent) continue;
+      parent.albums.push({
+        id: album.id,
+        name: album.name,
+        assetCount: album._count.assets,
+        ...pickCover(album.thumbnailAssetId, album.assets),
+      });
+    }
+
+    const roots: FolderNode[] = [];
+    for (const node of nodes.values()) {
+      // Rows are ordered by depth, so a parent is always in the map already —
+      // unless it was filtered out (locked), in which case the node is orphaned
+      // and deliberately hidden with it.
+      if (node.parentId === null) {
+        roots.push(node);
+      } else {
+        nodes.get(node.parentId)?.children.push(node);
+      }
+    }
+    return roots;
+  }
+
+  async getById(userId: string, id: string) {
+    const folder = await this.prisma.folder.findFirst({
+      where: { id, ownerId: userId, deletedAt: null },
+    });
+    if (!folder) throw new NotFoundException('Folder not found');
+    return folder;
+  }
+
+  /** Root-to-self chain, used for the header breadcrumb. */
+  async getBreadcrumbs(userId: string, id: string) {
+    const folder = await this.getById(userId, id);
+    const ids = folder.path.split('/').filter(Boolean);
+    const folders = await this.prisma.folder.findMany({
+      where: { id: { in: ids }, ownerId: userId },
+      select: { id: true, name: true, isLocked: true },
+    });
+    const byId = new Map(folders.map((f) => [f.id, f]));
+    return ids.map((fid) => byId.get(fid)).filter((f): f is NonNullable<typeof f> => Boolean(f));
+  }
+
+  /**
+   * Everything visible inside one folder: sub-folders, albums and assets.
+   * `folderId === null` means the root — items with no parent.
+   */
+  async getContents(userId: string, folderId: string | null, query: FolderContentsQueryDto = {}) {
+    const page = Math.max(1, query.page ?? 1);
+    const size = Math.min(1000, Math.max(1, query.size ?? 250));
+
+    let folder = null;
+    let subtreeIds: string[] | null = null;
+
+    if (folderId) {
+      folder = await this.getById(userId, folderId);
+      if (query.recursive) {
+        const descendants = await this.prisma.folder.findMany({
+          where: { ownerId: userId, deletedAt: null, path: { startsWith: folder.path } },
+          select: { id: true },
+        });
+        subtreeIds = descendants.map((d) => d.id);
+      }
+    }
+
+    /**
+     * Which assets belong in this listing.
+     *
+     * Non-recursive means "filed directly here", so at the root that is the
+     * loose assets with no folder at all. Recursive at the root means the whole
+     * library — previously it was ignored there, so the toggle appeared to do
+     * nothing on the Folders page.
+     */
+    const folderFilter: Prisma.AssetWhereInput['folderId'] | undefined = subtreeIds
+      ? { in: subtreeIds }
+      : query.recursive && !folderId
+        ? undefined
+        : folderId;
+
+    const assetWhere: Prisma.AssetWhereInput = {
+      ownerId: userId,
+      deletedAt: null,
+      visibility: folder?.isLocked ? AssetVisibility.LOCKED : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
+      ...(folderFilter === undefined && query.recursive && !folderId ? {} : { folderId: folderFilter }),
+    };
+
+    const orderBy = this.assetOrderBy(query.sortBy ?? 'date', query.order ?? 'desc');
+
+    const [folders, albums, assets, assetTotal] = await Promise.all([
+      this.prisma.folder.findMany({
+        where: { ownerId: userId, parentId: folderId, deletedAt: null },
+        // The UI shows "N items" on every sub-folder card, so the counts have to
+        // come back with the listing rather than in a request per folder.
+        include: {
+          _count: { select: { assets: true, children: true, albums: true } },
+        },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+      this.prisma.album.findMany({
+        where: { ownerId: userId, folderId, deletedAt: null },
+        include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.asset.findMany({
+        where: assetWhere,
+        orderBy,
+        skip: (page - 1) * size,
+        take: size,
+        include: { exif: true },
+      }),
+      this.prisma.asset.count({ where: assetWhere }),
+    ]);
+
+    return {
+      folder,
+      breadcrumbs: folderId ? await this.getBreadcrumbs(userId, folderId) : [],
+      folders: folders.map(({ _count, ...folder }) => ({
+        ...folder,
+        assetCount: _count.assets,
+        albumCount: _count.albums,
+        childCount: _count.children,
+        children: [] as never[],
+      })),
+      albums: albums.map(({ _count, assets, ...album }) => ({
+        ...album,
+        assetCount: _count.assets,
+        ...pickCover(album.thumbnailAssetId, assets),
+      })),
+      assets,
+      pagination: { page, size, total: assetTotal, pages: Math.ceil(assetTotal / size) },
+    };
+  }
+
+  private assetOrderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AssetOrderByWithRelationInput[] {
+    switch (sortBy) {
+      case 'name':
+        return [{ originalFileName: order }];
+      case 'size':
+        return [{ fileSizeInByte: order }];
+      case 'added':
+        return [{ createdAt: order }];
+      default:
+        return [{ localDateTime: order }, { createdAt: order }];
+    }
+  }
+
+  // -- writes ---------------------------------------------------------------
+
+  async create(userId: string, dto: CreateFolderDto) {
+    const name = this.normaliseName(dto.name);
+
+    let parent = null;
+    if (dto.parentId) {
+      parent = await this.getById(userId, dto.parentId);
+      if (parent.depth + 1 >= MAX_DEPTH) {
+        throw new BadRequestException(`Folders cannot nest deeper than ${MAX_DEPTH} levels`);
+      }
+    }
+
+    await this.assertNameFree(userId, dto.parentId ?? null, name);
+
+    // The path contains the folder's own id, which only exists after the insert,
+    // so create then patch. Both statements share a transaction.
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.folder.create({
+        data: {
+          ownerId: userId,
+          parentId: parent?.id ?? null,
+          name,
+          path: '/',
+          depth: parent ? parent.depth + 1 : 0,
+          isLocked: parent?.isLocked ?? false,
+          color: dto.color,
+          icon: dto.icon,
+        },
+      });
+
+      return tx.folder.update({
+        where: { id: created.id },
+        data: { path: `${parent ? parent.path : '/'}${created.id}/` },
+      });
+    });
+  }
+
+  async update(userId: string, id: string, dto: UpdateFolderDto) {
+    const folder = await this.getById(userId, id);
+
+    if (dto.name !== undefined) {
+      const name = this.normaliseName(dto.name);
+      if (name !== folder.name) {
+        await this.assertNameFree(userId, folder.parentId, name);
+      }
+      dto.name = name;
+    }
+
+    // Paths are id based, so a rename never touches descendants.
+    return this.prisma.folder.update({
+      where: { id },
+      data: { name: dto.name, color: dto.color, icon: dto.icon, sortOrder: dto.sortOrder },
+    });
+  }
+
+  /**
+   * Re-parents a folder and rewrites the materialized path of its whole subtree
+   * with a single UPDATE.
+   */
+  async move(userId: string, id: string, parentId: string | null) {
+    const folder = await this.getById(userId, id);
+    if (parentId === id) {
+      throw new BadRequestException('A folder cannot be moved into itself');
+    }
+    if ((folder.parentId ?? null) === (parentId ?? null)) {
+      return folder;
+    }
+
+    let parent = null;
+    if (parentId) {
+      parent = await this.getById(userId, parentId);
+      // Moving a folder under one of its own descendants would detach the tree.
+      if (parent.path.startsWith(folder.path)) {
+        throw new BadRequestException('A folder cannot be moved into one of its own sub-folders');
+      }
+    }
+
+    await this.assertNameFree(userId, parentId ?? null, folder.name, id);
+
+    const oldPath = folder.path;
+    const newPath = `${parent ? parent.path : '/'}${folder.id}/`;
+    const newDepth = parent ? parent.depth + 1 : 0;
+    const depthDelta = newDepth - folder.depth;
+
+    const subtreeDepth = await this.prisma.folder.aggregate({
+      where: { ownerId: userId, path: { startsWith: oldPath }, deletedAt: null },
+      _max: { depth: true },
+    });
+    if ((subtreeDepth._max.depth ?? 0) + depthDelta >= MAX_DEPTH) {
+      throw new BadRequestException(`The move would nest folders deeper than ${MAX_DEPTH} levels`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Rewrite the prefix on every descendant (and the folder itself).
+      // The casts are load bearing: without them the driver sends the offset as
+      // an untyped parameter and `SUBSTRING(text FROM $n)` evaluates to NULL.
+      await tx.$executeRaw`
+        UPDATE folders
+        SET path = ${newPath}::text || SUBSTRING(path FROM ${oldPath.length + 1}::int),
+            depth = depth + ${depthDelta}::int,
+            "updatedAt" = NOW()
+        WHERE "ownerId" = ${userId}::uuid AND path LIKE ${`${oldPath}%`}::text
+      `;
+
+      await tx.folder.update({ where: { id }, data: { parentId: parentId ?? null } });
+
+      // A folder dragged into a locked branch (or out of one) takes its
+      // contents with it.
+      const targetLocked = parent?.isLocked ?? false;
+      if (targetLocked !== folder.isLocked) {
+        await this.applyLockToSubtree(tx, userId, newPath, targetLocked);
+      }
+
+      return tx.folder.findUniqueOrThrow({ where: { id } });
+    });
+  }
+
+  /**
+   * Soft-deletes a folder and its subtree. Contained assets go to the trash by
+   * default so nothing is lost by a mis-click; pass `keepAssets` to detach them
+   * to the root instead.
+   */
+  async remove(userId: string, id: string, options: { keepAssets?: boolean } = {}) {
+    const folder = await this.getById(userId, id);
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const subtree = await tx.folder.findMany({
+        where: { ownerId: userId, path: { startsWith: folder.path }, deletedAt: null },
+        select: { id: true },
+      });
+      const ids = subtree.map((f) => f.id);
+
+      if (options.keepAssets) {
+        await tx.asset.updateMany({
+          where: { ownerId: userId, folderId: { in: ids } },
+          data: { folderId: null },
+        });
+      } else {
+        await tx.asset.updateMany({
+          where: { ownerId: userId, folderId: { in: ids }, deletedAt: null },
+          data: { deletedAt: now, status: 'TRASHED' },
+        });
+      }
+
+      // Albums inside the folder survive; they just become loose.
+      await tx.album.updateMany({
+        where: { ownerId: userId, folderId: { in: ids } },
+        data: { folderId: null },
+      });
+
+      await tx.folder.updateMany({ where: { id: { in: ids } }, data: { deletedAt: now } });
+
+      return { deletedFolders: ids.length };
+    });
+  }
+
+  async restore(userId: string, id: string) {
+    const folder = await this.prisma.folder.findFirst({ where: { id, ownerId: userId } });
+    if (!folder) throw new NotFoundException('Folder not found');
+
+    // Restoring a child of a still-deleted parent would leave it unreachable.
+    if (folder.parentId) {
+      const parent = await this.prisma.folder.findFirst({
+        where: { id: folder.parentId, ownerId: userId, deletedAt: null },
+      });
+      if (!parent) {
+        throw new BadRequestException('Restore the parent folder first');
+      }
+    }
+
+    await this.prisma.folder.updateMany({
+      where: { ownerId: userId, path: { startsWith: folder.path } },
+      data: { deletedAt: null },
+    });
+    return this.prisma.folder.findUniqueOrThrow({ where: { id } });
+  }
+
+  // -- assets in folders ----------------------------------------------------
+
+  async addAssets(userId: string, folderId: string, assetIds: string[]) {
+    const folder = await this.getById(userId, folderId);
+    const { count } = await this.prisma.asset.updateMany({
+      where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
+      data: {
+        folderId,
+        // Keep visibility consistent with where the asset now lives.
+        visibility: folder.isLocked ? AssetVisibility.LOCKED : undefined,
+      },
+    });
+    return { moved: count };
+  }
+
+  async removeAssets(userId: string, folderId: string, assetIds: string[]) {
+    const { count } = await this.prisma.asset.updateMany({
+      where: { id: { in: assetIds }, ownerId: userId, folderId },
+      data: { folderId: null },
+    });
+    return { removed: count };
+  }
+
+  // -- vault ----------------------------------------------------------------
+
+  /** Moves a folder subtree into or out of the vault. Requires an unlocked session. */
+  async setLock(userId: string, id: string, isLocked: boolean) {
+    const folder = await this.getById(userId, id);
+    if (folder.isLocked === isLocked) return folder;
+
+    if (folder.parentId && !isLocked) {
+      const parent = await this.getById(userId, folder.parentId);
+      if (parent.isLocked) {
+        throw new ForbiddenException('Move the folder out of the locked branch before unlocking it');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.applyLockToSubtree(tx, userId, folder.path, isLocked);
+    });
+
+    return this.prisma.folder.findUniqueOrThrow({ where: { id } });
+  }
+
+  private async applyLockToSubtree(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    pathPrefix: string,
+    isLocked: boolean,
+  ) {
+    const subtree = await tx.folder.findMany({
+      where: { ownerId: userId, path: { startsWith: pathPrefix } },
+      select: { id: true },
+    });
+    const ids = subtree.map((f) => f.id);
+
+    await tx.folder.updateMany({ where: { id: { in: ids } }, data: { isLocked } });
+    await tx.album.updateMany({ where: { folderId: { in: ids } }, data: { isLocked } });
+    await tx.asset.updateMany({
+      where: {
+        ownerId: userId,
+        folderId: { in: ids },
+        // Never promote a live-photo motion part out of HIDDEN.
+        visibility: isLocked
+          ? { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] }
+          : AssetVisibility.LOCKED,
+      },
+      data: { visibility: isLocked ? AssetVisibility.LOCKED : AssetVisibility.TIMELINE },
+    });
+
+    if (isLocked) {
+      // Locked content must not stay reachable through an existing public link.
+      await tx.sharedLinkAsset.deleteMany({
+        where: { asset: { ownerId: userId, folderId: { in: ids } } },
+      });
+    }
+  }
+
+  // -- helpers --------------------------------------------------------------
+
+  /**
+   * Resolves (creating as needed) a `A/B/C` chain under `rootId`. This is what
+   * turns a drag-and-dropped directory or a mobile folder scan into real
+   * folders without the client having to pre-create them.
+   */
+  async ensurePath(userId: string, segments: string[], rootId: string | null = null) {
+    let parentId = rootId;
+    let parent = rootId ? await this.getById(userId, rootId) : null;
+
+    for (const raw of segments) {
+      const name = this.normaliseName(raw);
+      if (!name || name === '.' || name === '..') continue;
+
+      const existing = await this.prisma.folder.findFirst({
+        where: { ownerId: userId, parentId, name, deletedAt: null },
+      });
+
+      if (existing) {
+        parent = existing;
+      } else {
+        parent = await this.create(userId, { name, parentId: parentId ?? undefined });
+      }
+      parentId = parent.id;
+    }
+
+    return parent;
+  }
+
+  private normaliseName(name: string) {
+    const clean = sanitize(name.trim()).slice(0, 255).trim();
+    if (!clean) throw new BadRequestException('Folder name is not valid');
+    return clean;
+  }
+
+  private async assertNameFree(
+    userId: string,
+    parentId: string | null,
+    name: string,
+    exceptId?: string,
+  ) {
+    const clash = await this.prisma.folder.findFirst({
+      where: {
+        ownerId: userId,
+        parentId,
+        name,
+        deletedAt: null,
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new BadRequestException(`A folder named "${name}" already exists here`);
+    }
+  }
+}

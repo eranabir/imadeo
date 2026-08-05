@@ -1,0 +1,269 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import { Check, CopyCheck, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { AssetViewer } from '../components/AssetViewer';
+import { api, errorMessage, mediaUrl } from '../lib/api';
+import { formatBytes, formatDate } from '../lib/format';
+import { useAuth } from '../store/auth';
+import type { Asset } from '../types';
+import { Button, EmptyState, Loading, Tooltip } from '../ui';
+
+interface DuplicateAsset {
+  id: string;
+  originalFileName: string;
+  fileSizeInByte: string;
+  localDateTime: string;
+  createdAt: string;
+  type: 'IMAGE' | 'VIDEO';
+  exif: { exifImageWidth: number | null; exifImageHeight: number | null } | null;
+}
+
+interface DuplicateGroup {
+  duplicateId: string;
+  kind: 'identical' | 'similar';
+  reclaimableBytes: number;
+  assets: DuplicateAsset[];
+}
+
+/**
+ * Duplicate review.
+ *
+ * Nothing is deleted without being asked. Each group pre-selects everything
+ * except the one worth keeping — largest file, which is the best proxy for
+ * "least re-compressed" — but every tile can be toggled, because only the
+ * person who took the photos knows which copy matters.
+ */
+export function Duplicates() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const [viewing, setViewing] = useState<Asset | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /** Per group: the ids the person has chosen to keep. */
+  const [keeping, setKeeping] = useState<Record<string, Set<string>>>({});
+
+  const { data: groups = [], isLoading } = useQuery({
+    queryKey: ['assets', 'duplicates'],
+    queryFn: async () => (await api.get<DuplicateGroup[]>('/assets/duplicates')).data,
+  });
+
+  const afterChange = () => queryClient.invalidateQueries();
+  const onError = (e: unknown) => setError(errorMessage(e));
+
+  const scan = useMutation({
+    mutationFn: async () => (await api.post('/assets/duplicates/scan')).data,
+    onSuccess: afterChange,
+    onError,
+  });
+
+  const trash = useMutation({
+    mutationFn: async (ids: string[]) => (await api.post('/assets/trash', { ids })).data,
+    onSuccess: afterChange,
+    onError,
+  });
+
+  const resolve = useMutation({
+    mutationFn: async (duplicateId: string) =>
+      (await api.post(`/assets/duplicates/${duplicateId}/resolve`)).data,
+    onSuccess: afterChange,
+    onError,
+  });
+
+  if (isLoading) return <Loading label="Looking for duplicates…" />;
+
+  // The first asset in each group is the largest, so it is the default keeper.
+  const keptIn = (group: DuplicateGroup) =>
+    keeping[group.duplicateId] ?? new Set([group.assets[0].id]);
+
+  const toggleKeep = (group: DuplicateGroup, id: string) =>
+    setKeeping((current) => {
+      const next = new Set(keptIn(group));
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...current, [group.duplicateId]: next };
+    });
+
+  const totalReclaimable = groups.reduce((sum, g) => sum + g.reclaimableBytes, 0);
+
+  return (
+    <div className="min-h-full">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-lg font-semibold tracking-tight">Duplicates</h1>
+          <span className="text-xs tabular-nums text-content-muted">
+            {groups.length === 0
+              ? 'nothing to review'
+              : `${groups.length} ${groups.length === 1 ? 'group' : 'groups'} · up to ${formatBytes(totalReclaimable)} to reclaim`}
+          </span>
+        </div>
+
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<RefreshCw size={14} className={scan.isPending ? 'animate-spin' : undefined} />}
+          disabled={scan.isPending}
+          onClick={() => scan.mutate()}
+        >
+          {scan.isPending ? 'Scanning…' : 'Scan again'}
+        </Button>
+      </header>
+
+      {error && (
+        <p className="mx-5 mt-4 rounded-control bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
+          {error}
+        </p>
+      )}
+
+      {groups.length === 0 ? (
+        <EmptyState
+          icon={CopyCheck}
+          title="No duplicates found"
+          description="Imadeo compares the contents of your photos and how they look, not their file names — so a resized or renamed copy would still show up here."
+          action={
+            <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => scan.mutate()}>
+              Scan the library
+            </Button>
+          }
+        />
+      ) : (
+        <div className="space-y-4 px-5 py-4">
+          <p className="text-xs text-content-muted">
+            Matched on file contents and on how the picture looks — never on the file name alone.
+            The largest copy of each is kept by default; click a photo to change what stays.
+          </p>
+
+          {groups.map((group) => {
+            const kept = keptIn(group);
+            const removing = group.assets.filter((a) => !kept.has(a.id));
+
+            return (
+              <section
+                key={group.duplicateId}
+                className="rounded-panel border border-border-subtle bg-surface-raised p-4"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={clsx(
+                        'rounded-full px-2 py-0.5 text-[11px] font-medium',
+                        group.kind === 'identical'
+                          ? 'bg-danger-soft text-danger'
+                          : 'bg-accent-soft text-accent',
+                      )}
+                    >
+                      {group.kind === 'identical' ? 'Identical files' : 'Looks the same'}
+                    </span>
+                    <span className="text-xs text-content-muted">
+                      {group.assets.length} copies ·{' '}
+                      {group.kind === 'identical'
+                        ? 'byte for byte the same'
+                        : 'resized or re-saved version'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={resolve.isPending}
+                      onClick={() => resolve.mutate(group.duplicateId)}
+                    >
+                      Keep all
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon={<Trash2 size={14} />}
+                      disabled={removing.length === 0 || trash.isPending}
+                      onClick={() => trash.mutate(removing.map((a) => a.id))}
+                    >
+                      Trash {removing.length}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  {group.assets.map((asset) => {
+                    const keep = kept.has(asset.id);
+                    const dimensions =
+                      asset.exif?.exifImageWidth && asset.exif?.exifImageHeight
+                        ? `${asset.exif.exifImageWidth}×${asset.exif.exifImageHeight}`
+                        : null;
+
+                    return (
+                      <div key={asset.id} className="w-44">
+                        <button
+                          type="button"
+                          onClick={() => toggleKeep(group, asset.id)}
+                          className={clsx(
+                            'relative block h-32 w-full overflow-hidden rounded-control border-2 transition',
+                            keep
+                              ? 'border-success'
+                              : 'border-transparent opacity-55 hover:opacity-80',
+                          )}
+                        >
+                          <img
+                            src={mediaUrl(asset.id, 'thumbnail')}
+                            alt={asset.originalFileName}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                          <span
+                            className={clsx(
+                              'absolute left-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full text-white',
+                              keep ? 'bg-success' : 'bg-black/45',
+                            )}
+                          >
+                            {keep && <Check size={12} strokeWidth={3} />}
+                          </span>
+                        </button>
+
+                        <p className="mt-1.5 truncate text-[11px] font-medium" title={asset.originalFileName}>
+                          {asset.originalFileName}
+                        </p>
+                        <p className="text-[11px] tabular-nums text-content-muted">
+                          {formatBytes(Number(asset.fileSizeInByte))}
+                          {dimensions && ` · ${dimensions}`}
+                        </p>
+                        <p className="text-[11px] text-content-muted">
+                          {formatDate(asset.localDateTime, user?.preferences.locale)}
+                        </p>
+
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <Tooltip label="Open this copy">
+                            <button
+                              type="button"
+                              onClick={() => setViewing(asset as unknown as Asset)}
+                              className="text-[11px] font-medium text-accent hover:underline"
+                            >
+                              View
+                            </button>
+                          </Tooltip>
+                          {keep && (
+                            <span className="flex items-center gap-1 text-[11px] font-medium text-success">
+                              <Sparkles size={10} />
+                              keeping
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {viewing && (
+        <AssetViewer
+          asset={viewing}
+          assets={[viewing]}
+          onClose={() => setViewing(null)}
+          onNavigate={setViewing}
+        />
+      )}
+    </div>
+  );
+}

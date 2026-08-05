@@ -1,0 +1,91 @@
+import axios, { AxiosError, type AxiosInstance } from 'axios';
+
+export const api: AxiosInstance = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+});
+
+const ACCESS_KEY = 'imadeo.accessToken';
+const REFRESH_KEY = 'imadeo.refreshToken';
+
+export const tokens = {
+  get access() {
+    return localStorage.getItem(ACCESS_KEY);
+  },
+  get refresh() {
+    return localStorage.getItem(REFRESH_KEY);
+  },
+  set(access: string, refresh: string) {
+    localStorage.setItem(ACCESS_KEY, access);
+    localStorage.setItem(REFRESH_KEY, refresh);
+  },
+  clear() {
+    localStorage.removeItem(ACCESS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  },
+};
+
+api.interceptors.request.use((config) => {
+  const token = tokens.access;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// A single in-flight refresh, shared by every request that got a 401 at once.
+let refreshing: Promise<string> | null = null;
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const request = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
+
+    if (error.response?.status !== 401 || !request || request._retried || !tokens.refresh) {
+      throw error;
+    }
+
+    request._retried = true;
+
+    refreshing ??= axios
+      .post('/api/auth/refresh', { refreshToken: tokens.refresh })
+      .then(({ data }) => {
+        tokens.set(data.accessToken, data.refreshToken);
+        return data.accessToken as string;
+      })
+      .catch((refreshError) => {
+        tokens.clear();
+        window.location.href = '/login';
+        throw refreshError;
+      })
+      .finally(() => {
+        refreshing = null;
+      });
+
+    const fresh = await refreshing;
+    request.headers = { ...request.headers, Authorization: `Bearer ${fresh}` } as never;
+    return api.request(request);
+  },
+);
+
+/** Turns an axios failure into something worth showing a person. */
+export const errorMessage = (error: unknown): string => {
+  if (error instanceof AxiosError) {
+    const data = error.response?.data as { message?: string | string[] } | undefined;
+    if (Array.isArray(data?.message)) return data.message.join(', ');
+    if (data?.message) return data.message;
+    if (error.code === 'ERR_NETWORK') return 'Cannot reach the server';
+    return error.message;
+  }
+  return error instanceof Error ? error.message : 'Something went wrong';
+};
+
+/**
+ * Media URLs go into `<img>` and `<video>` tags, which cannot send an
+ * Authorization header. They authenticate with the httpOnly cookie the login
+ * and refresh endpoints set instead, which works because the dev proxy and the
+ * production nginx both serve the API from the same origin as the app.
+ */
+export const mediaUrl = (assetId: string, kind: 'thumbnail' | 'preview' | 'original' | 'video') => {
+  if (kind === 'preview') return `/api/assets/${assetId}/thumbnail?size=preview`;
+  if (kind === 'thumbnail') return `/api/assets/${assetId}/thumbnail`;
+  return `/api/assets/${assetId}/${kind}`;
+};

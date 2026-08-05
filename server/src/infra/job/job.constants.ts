@@ -1,0 +1,52 @@
+/**
+ * One queue per pipeline stage. They are separate rather than one queue with a
+ * job type so that a backlog of slow video transcodes cannot starve thumbnail
+ * generation, and each can carry its own concurrency.
+ */
+export const QUEUE = {
+  METADATA: 'metadata',
+  THUMBNAIL: 'thumbnail',
+  VIDEO: 'video-transcode',
+  SMART_SEARCH: 'smart-search',
+  FACE_DETECTION: 'face-detection',
+  FACE_CLUSTER: 'face-cluster',
+  DUPLICATE: 'duplicate-detection',
+  STORAGE_MIGRATION: 'storage-migration',
+  MAINTENANCE: 'maintenance',
+} as const;
+
+export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
+
+export const ALL_QUEUES: QueueName[] = Object.values(QUEUE);
+
+export const JOB = {
+  EXTRACT_METADATA: 'extract-metadata',
+  GENERATE_THUMBNAILS: 'generate-thumbnails',
+  TRANSCODE_VIDEO: 'transcode-video',
+  ENCODE_CLIP: 'encode-clip',
+  DETECT_FACES: 'detect-faces',
+  CLUSTER_FACES: 'cluster-faces',
+  DETECT_DUPLICATES: 'detect-duplicates',
+  MOVE_ASSET: 'move-asset',
+  EMPTY_TRASH: 'empty-trash',
+  CLEAN_ORPHANS: 'clean-orphans',
+  DELETE_USER: 'delete-user',
+} as const;
+
+export interface AssetJobData {
+  assetId: string;
+  /** Set when the caller already knows the file moved, to skip a lookup. */
+  path?: string;
+}
+
+export interface UserJobData {
+  userId: string;
+}
+
+/** Shared retry policy: fail fast on programming errors, ride out flaky IO. */
+export const DEFAULT_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5_000 },
+  removeOnComplete: { age: 3600, count: 1_000 },
+  removeOnFail: { age: 86_400 * 7 },
+};

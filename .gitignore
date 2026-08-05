@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+# Prisma 7 emits the client into the source tree; it is a build artifact.
+server/src/generated/
+
+# Yarn 4: keep the pinned release, ignore its caches.
+.yarn/*
+!.yarn/releases
+!.yarn/patches
+.pnp.*
+.env
+.env.local
+data/
+.dev/
+*.log
+.DS_Store
+.vite/
+coverage/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.expo/
+android/
+ios/
+*.keystore
+.turbo/

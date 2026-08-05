@@ -1,0 +1,146 @@
+@import 'tailwindcss';
+
+/* Dark mode is driven by a class on <html>, set before first paint in index.html,
+   so it can follow the user's stored preference rather than only the OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   Every colour, radius and shadow in the app comes from here. Components in
+   src/ui consume these names, never raw values, so a change lands everywhere at
+   once.
+
+   The palette is deep teal through cyan. It deliberately avoids the
+   violet/fuchsia/orange range, which reads as Instagram, and it sits far enough
+   from the warm tones in most photographs that the chrome never competes with
+   the pictures.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-surface: oklch(99% 0.002 220);
+  --color-surface-raised: oklch(100% 0 0);
+  --color-surface-sunken: oklch(96.2% 0.007 220);
+  --color-surface-overlay: oklch(100% 0 0);
+  --color-border-subtle: oklch(90% 0.009 220);
+  --color-border-strong: oklch(79% 0.014 220);
+  --color-content: oklch(23% 0.018 230);
+  --color-content-muted: oklch(51% 0.019 225);
+  --color-accent: oklch(52% 0.115 205);
+  --color-accent-hover: oklch(46% 0.115 205);
+  --color-accent-soft: oklch(52% 0.115 205 / 0.13);
+  --color-danger: oklch(55% 0.19 22);
+  --color-danger-soft: oklch(55% 0.19 22 / 0.12);
+  --color-success: oklch(56% 0.14 160);
+  /* A third state for "works, but you should know something" — neither the
+     all-clear of success nor the stop of danger. */
+  --color-warning: oklch(62% 0.15 68);
+
+  --radius-control: 0.625rem;
+  --radius-panel: 1rem;
+
+  --shadow-popover: 0 10px 38px -10px oklch(0% 0 0 / 0.22), 0 8px 12px -8px oklch(0% 0 0 / 0.18);
+}
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --color-surface: oklch(17% 0.014 235);
+  --color-surface-raised: oklch(21.5% 0.016 235);
+  --color-surface-sunken: oklch(13% 0.013 235);
+  --color-surface-overlay: oklch(24.5% 0.018 235);
+  --color-border-subtle: oklch(29% 0.018 235);
+  --color-border-strong: oklch(39% 0.022 230);
+  --color-content: oklch(95% 0.006 225);
+  --color-content-muted: oklch(69% 0.018 225);
+  --color-accent: oklch(76% 0.115 195);
+  --color-accent-hover: oklch(82% 0.11 195);
+  --color-accent-soft: oklch(76% 0.115 195 / 0.17);
+  --color-danger: oklch(69% 0.17 22);
+  --color-danger-soft: oklch(69% 0.17 22 / 0.16);
+  --color-success: oklch(74% 0.13 160);
+  --color-warning: oklch(80% 0.13 72);
+
+  --shadow-popover: 0 10px 38px -10px oklch(0% 0 0 / 0.6), 0 8px 12px -8px oklch(0% 0 0 / 0.5);
+}
+
+body {
+  @apply bg-surface text-content antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* One focus treatment for every interactive element in the system. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-subtle) transparent;
+}
+
+/**
+ * Scrolls, but shows no bar.
+ *
+ * For chrome like the sidebar, where a visible track competes with the content
+ * for a narrow column. Wheel, trackpad, keyboard and touch all still work — only
+ * the indicator is gone, so this is for short, self-evident lists rather than
+ * anywhere the bar is the only clue that there is more to see.
+ */
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes imadeo-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes imadeo-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.fade-in {
+  animation: imadeo-fade-in 200ms ease-out;
+}
+
+.pop-in {
+  animation: imadeo-pop-in 130ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Placeholder frames breathing while content loads. Opacity and a small lift
+   only — nothing that draws the eye away from the content about to replace it. */
+@keyframes imadeo-shimmer {
+  0%, 100% { opacity: 0.45; transform: translateY(0); }
+  50% { opacity: 0.9; transform: translateY(-3px); }
+}
+
+@keyframes imadeo-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.85; }
+}
+
+/* Slow parallax drift for the login collage. */
+@keyframes imadeo-drift {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-14px) scale(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .pop-in,
+  [style*='imadeo-drift'],
+  [style*='imadeo-shimmer'],
+  [style*='imadeo-pulse'] {
+    animation: none !important;
+  }
+}

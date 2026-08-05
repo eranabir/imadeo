@@ -1,0 +1,264 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { AuthDto } from '../../common/auth.types';
+import { Auth, Authed, AuthedUserId } from '../../common/decorators';
+import { AssetService, type UploadedFile as MulterFile } from './asset.service';
+import { DuplicateService } from './duplicate.service';
+import {
+  AssetQueryDto,
+  BulkAssetIdsDto,
+  BulkUpdateAssetsDto,
+  CheckDuplicateDto,
+  DeleteAssetsDto,
+  StackAssetsDto,
+  UpdateAssetDto,
+  UploadAssetDto,
+} from './asset.dto';
+
+@ApiTags('Assets')
+@Auth()
+@Controller('assets')
+export class AssetController {
+  constructor(
+    private readonly assetService: AssetService,
+    private readonly duplicates: DuplicateService,
+  ) {}
+
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('assetData'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload one photo or video',
+    description:
+      'Duplicate content is detected by sha1 and returns the existing asset instead of storing it twice.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['assetData'],
+      properties: {
+        assetData: { type: 'string', format: 'binary' },
+        deviceAssetId: { type: 'string' },
+        deviceId: { type: 'string' },
+        fileCreatedAt: { type: 'string', format: 'date-time' },
+        fileModifiedAt: { type: 'string', format: 'date-time' },
+        isFavorite: { type: 'boolean' },
+        folderId: { type: 'string', format: 'uuid' },
+        relativePath: { type: 'string', example: '2024/Iceland/img_0001.jpg' },
+        albumId: { type: 'string', format: 'uuid' },
+        isLocked: { type: 'boolean' },
+      },
+    },
+  })
+  async upload(
+    @AuthedUserId() userId: string,
+    @UploadedFile() file: MulterFile | undefined,
+    @Body() dto: UploadAssetDto,
+  ) {
+    if (!file) throw new BadRequestException('No file was uploaded under the field "assetData"');
+    return this.assetService.createFromUpload(userId, file, dto);
+  }
+
+  @Post('check-duplicates')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Ask which checksums the server already has, before uploading' })
+  checkDuplicates(@AuthedUserId() userId: string, @Body() dto: CheckDuplicateDto) {
+    return this.assetService.checkDuplicates(userId, dto.checksums);
+  }
+
+  @Get('search/context')
+  @ApiOperation({
+    summary: 'Find photos by what is in them',
+    description:
+      'Compares the phrase against the pictures themselves. No keyword matching — the words need not appear anywhere in the file.',
+  })
+  searchByContext(
+    @AuthedUserId() userId: string,
+    @Query('text') text: string,
+    @Query('size') size?: string,
+  ) {
+    return this.assetService.searchByContext(
+      userId,
+      text ?? '',
+      size ? Math.min(500, Number.parseInt(size, 10)) : 200,
+    );
+  }
+
+  @Get('search/places')
+  @ApiOperation({ summary: 'Albums and folders matching a name, and what is inside them' })
+  searchPlaces(@AuthedUserId() userId: string, @Query('text') text: string) {
+    return this.assetService.searchPlaces(userId, text ?? '');
+  }
+
+  @Get('search/facets')
+  @ApiOperation({ summary: 'Distinct places and cameras present in the library' })
+  searchFacets(@AuthedUserId() userId: string) {
+    return this.assetService.searchFacets(userId);
+  }
+
+  @Get('search/status')
+  @ApiOperation({ summary: 'How much of the library has been described for content search' })
+  searchStatus(@AuthedUserId() userId: string) {
+    return this.assetService.searchIndexStatus(userId);
+  }
+
+  @Post('search/reindex')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Describe every photo that has not been indexed yet' })
+  async reindex(@AuthedUserId() userId: string) {
+    const assets = await this.assetService.assetsMissingSearchIndex(userId);
+    await this.assetService.queueSearchIndexing(assets);
+    return { queued: assets.length };
+  }
+
+  @Get('duplicates')
+  @ApiOperation({
+    summary: 'Groups of duplicate photos and videos',
+    description:
+      'Matched on file contents and on visual similarity, so a resized or renamed copy is still found. Never matched on file name alone.',
+  })
+  listDuplicates(@AuthedUserId() userId: string) {
+    return this.duplicates.list(userId);
+  }
+
+  @Get('duplicates/count')
+  @ApiOperation({ summary: 'Number of unresolved duplicate groups, for the sidebar badge' })
+  countDuplicates(@AuthedUserId() userId: string) {
+    return this.duplicates.count(userId);
+  }
+
+  @Post('duplicates/scan')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Re-run detection across the whole library' })
+  scanDuplicates(@AuthedUserId() userId: string) {
+    return this.duplicates.detectForOwner(userId);
+  }
+
+  @Post('duplicates/:duplicateId/resolve')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Mark a group as reviewed, keeping every asset in it' })
+  resolveDuplicate(
+    @AuthedUserId() userId: string,
+    @Param('duplicateId') duplicateId: string,
+  ) {
+    return this.duplicates.resolve(userId, duplicateId);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Filtered, sorted, paginated assets' })
+  query(@AuthedUserId() userId: string, @Query() query: AssetQueryDto) {
+    return this.assetService.query(userId, query);
+  }
+
+  @Get('statistics')
+  statistics(@AuthedUserId() userId: string) {
+    return this.assetService.statistics(userId);
+  }
+
+  @Get('timeline/buckets')
+  @ApiOperation({ summary: 'Per-month counts used to build the timeline scrubber' })
+  buckets(@AuthedUserId() userId: string, @Query() query: AssetQueryDto) {
+    return this.assetService.timelineBuckets(userId, query);
+  }
+
+  @Get('timeline/bucket')
+  @ApiOperation({ summary: 'Every asset in one month bucket' })
+  bucket(
+    @AuthedUserId() userId: string,
+    @Query('timeBucket') timeBucket: string,
+    @Query() query: AssetQueryDto,
+  ) {
+    return this.assetService.timelineBucket(userId, timeBucket, query);
+  }
+
+  // -- trash ----------------------------------------------------------------
+
+  @Get('trash')
+  @ApiOperation({ summary: 'Trashed assets, each with the date it will be purged' })
+  listTrash(
+    @AuthedUserId() userId: string,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+  ) {
+    return this.assetService.listTrash(
+      userId,
+      page ? Number.parseInt(page, 10) : 1,
+      size ? Number.parseInt(size, 10) : 250,
+    );
+  }
+
+  @Post('trash/restore')
+  @HttpCode(200)
+  restore(@AuthedUserId() userId: string, @Body() dto: BulkAssetIdsDto) {
+    return this.assetService.restore(userId, dto.ids);
+  }
+
+  @Post('trash/restore-all')
+  @HttpCode(200)
+  restoreAll(@AuthedUserId() userId: string) {
+    return this.assetService.restoreAll(userId);
+  }
+
+  @Post('trash/empty')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Permanently delete everything in the trash' })
+  emptyTrash(@AuthedUserId() userId: string) {
+    return this.assetService.emptyTrash(userId);
+  }
+
+  @Delete()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Move assets to the trash, or delete them outright with force' })
+  remove(@AuthedUserId() userId: string, @Body() dto: DeleteAssetsDto) {
+    return dto.force
+      ? this.assetService.deletePermanently(userId, dto.ids)
+      : this.assetService.trash(userId, dto.ids);
+  }
+
+  // -- editing --------------------------------------------------------------
+
+  @Put('bulk')
+  @ApiOperation({ summary: 'Favourite, archive or re-file many assets at once' })
+  bulkUpdate(@AuthedUserId() userId: string, @Body() dto: BulkUpdateAssetsDto) {
+    return this.assetService.bulkUpdate(userId, dto);
+  }
+
+  @Post('stack')
+  stack(@AuthedUserId() userId: string, @Body() dto: StackAssetsDto) {
+    return this.assetService.stack(userId, dto.primaryAssetId, dto.assetIds);
+  }
+
+  @Delete('stack/:id')
+  unstack(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.assetService.unstack(userId, id);
+  }
+
+  @Auth({ sharedLink: true })
+  @Get(':id')
+  get(@Authed() auth: AuthDto, @Param('id') id: string) {
+    return this.assetService.getById(auth, id);
+  }
+
+  @Put(':id')
+  update(
+    @AuthedUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateAssetDto,
+  ) {
+    return this.assetService.update(userId, id, dto);
+  }
+}

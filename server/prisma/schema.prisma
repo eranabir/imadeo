@@ -1,0 +1,759 @@
+// Imadeo data model.
+//
+// Vector columns use pgvector. Prisma cannot express `vector(n)` natively, so
+// they are declared as Unsupported and every read/write of them goes through
+// raw SQL in `src/modules/search` and `src/modules/person`.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  // NestJS compiles to CommonJS, so the generated client must match.
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+  // Lets migrations manage `CREATE EXTENSION` for pgvector and friends.
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+// Prisma 7 takes the connection URL from `prisma.config.ts` (CLI) and from the
+// driver adapter (runtime), not from here.
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector, pg_trgm, unaccent, cube, earthdistance]
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  OTHER
+}
+
+/// TIMELINE  - shows up everywhere
+/// ARCHIVE   - hidden from the main timeline, still searchable
+/// HIDDEN    - motion part of a live photo, never shown on its own
+/// LOCKED    - inside the vault; excluded from timeline, search and sharing
+enum AssetVisibility {
+  TIMELINE
+  ARCHIVE
+  HIDDEN
+  LOCKED
+}
+
+enum AlbumUserRole {
+  VIEWER
+  EDITOR
+}
+
+enum SharedLinkType {
+  ALBUM
+  INDIVIDUAL
+}
+
+enum UserStatus {
+  ACTIVE
+  REMOVING
+  DELETED
+}
+
+enum SourceType {
+  MACHINE_LEARNING
+  EXIF
+  MANUAL
+}
+
+enum Permission {
+  READ
+  WRITE
+  ADMIN
+}
+
+enum ReactionType {
+  COMMENT
+  LIKE
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  email            String     @unique
+  name             String
+  /// Empty for accounts that only ever sign in through an identity provider.
+  password         String     @default("")
+  /// "google" | "apple". Null for local password accounts.
+  oauthProvider    String?
+  /// The provider's immutable subject id — never the email, which can change.
+  oauthId          String?
+  isAdmin          Boolean    @default(false)
+  status           UserStatus @default(ACTIVE)
+  /// Null means "no limit". Bytes.
+  quotaSizeInBytes BigInt?
+  quotaUsageInBytes BigInt    @default(0)
+  storageLabel     String?    @unique
+  profileImagePath String     @default("")
+  shouldChangePassword Boolean @default(true)
+
+  // Vault (locked folders / albums)
+  vaultPinHash     String?
+  /// Content key for the vault, wrapped with a key derived from VAULT_MASTER_KEY + pin.
+  vaultWrappedKey  String?
+
+  // Preferences (theme, timeline density, download settings, ...)
+  preferences      Json       @default("{}")
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  deletedAt        DateTime?
+  profileChangedAt DateTime   @default(now())
+
+  assets           Asset[]
+  albums           Album[]
+  albumMemberships AlbumUser[]
+  folders          Folder[]
+  people           Person[]
+  sessions         Session[]
+  apiKeys          ApiKey[]
+  sharedLinks      SharedLink[]
+  tags             Tag[]
+  memories         Memory[]
+  stacks           Stack[]
+  activities       Activity[]
+  auditEntries     AuditLog[]
+  libraries        Library[]
+  partnersShared   Partner[]  @relation("SharedBy")
+  partnersReceived Partner[]  @relation("SharedWith")
+  invitesSent      Invitation[] @relation("InvitesSent")
+  emailChanges     EmailChange[]
+
+  /// One local account per provider identity. Nullable columns mean password
+  /// accounts do not collide here.
+  @@unique([oauthProvider, oauthId])
+  @@index([status])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// sha256 of the refresh token; the raw value never touches the database.
+  tokenHash    String   @unique
+  deviceType   String   @default("")
+  deviceOS     String   @default("")
+  ipAddress    String   @default("")
+  /// Set once the user has entered their vault PIN on this device.
+  vaultUnlockedUntil DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  keyHash     String   @unique
+  permissions Permission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+/// Two-way "share my whole library with this person" relationship.
+model Partner {
+  sharedById    String   @db.Uuid
+  sharedBy      User     @relation("SharedBy", fields: [sharedById], references: [id], onDelete: Cascade)
+  sharedWithId  String   @db.Uuid
+  sharedWith    User     @relation("SharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  /// Show this partner's photos inline in my own timeline.
+  inTimeline    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@id([sharedById, sharedWithId])
+  @@map("partners")
+}
+
+// ---------------------------------------------------------------------------
+// Folders — an arbitrarily deep tree, one per user
+// ---------------------------------------------------------------------------
+
+model Folder {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @db.Uuid
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parentId  String?  @db.Uuid
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderTree")
+
+  name      String
+  /// Materialized path of folder *ids*, e.g. "/<rootId>/<childId>/<selfId>/".
+  /// Always starts and ends with '/'. Ids rather than names means renaming is
+  /// free and only a move has to rewrite the subtree. One indexed LIKE
+  /// `path LIKE '/a/b/%'` fetches an entire subtree at any depth.
+  path      String
+  /// Number of ancestors. A root folder has depth 0.
+  depth     Int      @default(0)
+
+  /// A locked folder and everything under it lives in the vault.
+  isLocked  Boolean  @default(false)
+  color     String?
+  icon      String?
+
+  /// Manual ordering within the parent folder; ties break on name.
+  sortOrder Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  assets    Asset[]
+  /// A folder holds sub-folders, loose assets AND albums.
+  albums    Album[]
+
+  @@unique([ownerId, parentId, name])
+  @@index([ownerId, path])
+  @@index([parentId])
+  @@map("folders")
+}
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+model Asset {
+  id                String          @id @default(uuid()) @db.Uuid
+  ownerId           String          @db.Uuid
+  owner             User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  type              AssetType
+  originalPath      String
+  originalFileName  String
+  /// sha1 of the file contents. Used for exact-duplicate rejection at upload.
+  checksum          Bytes
+  fileSizeInByte    BigInt          @default(0)
+
+  // Generated derivatives
+  thumbnailPath     String?
+  previewPath       String?
+  encodedVideoPath  String?
+  /// Compact blurhash-like placeholder rendered before the thumbnail loads.
+  thumbhash         Bytes?
+
+  // Client identity, used for mobile backup de-duplication.
+  // Null (not "") when the upload did not come from a device library — Postgres
+  // treats NULLs as distinct, so many web uploads can coexist while a phone
+  // still cannot register the same local photo twice.
+  deviceAssetId     String?
+  deviceId          String?
+
+  fileCreatedAt     DateTime
+  fileModifiedAt    DateTime
+  /// fileCreatedAt shifted into the photo's own timezone. This is what the
+  /// timeline groups by, so an evening shot in Tokyo stays on its own day.
+  localDateTime     DateTime
+
+  isFavorite        Boolean         @default(false)
+  visibility        AssetVisibility @default(TIMELINE)
+  isOffline         Boolean         @default(false)
+  isExternal        Boolean         @default(false)
+
+  duration          String?
+  livePhotoVideoId  String?         @db.Uuid
+  livePhotoVideo    Asset?          @relation("LivePhoto", fields: [livePhotoVideoId], references: [id], onDelete: SetNull)
+  livePhotoStill    Asset[]         @relation("LivePhoto")
+
+  folderId          String?         @db.Uuid
+  folder            Folder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  stackId           String?         @db.Uuid
+  stack             Stack?          @relation(fields: [stackId], references: [id], onDelete: SetNull)
+
+  libraryId         String?         @db.Uuid
+  library           Library?        @relation(fields: [libraryId], references: [id], onDelete: SetNull)
+
+  /// Assets sharing a duplicateId are candidate near-duplicates.
+  duplicateId       String?         @db.Uuid
+  /// Set once a human has reviewed the duplicate group.
+  duplicateResolvedAt DateTime?
+
+  /// Perceptual hash (64-bit, hex) for near-duplicate detection.
+  perceptualHash    String?
+
+  status            String          @default("ACTIVE")
+  deletedAt         DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  exif              AssetExif?
+  faces             AssetFace[]
+  albums            AlbumAsset[]
+  tags              TagAsset[]
+  sharedLinks       SharedLinkAsset[]
+  jobStatus         AssetJobStatus?
+  smartSearch       SmartSearch?
+  activities        Activity[]
+  memories          MemoryAsset[]
+
+  /// Indexed, not unique. Repeating a phone backup still dedupes, but that is
+  /// decided in the service so a deliberate re-upload of the same file can be
+  /// allowed through — a database constraint could only ever refuse it.
+  @@index([ownerId, checksum])
+  @@unique([ownerId, deviceId, deviceAssetId])
+  @@index([ownerId, localDateTime(sort: Desc)])
+  @@index([ownerId, visibility, deletedAt])
+  @@index([ownerId, isFavorite])
+  @@index([folderId])
+  @@index([duplicateId])
+  @@index([deletedAt])
+  @@index([type])
+  @@map("assets")
+}
+
+model AssetExif {
+  assetId          String   @id @db.Uuid
+  asset            Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  make             String?
+  model            String?
+  lensModel        String?
+  exifImageWidth   Int?
+  exifImageHeight  Int?
+  orientation      String?
+  dateTimeOriginal DateTime?
+  modifyDate       DateTime?
+  timeZone         String?
+  fNumber          Float?
+  focalLength      Float?
+  iso              Int?
+  exposureTime     String?
+  latitude         Float?
+  longitude        Float?
+  city             String?
+  state            String?
+  country          String?
+  description      String   @default("")
+  rating           Int?
+  fps              Float?
+  bitsPerSample    Int?
+  colorspace       String?
+  profileDescription String?
+  projectionType   String?
+  autoStackId      String?
+
+  @@index([city])
+  @@index([country])
+  @@index([make, model])
+  @@index([latitude, longitude])
+  @@map("asset_exif")
+}
+
+/// Per-asset pipeline bookkeeping so a restart can resume exactly what is missing.
+model AssetJobStatus {
+  assetId            String    @id @db.Uuid
+  asset              Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  metadataExtractedAt DateTime?
+  thumbnailAt        DateTime?
+  videoEncodedAt     DateTime?
+  smartSearchAt      DateTime?
+  facesRecognizedAt  DateTime?
+  duplicatesDetectedAt DateTime?
+
+  @@map("asset_job_status")
+}
+
+/// CLIP embedding, one row per asset. Queried with `<=>` (cosine distance).
+model SmartSearch {
+  assetId   String                       @id @db.Uuid
+  asset     Asset                        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  embedding Unsupported("vector(512)")
+
+  @@map("smart_search")
+}
+
+/// A group of related shots (burst, RAW+JPEG, edited copy) shown as one tile.
+model Stack {
+  id             String   @id @default(uuid()) @db.Uuid
+  ownerId        String   @db.Uuid
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  primaryAssetId String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  assets         Asset[]
+
+  @@index([ownerId])
+  @@map("stacks")
+}
+
+// ---------------------------------------------------------------------------
+// Albums and sharing
+// ---------------------------------------------------------------------------
+
+model Album {
+  id                String   @id @default(uuid()) @db.Uuid
+  ownerId           String   @db.Uuid
+  owner             User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  name              String
+  description       String   @default("")
+  thumbnailAssetId  String?  @db.Uuid
+
+  /// Albums live inside the folder tree. Null means "loose", at the root.
+  folderId          String?  @db.Uuid
+  folder            Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  isActivityEnabled Boolean  @default(true)
+  /// "asc" | "desc" over localDateTime
+  order             String   @default("desc")
+
+  /// Locked albums require a vault unlock to open and never appear in search.
+  isLocked          Boolean  @default(false)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+
+  assets            AlbumAsset[]
+  albumUsers        AlbumUser[]
+  sharedLinks       SharedLink[]
+  activities        Activity[]
+  invitations       Invitation[]
+
+  @@index([ownerId])
+  @@index([folderId])
+  @@map("albums")
+}
+
+model AlbumAsset {
+  albumId  String   @db.Uuid
+  album    Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  assetId  String   @db.Uuid
+  asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// Who added it — shown in shared albums.
+  addedById String? @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@id([albumId, assetId])
+  @@index([assetId])
+  @@map("album_assets")
+}
+
+model AlbumUser {
+  albumId String        @db.Uuid
+  album   Album         @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  userId  String        @db.Uuid
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    AlbumUserRole @default(VIEWER)
+
+  @@id([albumId, userId])
+  @@index([userId])
+  @@map("album_users")
+}
+
+model SharedLink {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         SharedLinkType
+  /// Random URL-safe key that appears in the public URL.
+  key          String         @unique
+  description  String?
+  /// bcrypt hash when the link is password protected.
+  password     String?
+  expiresAt    DateTime?
+  allowUpload  Boolean        @default(false)
+  allowDownload Boolean       @default(true)
+  showExif     Boolean        @default(true)
+  slug         String?        @unique
+
+  albumId      String?        @db.Uuid
+  album        Album?         @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime       @default(now())
+
+  assets       SharedLinkAsset[]
+
+  @@index([userId])
+  @@map("shared_links")
+}
+
+model SharedLinkAsset {
+  sharedLinkId String     @db.Uuid
+  sharedLink   SharedLink @relation(fields: [sharedLinkId], references: [id], onDelete: Cascade)
+  assetId      String     @db.Uuid
+  asset        Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([sharedLinkId, assetId])
+  @@map("shared_link_assets")
+}
+
+/// Comments and likes inside a shared album.
+model Activity {
+  id       String       @id @default(uuid()) @db.Uuid
+  albumId  String       @db.Uuid
+  album    Album        @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  assetId  String?      @db.Uuid
+  asset    Asset?       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  userId   String       @db.Uuid
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type     ReactionType
+  comment  String?
+  createdAt DateTime    @default(now())
+
+  @@index([albumId, assetId])
+  @@map("activities")
+}
+
+// ---------------------------------------------------------------------------
+// People and faces
+// ---------------------------------------------------------------------------
+
+/// A recognised subject — a person, or a pet.
+///
+/// One table rather than two: naming, merging, detaching a wrong match, hiding
+/// and thumbnails all mean exactly the same thing for a dog as for a person, and
+/// the clustering is identical apart from which embeddings it compares. The kind
+/// keeps them apart where it matters, so a labrador can never be merged into a
+/// person by an over-eager grouping pass.
+enum SubjectKind {
+  PERSON
+  PET
+}
+
+model Person {
+  id              String      @id @default(uuid()) @db.Uuid
+  ownerId         String      @db.Uuid
+  owner           User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  kind            SubjectKind @default(PERSON)
+  /// "cat" or "dog" for pets. Null for people.
+  species         String?
+  name            String      @default("")
+  birthDate       DateTime?   @db.Date
+  thumbnailPath   String      @default("")
+  faceAssetId     String?     @db.Uuid
+  isHidden        Boolean     @default(false)
+  isFavorite      Boolean     @default(false)
+  color           String?
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  faces           AssetFace[]
+
+  @@index([ownerId])
+  @@index([ownerId, kind])
+  @@map("people")
+}
+
+/// One detection: a human face, or a whole animal. Named for its original use.
+model AssetFace {
+  id             String                      @id @default(uuid()) @db.Uuid
+  assetId        String                      @db.Uuid
+  asset          Asset                       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  personId       String?                     @db.Uuid
+  person         Person?                     @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  /// Carried on the detection as well as the subject, so unassigned detections
+  /// can still be clustered against the right pool.
+  kind           SubjectKind                 @default(PERSON)
+  /// "cat" or "dog" for pet detections. Null for faces.
+  species        String?
+
+  /// Bounding box in the coordinate space of imageWidth x imageHeight.
+  boundingBoxX1  Int
+  boundingBoxY1  Int
+  boundingBoxX2  Int
+  boundingBoxY2  Int
+  imageWidth     Int
+  imageHeight    Int
+  score          Float                       @default(0)
+
+  embedding      Unsupported("vector(512)")?
+  sourceType     SourceType                  @default(MACHINE_LEARNING)
+  /// Set when a user explicitly detaches a face from a person so re-clustering
+  /// does not put it back.
+  isPinned       Boolean                     @default(false)
+
+  deletedAt      DateTime?
+  createdAt      DateTime                    @default(now())
+
+  @@index([assetId])
+  @@index([personId])
+  @@index([kind])
+  @@map("asset_faces")
+}
+
+// ---------------------------------------------------------------------------
+// Tags, memories, libraries
+// ---------------------------------------------------------------------------
+
+model Tag {
+  id        String     @id @default(uuid()) @db.Uuid
+  ownerId   String     @db.Uuid
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  value     String
+  parentId  String?    @db.Uuid
+  parent    Tag?       @relation("TagTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Tag[]      @relation("TagTree")
+  color     String?
+  createdAt DateTime   @default(now())
+
+  assets    TagAsset[]
+
+  @@unique([ownerId, value])
+  @@map("tags")
+}
+
+model TagAsset {
+  tagId   String @db.Uuid
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assetId String @db.Uuid
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, assetId])
+  @@index([assetId])
+  @@map("tag_assets")
+}
+
+model Memory {
+  id        String        @id @default(uuid()) @db.Uuid
+  ownerId   String        @db.Uuid
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  type      String        @default("on_this_day")
+  data      Json
+  memoryAt  DateTime
+  seenAt    DateTime?
+  isSaved   Boolean       @default(false)
+  showAt    DateTime?
+  hideAt    DateTime?
+  createdAt DateTime      @default(now())
+  deletedAt DateTime?
+
+  assets    MemoryAsset[]
+
+  @@index([ownerId, memoryAt])
+  @@map("memories")
+}
+
+model MemoryAsset {
+  memoryId String @db.Uuid
+  memory   Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  assetId  String @db.Uuid
+  asset    Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, assetId])
+  @@map("memory_assets")
+}
+
+/// An external directory that Imadeo indexes in place instead of copying.
+model Library {
+  id                String    @id @default(uuid()) @db.Uuid
+  ownerId           String    @db.Uuid
+  owner             User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name              String
+  importPaths       String[]
+  exclusionPatterns String[]
+  refreshedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  assets            Asset[]
+
+  @@index([ownerId])
+  @@map("libraries")
+}
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+/// An invitation to join the server.
+///
+/// Replaces creating an account with a mailed temporary password: the person
+/// sets their own name and password (or signs in with Google/Apple), so a
+/// credential never travels through email.
+model Invitation {
+  id          String        @id @default(uuid()) @db.Uuid
+  email       String
+  /// sha256 of the token in the invite URL; the raw value is never stored.
+  tokenHash   String        @unique
+
+  invitedById String        @db.Uuid
+  invitedBy   User          @relation("InvitesSent", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  /// Set when the invite came from sharing a particular album.
+  albumId     String?       @db.Uuid
+  album       Album?        @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  role        AlbumUserRole @default(VIEWER)
+
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([email])
+  @@map("invitations")
+}
+
+/// A requested email change, held until the new address proves it can receive
+/// mail. The account keeps its current email until then, so a typo or a
+/// hijacked session cannot strand someone at an address they do not control.
+model EmailChange {
+  id        String   @id @default(uuid()) @db.Uuid
+
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The address being moved to, already lowercased.
+  newEmail  String
+  /// sha256 of the token in the confirmation link; the raw value is never stored.
+  tokenHash String   @unique
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("email_changes")
+}
+
+model SystemConfig {
+  key   String @id
+  value Json
+
+  @@map("system_config")
+}
+
+model SystemMetadata {
+  key   String @id
+  value Json
+
+  @@map("system_metadata")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  detail     Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
