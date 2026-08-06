@@ -1,9 +1,9 @@
+import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   Text,
@@ -295,8 +295,7 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
               </View>
             ) : (
               <Image
-                // No fallback to item.uri: that is the ph:// path that throws.
-                source={uris[item.id] ? { uri: uris[item.id] } : undefined}
+                  source={item.uri}
                 style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
                 resizeMode="cover"
               />

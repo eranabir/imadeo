@@ -1945,6 +1945,7 @@ __metadata:
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
     expo: "npm:54.0.35"
+    expo-image: "npm:~3.0.11"
     expo-linear-gradient: "npm:~15.0.8"
     expo-media-library: "npm:~18.2.1"
     expo-secure-store: "npm:~15.0.8"
@@ -7336,6 +7337,21 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/a010c42cfd472078dbd8a94df57df9b816bbd4d69ac46aa588cf9f91c8348ebd4b1e00dc2dc0757e4a0c56ddab32455aef230ba697590b021b5d237cc37c4db6
+  languageName: node
+  linkType: hard
+
+"expo-image@npm:~3.0.11":
+  version: 3.0.11
+  resolution: "expo-image@npm:3.0.11"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+    react-native-web: "*"
+  peerDependenciesMeta:
+    react-native-web:
+      optional: true
+  checksum: 10c0/a1cc61d3927ec5eb96875c2021706e1a418d37a77d1e657a4e0d3aa9b3325a45501b1113847783b0b249ca3679286dfb7683ed8239c48a206e9fdf79f232c754
   languageName: node
   linkType: hard
 
