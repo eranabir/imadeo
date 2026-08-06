@@ -5,7 +5,8 @@
   "description": "Self-hosted photo and video backup, organization and sharing",
   "workspaces": [
     "server",
-    "app"
+    "app",
+    "mobile"
   ],
   "scripts": {
     "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
@@ -26,7 +27,8 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "lint": "yarn workspaces foreach -A run lint",
-    "test": "yarn workspaces foreach -A run test"
+    "test": "yarn workspaces foreach -A run test",
+    "dev:mobile": "yarn workspace @imadeo/mobile start"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
