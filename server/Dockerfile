@@ -8,7 +8,7 @@
 
 FROM node:22-alpine AS deps
 
-WORKDIR /app
+WORKDIR /src
 
 # This repository pins Yarn 4 through `packageManager`, and the release itself
 # is committed under .yarn/releases. Copying it in means the build never
@@ -19,7 +19,7 @@ COPY .yarn/releases .yarn/releases
 
 # Manifests only, so editing a source file does not invalidate the install layer.
 COPY server/package.json server/
-COPY web/package.json web/
+COPY app/package.json app/
 
 # Prisma's engines are built against glibc and need OpenSSL present even on
 # Alpine; without these the client fails at generate time, not at runtime,
@@ -32,18 +32,18 @@ RUN apk add --no-cache libc6-compat openssl \
 
 FROM node:22-alpine AS build
 
-WORKDIR /app
+WORKDIR /src
 
 RUN apk add --no-cache libc6-compat openssl && corepack enable
 
 # Yarn hoists the whole workspace into one tree at the root; there are no
 # per-package node_modules directories to copy.
-COPY --from=deps /app/node_modules node_modules
+COPY --from=deps /src/node_modules node_modules
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
 COPY server server
 
-WORKDIR /app/server
+WORKDIR /src/server
 
 # `build` runs `prisma generate` first, emitting the client into
 # src/generated/prisma before nest compiles against it.
@@ -51,18 +51,18 @@ RUN yarn build
 
 # ------------------------------------------------------------------ web build
 
-FROM node:22-alpine AS web
+FROM node:22-alpine AS client
 
-WORKDIR /app
+WORKDIR /src
 
 RUN corepack enable
 
-COPY --from=deps /app/node_modules node_modules
+COPY --from=deps /src/node_modules node_modules
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
-COPY web web
+COPY app app
 
-WORKDIR /app/web
+WORKDIR /src/app
 
 RUN yarn build
 
@@ -70,7 +70,7 @@ RUN yarn build
 
 FROM node:22-alpine AS runtime
 
-WORKDIR /app/server
+WORKDIR /src/server
 
 ENV NODE_ENV=production
 
@@ -79,19 +79,19 @@ ENV NODE_ENV=production
 # the image rather than in a package.
 RUN apk add --no-cache libc6-compat openssl ffmpeg exiftool tini
 
-# One hoisted tree at /app/node_modules; Node walks up from /app/server to
+# One hoisted tree at /src/node_modules; Node walks up from /src/server to
 # find it, so the app needs no node_modules of its own.
-COPY --from=build /app/node_modules /app/node_modules
-COPY --from=build /app/server/dist ./dist
-COPY --from=build /app/server/prisma ./prisma
-COPY --from=build /app/server/src/generated ./src/generated
-COPY --from=build /app/server/package.json ./package.json
-COPY package.json /app/package.json
+COPY --from=build /src/node_modules /src/node_modules
+COPY --from=build /src/server/dist ./dist
+COPY --from=build /src/server/prisma ./prisma
+COPY --from=build /src/server/src/generated ./src/generated
+COPY --from=build /src/server/package.json ./package.json
+COPY package.json /src/package.json
 
 # The client is served by the app itself, from dist/../www — one container
 # rather than an app image plus a separate web server. main.ts mounts this
 # directory only when it exists, so a source checkout still uses Vite.
-COPY --from=web /app/web/dist ./www
+COPY --from=client /src/app/dist ./www
 
 # The library lives here by default. It is a mount point, not storage baked
 # into the image: point MEDIA_LOCATION elsewhere and bind that path in, and

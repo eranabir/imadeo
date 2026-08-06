@@ -354,6 +354,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@imadeo/app@workspace:app":
+  version: 0.0.0-use.local
+  resolution: "@imadeo/app@workspace:app"
+  dependencies:
+    "@tailwindcss/vite": "npm:^4.3.3"
+    "@tanstack/react-query": "npm:^5.101.4"
+    "@types/react": "npm:^19.2.18"
+    "@types/react-dom": "npm:^19.2.4"
+    "@vitejs/plugin-react": "npm:^6.0.5"
+    axios: "npm:^1.19.0"
+    clsx: "npm:^2.1.1"
+    lucide-react: "npm:^1.28.0"
+    react: "npm:^19.2.8"
+    react-dom: "npm:^19.2.8"
+    react-router-dom: "npm:^7.18.2"
+    tailwindcss: "npm:^4.3.3"
+    typescript: "npm:~5.9.3"
+    vite: "npm:^8.2.0"
+    zustand: "npm:^5.0.14"
+  languageName: unknown
+  linkType: soft
+
 "@imadeo/server@workspace:server":
   version: 0.0.0-use.local
   resolution: "@imadeo/server@workspace:server"
@@ -407,28 +429,6 @@ __metadata:
     typescript: "npm:~5.9.3"
     ua-parser-js: "npm:^2.0.10"
     vitest: "npm:^4.1.10"
-  languageName: unknown
-  linkType: soft
-
-"@imadeo/web@workspace:web":
-  version: 0.0.0-use.local
-  resolution: "@imadeo/web@workspace:web"
-  dependencies:
-    "@tailwindcss/vite": "npm:^4.3.3"
-    "@tanstack/react-query": "npm:^5.101.4"
-    "@types/react": "npm:^19.2.18"
-    "@types/react-dom": "npm:^19.2.4"
-    "@vitejs/plugin-react": "npm:^6.0.5"
-    axios: "npm:^1.19.0"
-    clsx: "npm:^2.1.1"
-    lucide-react: "npm:^1.28.0"
-    react: "npm:^19.2.8"
-    react-dom: "npm:^19.2.8"
-    react-router-dom: "npm:^7.18.2"
-    tailwindcss: "npm:^4.3.3"
-    typescript: "npm:~5.9.3"
-    vite: "npm:^8.2.0"
-    zustand: "npm:^5.0.14"
   languageName: unknown
   linkType: soft
 

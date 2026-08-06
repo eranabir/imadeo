@@ -5,13 +5,13 @@
   "description": "Self-hosted photo and video backup, organization and sharing",
   "workspaces": [
     "server",
-    "web"
+    "app"
   ],
   "scripts": {
-    "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:web\"",
+    "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
     "dev:server": "yarn workspace @imadeo/server dev",
-    "dev:web": "yarn workspace @imadeo/web dev",
-    "build": "yarn workspace @imadeo/server build && yarn workspace @imadeo/web build",
+    "dev:app": "yarn workspace @imadeo/app dev",
+    "build": "yarn workspace @imadeo/server build && yarn workspace @imadeo/app build",
     "start": "yarn workspace @imadeo/server start",
     "infra:up": "docker compose up -d database redis",
     "infra:down": "docker compose stop database redis",

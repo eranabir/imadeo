@@ -93,7 +93,7 @@ services:
       retries: 5
       start_period: 180s
 
-  # There is no separate web container: the server image carries the built
+  # There is no separate client container: the server image carries the built
   # client and serves it itself, so ${IMADEO_SERVER_PORT} is the address users
   # open. One container to start and one port to forward, which is what a NAS
   # install needs.
