@@ -36,6 +36,8 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
   const [error, setError] = useState<string | null>(null);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
+  /** Dismisses the permission prompt without granting it or signing out. */
+  const [skipped, setSkipped] = useState(false);
 
   const load = useCallback(async () => {
     if (!permission?.granted) return;
@@ -67,6 +69,44 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
   }
 
   if (!permission.granted) {
+    // Skipped: the prompt is out of the way, but backup is plainly off and one
+    // tap from being on. Signing out would have been a strange price for saying
+    // "not yet".
+    if (skipped) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
+          <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700', letterSpacing: -0.5 }}>
+            Backup is off
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 15.5, lineHeight: 23, marginTop: 10, marginBottom: 26 }}>
+            Imadeo cannot see your photos yet, so nothing on this phone is being
+            saved to {serverUrl.replace(/^https?:\/\//, '')}.
+          </Text>
+          <Pressable
+            onPress={() => {
+              setSkipped(false);
+              void requestPermission();
+            }}
+            style={({ pressed }) => ({
+              backgroundColor: colors.accent,
+              borderRadius: 999,
+              paddingVertical: 15,
+              alignItems: 'center',
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Turn on backup</Text>
+          </Pressable>
+          <Text
+            onPress={onSignOut}
+            style={{ color: colors.faint, fontSize: 14, textAlign: 'center', marginTop: 22 }}
+          >
+            Sign out
+          </Text>
+        </View>
+      );
+    }
+
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
         <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.5 }}>
@@ -88,13 +128,11 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         >
           <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Allow access</Text>
         </Pressable>
-        {/* Denying is not fatal — the rest of the app still works, so this is
-            phrased as a choice rather than a wall. */}
         <Text
-          onPress={onSignOut}
+          onPress={() => setSkipped(true)}
           style={{ color: colors.faint, fontSize: 14, textAlign: 'center', marginTop: 22 }}
         >
-          Not now
+          Skip for now
         </Text>
       </View>
     );
@@ -197,7 +235,14 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         }
         renderItem={({ item }) => (
           <View style={{ flex: 1 / size, aspectRatio: 1, padding: 1 }}>
-            <Image source={{ uri: item.uri }} style={{ flex: 1, backgroundColor: colors.surface }} />
+            {/* Explicit dimensions rather than flex: an Image with flex inside
+                an aspectRatio box measures as zero on some platforms and the
+                tile renders as a flat placeholder. */}
+            <Image
+              source={{ uri: item.uri }}
+              style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
+              resizeMode="cover"
+            />
             {item.mediaType === 'video' && (
               <View
                 style={{
