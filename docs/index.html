@@ -186,7 +186,20 @@
     font-size: 12.5px; color: var(--muted);
   }
   .side-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 570; }
-  .side-item svg { width: 14px; height: 14px; flex: none; }
+  .side-item svg { width: 14px; height: 14px; flex: none; color: var(--ic, currentColor); }
+
+  /* The same per-destination tints the app uses, so the sidebar is
+     recognisable at a glance rather than a column of grey glyphs. */
+  .side-item:nth-child(1)  { --ic: #06b6d4; } /* Photos        — cyan   */
+  .side-item:nth-child(2)  { --ic: #f59e0b; } /* Albums        — amber  */
+  .side-item:nth-child(3)  { --ic: #8b5cf6; } /* Folders       — violet */
+  .side-item:nth-child(4)  { --ic: #8b5cf6; } /* nested folder         */
+  .side-item:nth-child(5)  { --ic: #0ea5e9; } /* People & Pets — sky    */
+  .side-item:nth-child(6)  { --ic: #f43f5e; } /* Favorites     — rose   */
+  .side-item:nth-child(7)  { --ic: #818cf8; } /* Locked        — indigo */
+  .side-item:nth-child(8)  { --ic: #f97316; } /* Duplicates    — orange */
+  .side-item:nth-child(9)  { --ic: #94a3b8; } /* Trash         — slate  */
+  .side-item:nth-child(10) { --ic: #10b981; } /* Settings      — emerald*/
   .side-item b { margin-left: auto; font-weight: 500; font-size: 11px; opacity: .8; font-variant-numeric: tabular-nums; }
   .side-item.nest { padding-left: 22px; font-size: 12px; }
 
