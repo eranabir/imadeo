@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { signOut, storedToken, type Session } from './src/lib/auth';
 import { forget, load, type ServerInfo } from './src/lib/server';
+import { Tabs, type Tab } from './src/components/Tabs';
 import { BackupScreen } from './src/screens/BackupScreen';
 import { ConnectScreen } from './src/screens/ConnectScreen';
+import { LibraryScreen } from './src/screens/LibraryScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { colors } from './src/theme';
 
@@ -12,6 +15,7 @@ export default function App() {
   const [server, setServer] = useState<ServerInfo | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const [tab, setTab] = useState<Tab>('backup');
 
   // Neither the address nor the session should be retyped on every launch.
   useEffect(() => {
@@ -68,7 +72,29 @@ export default function App() {
           onChangeServer={changeServer}
         />
       ) : (
-        <BackupScreen serverUrl={server.url} />
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {/* All three stay mounted. Backup keeps its progress and the library
+              its scroll position when you move between them, which a plain
+              swap would throw away mid-upload. */}
+          <View style={{ flex: 1, display: tab === 'library' ? 'flex' : 'none' }}>
+            <LibraryScreen serverUrl={server.url} />
+          </View>
+          <View style={{ flex: 1, display: tab === 'backup' ? 'flex' : 'none' }}>
+            <BackupScreen serverUrl={server.url} />
+          </View>
+          <View style={{ flex: 1, display: tab === 'settings' ? 'flex' : 'none' }}>
+            <SettingsScreen
+              serverUrl={server.url}
+              onChangeServer={changeServer}
+              onSignOut={async () => {
+                await signOut();
+                setSignedIn(false);
+              }}
+            />
+          </View>
+
+          <Tabs active={tab} onChange={setTab} />
+        </View>
       )}
       <StatusBar style="light" />
     </>
