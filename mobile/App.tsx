@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { signOut, storedToken, type Session } from './src/lib/auth';
 import { forget, load, type ServerInfo } from './src/lib/server';
+import { BackupScreen } from './src/screens/BackupScreen';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { colors } from './src/theme';
@@ -58,20 +59,15 @@ export default function App() {
           onChangeServer={changeServer}
         />
       ) : (
-        <Home url={server.url} onSignOut={async () => { await signOut(); setSignedIn(false); }} />
+        <BackupScreen
+          serverUrl={server.url}
+          onSignOut={async () => {
+            await signOut();
+            setSignedIn(false);
+          }}
+        />
       )}
       <StatusBar style="light" />
     </>
-  );
-}
-
-/** Placeholder until the library and backup sections land. */
-function Home({ url, onSignOut }: { url: string; onSignOut: () => void }) {
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>Signed in</Text>
-      <Text style={{ color: colors.muted, marginTop: 8 }}>{url.replace(/^https?:\/\//, '')}</Text>
-      <Text onPress={onSignOut} style={{ color: colors.accent, marginTop: 24, fontSize: 15 }}>Sign out</Text>
-    </View>
   );
 }
