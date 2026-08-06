@@ -1,5 +1,4 @@
 import * as MediaLibrary from 'expo-media-library';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -76,21 +75,6 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
       );
       setUris({ ...resolved });
 
-      // Videos go one at a time. Each poster frame runs through the hardware
-      // decoder, and asking for a dozen at once made all but the first fail —
-      // photos appeared while every video stayed blank. Results are published
-      // as they arrive so the grid fills in rather than waiting for the last.
-      for (const asset of page.assets.filter((a) => a.mediaType === 'video')) {
-        try {
-          const info = await MediaLibrary.getAssetInfoAsync(asset);
-          if (!info.localUri) continue;
-          const thumb = await VideoThumbnails.getThumbnailAsync(info.localUri, { time: 500 });
-          resolved[asset.id] = thumb.uri;
-          setUris({ ...resolved });
-        } catch {
-          // A codec the decoder will not open; the tile keeps its placeholder.
-        }
-      }
     } finally {
       setLoading(false);
     }
@@ -278,27 +262,43 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
             {/* Explicit dimensions rather than flex: an Image with flex inside
                 an aspectRatio box measures as zero on some platforms and the
                 tile renders as a flat placeholder. */}
-            <Image
-              // No fallback to item.uri: that is the ph:// path that throws.
-              source={uris[item.id] ? { uri: uris[item.id] } : undefined}
-              style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
-              resizeMode="cover"
-            />
-            {item.mediaType === 'video' && (
+            {/* Videos get a drawn tile rather than a poster frame. Generating
+                one runs the file through the hardware decoder, which in Expo Go
+                returned a frame for the first video and nothing for the rest;
+                a tile that always renders beats a thumbnail that usually does
+                not. */}
+            {item.mediaType === 'video' ? (
               <View
                 style={{
-                  position: 'absolute',
-                  right: 6,
-                  bottom: 5,
-                  width: 0,
-                  height: 0,
-                  borderTopWidth: 4,
-                  borderBottomWidth: 4,
-                  borderLeftWidth: 7,
-                  borderTopColor: 'transparent',
-                  borderBottomColor: 'transparent',
-                  borderLeftColor: '#fff',
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: colors.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
+              >
+                <View
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderTopWidth: 9,
+                    borderBottomWidth: 9,
+                    borderLeftWidth: 15,
+                    borderTopColor: 'transparent',
+                    borderBottomColor: 'transparent',
+                    borderLeftColor: colors.muted,
+                  }}
+                />
+                <Text style={{ color: colors.faint, fontSize: 11, marginTop: 8 }}>
+                  {Math.round(item.duration)}s
+                </Text>
+              </View>
+            ) : (
+              <Image
+                // No fallback to item.uri: that is the ph:// path that throws.
+                source={uris[item.id] ? { uri: uris[item.id] } : undefined}
+                style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
+                resizeMode="cover"
               />
             )}
           </View>
