@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Imadeo — your photos, on your own server</title>
+<meta name="description" content="A self-hosted home for your photos and videos. Timeline, faces, albums, duplicate detection and search that understands what is in a picture — all running on hardware you own." />
+
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://imadeo.app/" />
+<meta property="og:title" content="Imadeo — your photos, on your own server" />
+<meta property="og:description" content="A self-hosted home for your photos and videos. Nothing leaves your machine." />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="https://imadeo.app/" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f7d8c'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M11 9h10' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<style>
+  :root {
+    --accent: #0f7d8c;
+    --accent-bright: #17a2b5;
+    --bg: #ffffff;
+    --surface: #f6f8f9;
+    --border: #e2e8ea;
+    --text: #16212b;
+    --muted: #5c6d78;
+    --radius: 14px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #2bb7ca;
+      --accent-bright: #4fd3e4;
+      --bg: #0d1418;
+      --surface: #141e24;
+      --border: #24333c;
+      --text: #e8eff2;
+      --muted: #93a6b1;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); }
+
+  .wrap { width: min(1080px, calc(100% - 48px)); margin-inline: auto; }
+
+  /* ---------- header ---------- */
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bar { display: flex; align-items: center; justify-content: space-between; height: 62px; gap: 20px; }
+
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.02em; font-size: 17px; }
+
+  .mark {
+    width: 28px; height: 28px; border-radius: 8px; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+    display: grid; place-items: center;
+  }
+  .mark svg { width: 17px; height: 17px; }
+
+  nav { display: flex; align-items: center; gap: 22px; font-size: 14.5px; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+  @media (max-width: 700px) { nav .hide-sm { display: none; } }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 16px; border-radius: 999px;
+    font-size: 14.5px; font-weight: 560; text-decoration: none;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-bright); }
+  .btn-ghost { border-color: var(--border); color: var(--text); }
+  .btn-ghost:hover { background: var(--surface); }
+
+  /* ---------- hero ---------- */
+
+  .hero { padding: 92px 0 72px; text-align: center; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 14px; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    font-size: 13px; font-weight: 550; margin-bottom: 26px;
+  }
+
+  h1 {
+    margin: 0 0 20px;
+    font-size: clamp(38px, 6.2vw, 66px);
+    line-height: 1.04;
+    letter-spacing: -.035em;
+    font-weight: 700;
+  }
+  h1 .grad {
+    background: linear-gradient(115deg, var(--accent), var(--accent-bright));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  .lede { max-width: 620px; margin: 0 auto 34px; font-size: clamp(17px, 2vw, 19.5px); color: var(--muted); }
+
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* ---------- window mock ---------- */
+
+  .shot {
+    margin-top: 64px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: 0 24px 60px -30px rgba(0,0,0,.45);
+  }
+  .shot .chrome {
+    display: flex; align-items: center; gap: 7px;
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+
+  .shot-body { display: flex; min-height: 330px; text-align: left; }
+
+  .side { width: 176px; flex: none; border-right: 1px solid var(--border); padding: 14px 12px; }
+  @media (max-width: 640px) { .side { display: none; } }
+
+  .side-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 9px;
+    font-size: 13.5px; color: var(--muted);
+  }
+  .side-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 560; }
+  .side-item i { width: 13px; height: 13px; border-radius: 3.5px; background: currentColor; opacity: .55; flex: none; }
+
+  .canvas { flex: 1; padding: 16px 18px; min-width: 0; }
+  .day { font-size: 13.5px; font-weight: 620; margin: 0 0 9px; }
+  .day:not(:first-child) { margin-top: 20px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+  .tile { aspect-ratio: 1; border-radius: 7px; background: var(--border); }
+  .tile:nth-child(3n)   { background: linear-gradient(140deg, #2f7d8c, #17323d); }
+  .tile:nth-child(3n+1) { background: linear-gradient(140deg, #3f5f7a, #1b2b38); }
+  .tile:nth-child(3n+2) { background: linear-gradient(140deg, #63788a, #202f3a); }
+
+  .rail { width: 46px; flex: none; border-left: 1px solid var(--border); padding: 18px 0; font-size: 10px; color: var(--muted); }
+  .rail div { display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding-right: 8px; margin-bottom: 30px; font-variant-numeric: tabular-nums; }
+  .rail div::after { content: ""; width: 6px; height: 1px; background: var(--border); }
+  .rail div.on { color: var(--accent); font-weight: 640; }
+  .rail div.on::after { width: 12px; background: var(--accent); }
+  @media (max-width: 640px) { .rail { display: none; } }
+
+  /* ---------- sections ---------- */
+
+  section { padding: 80px 0; }
+  section.alt { background: var(--surface); border-block: 1px solid var(--border); }
+
+  h2 { font-size: clamp(27px, 3.6vw, 36px); letter-spacing: -.028em; margin: 0 0 12px; font-weight: 680; }
+  .sub { color: var(--muted); max-width: 620px; margin: 0 0 44px; }
+
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); }
+
+  .card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+  }
+  section.alt .card { background: var(--bg); }
+  .card h3 { margin: 0 0 7px; font-size: 17px; font-weight: 620; letter-spacing: -.012em; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.8px; }
+
+  .ico {
+    width: 34px; height: 34px; border-radius: 10px; margin-bottom: 15px;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    color: var(--accent);
+  }
+  .ico svg { width: 18px; height: 18px; }
+
+  /* ---------- privacy strip ---------- */
+
+  .strip { display: grid; gap: 30px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); text-align: center; }
+  .strip .n { font-size: 30px; font-weight: 700; letter-spacing: -.03em; color: var(--accent); }
+  .strip p { margin: 4px 0 0; color: var(--muted); font-size: 14.5px; }
+
+  /* ---------- code ---------- */
+
+  pre {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px;
+    overflow-x: auto; font-size: 13.6px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    margin: 0 0 14px;
+  }
+  section.alt pre { background: var(--bg); }
+  pre .c { color: var(--muted); }
+
+  .note {
+    border-left: 3px solid var(--accent);
+    padding: 2px 0 2px 16px; color: var(--muted); font-size: 14.5px;
+  }
+
+  /* ---------- footer ---------- */
+
+  footer { border-top: 1px solid var(--border); padding: 34px 0; color: var(--muted); font-size: 14px; }
+  .foot { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: center; }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <span class="brand">
+      <span class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="13.5" r="4.4" /><path d="M8 6.5h8" />
+        </svg>
+      </span>
+      Imadeo
+    </span>
+    <nav>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#privacy">Privacy</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <a class="btn btn-primary" href="https://github.com/eranabir/imadeo">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap hero">
+  <span class="pill">Self-hosted · open source</span>
+  <h1>Your photos.<br /><span class="grad">Your server.</span></h1>
+  <p class="lede">
+    Imadeo is a home for everything you have ever shot — organised by date, by
+    who is in it, and by what it shows. It runs on hardware you own, and your
+    library never leaves it.
+  </p>
+  <div class="cta">
+    <a class="btn btn-primary" href="#install">Get started</a>
+    <a class="btn btn-ghost" href="https://github.com/eranabir/imadeo">View source</a>
+  </div>
+
+  <div class="shot">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div class="shot-body">
+      <aside class="side">
+        <div class="side-item on"><i></i> Photos</div>
+        <div class="side-item"><i></i> Albums</div>
+        <div class="side-item"><i></i> Folders</div>
+        <div class="side-item"><i></i> People &amp; Pets</div>
+        <div class="side-item"><i></i> Favorites</div>
+        <div class="side-item"><i></i> Locked</div>
+        <div class="side-item"><i></i> Duplicates</div>
+        <div class="side-item"><i></i> Trash</div>
+      </aside>
+      <div class="canvas">
+        <p class="day">Aug 5, 2026</p>
+        <div class="tiles">
+          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          <div class="tile"></div><div class="tile"></div>
+        </div>
+        <p class="day">Nov 21, 2025</p>
+        <div class="tiles">
+          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
+          <div class="tile"></div>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="on">2026</div><div>2025</div><div>2024</div><div>2023</div><div>2020</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <h2>Everything a library needs</h2>
+    <p class="sub">
+      Built around the way people actually look for a picture: roughly when it
+      happened, who was there, or what was in the frame.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18M3 12h18M3 19h18"/></svg></div>
+        <h3>A timeline that scrolls decades</h3>
+        <p>Photos group by the day they were taken, with a year rail down the side so a jump to 2013 is one click, not a minute of scrolling.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></div>
+        <h3>People, found automatically</h3>
+        <p>Faces are detected and clustered as photos arrive. Name someone once and every picture of them is grouped — merge, split, or correct a wrong match at any time.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg></div>
+        <h3>Search by what's in the picture</h3>
+        <p>Describe the shot — "a dog on a beach" — and get results without a single tag or filename. Filenames, dates, albums and folders are searchable too.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/></svg></div>
+        <h3>Duplicates worth reviewing</h3>
+        <p>Perceptual hashing finds re-saved, resized and re-sent copies of the same shot — not just identical files — and groups them so you choose what to keep.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+        <h3>Albums and real folders</h3>
+        <p>Upload a folder and its structure comes across intact. Albums sit alongside, so curated sets and the original tree can both exist.</p>
+      </div>
+
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+        <h3>Accounts you control</h3>
+        <p>Invite family by email, or create local accounts directly. A locked area keeps private photos out of the main timeline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <h2>No one else is in the loop</h2>
+    <p class="sub">
+      Every part of Imadeo runs on your machine — including the parts that
+      recognise faces and understand what a photo shows.
+    </p>
+    <div class="strip">
+      <div>
+        <div class="n">0</div>
+        <p>Photos uploaded to anyone else's cloud</p>
+      </div>
+      <div>
+        <div class="n">On-device</div>
+        <p>Face and image recognition run locally — no external API, no per-photo cost</p>
+      </div>
+      <div>
+        <div class="n">Yours</div>
+        <p>Files stay in a plain folder you can back up, move, or walk away with</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="alt">
+  <div class="wrap">
+    <h2>Run it yourself</h2>
+    <p class="sub">
+      Imadeo needs Postgres, Redis and a machine-learning worker. Clone the
+      repository and start the stack:
+    </p>
+
+<pre><span class="c"># grab the source</span>
+git clone https://github.com/eranabir/imadeo.git
+cd imadeo
+
+<span class="c"># start Postgres, Redis and the ML worker</span>
+docker compose up -d postgres redis machine-learning
+
+<span class="c"># install dependencies and run the app</span>
+yarn install
+yarn dev</pre>
+
+    <p class="note">
+      Imadeo is under active development and does not yet ship packaged Docker
+      images or desktop installers — for now it runs from source. Check the
+      repository for the current state before pointing it at a library you care
+      about, and keep your own backups.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span>Imadeo — self-hosted photo management.</span>
+    <span><a href="https://github.com/eranabir/imadeo">GitHub</a> · <a href="https://github.com/eranabir/imadeo/issues">Issues</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
