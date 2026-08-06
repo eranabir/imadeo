@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Imadeo documentation</title>
+<meta name="description" content="How to install Imadeo with Docker and how to use it: uploading, the timeline, albums and folders, people, search, duplicates and accounts." />
+<link rel="canonical" href="https://imadeo.app/guide.html" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2306b6d4'/%3E%3Cstop offset='.45' stop-color='%238b5cf6'/%3E%3Cstop offset='.75' stop-color='%23f43f5e'/%3E%3Cstop offset='1' stop-color='%23f59e0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M11 9h10' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<style>
+  :root {
+    --accent: #0f7d8c; --accent-bright: #17a2b5;
+    --bg: #ffffff; --surface: #f6f8f9; --border: #e2e8ea;
+    --text: #16212b; --muted: #5c6d78; --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent: #2bb7ca; --accent-bright: #4fd3e4;
+      --bg: #0d1418; --surface: #141e24; --border: #24333c;
+      --text: #e8eff2; --muted: #93a6b1;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .bar {
+    width: min(1120px, calc(100% - 48px)); margin-inline: auto;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 62px; gap: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -.02em; color: var(--text); text-decoration: none; }
+  .mark {
+    width: 28px; height: 28px; border-radius: 8px; flex: none;
+    background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 45%, #f43f5e 75%, #f59e0b 100%);
+    display: grid; place-items: center;
+  }
+  .mark svg { width: 17px; height: 17px; }
+  nav { display: flex; align-items: center; gap: 22px; font-size: 14.5px; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+
+  /* two columns: contents rail + prose */
+  .shell {
+    width: min(1120px, calc(100% - 48px)); margin-inline: auto;
+    display: grid; grid-template-columns: 208px minmax(0, 1fr);
+    gap: 52px; padding: 46px 0 90px; align-items: start;
+  }
+  @media (max-width: 860px) { .shell { grid-template-columns: 1fr; gap: 26px; } }
+
+  .toc { position: sticky; top: 86px; font-size: 14px; }
+  @media (max-width: 860px) {
+    .toc { position: static; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  }
+  .toc p { margin: 0 0 10px; font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); font-weight: 640; }
+  .toc a { display: block; padding: 5px 0; color: var(--muted); text-decoration: none; }
+  .toc a:hover { color: var(--text); }
+
+  article > section { scroll-margin-top: 82px; }
+  article > section + section { margin-top: 54px; }
+
+  h1 { font-size: clamp(30px, 4.4vw, 40px); letter-spacing: -.03em; margin: 0 0 12px; font-weight: 700; }
+  .lede { color: var(--muted); font-size: 17.5px; margin: 0 0 46px; }
+  h2 { font-size: 25px; letter-spacing: -.025em; margin: 0 0 14px; font-weight: 660; }
+  h3 { font-size: 17px; letter-spacing: -.012em; margin: 26px 0 8px; font-weight: 620; }
+  p { margin: 0 0 14px; }
+  ul { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 7px; }
+
+  code {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; font-size: 13.5px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 17px 19px; margin: 0 0 16px;
+    overflow-x: auto; font-size: 13.6px; line-height: 1.75;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+  pre .c { color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 0 0 16px; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 620; font-size: 12.5px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+  td code { white-space: nowrap; }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--surface);
+    border-radius: 0 8px 8px 0; padding: 13px 16px; margin: 0 0 16px;
+    color: var(--muted); font-size: 14.8px;
+  }
+  .note.warn { border-left-color: #f59e0b; }
+  .note strong { color: var(--text); }
+
+  footer { border-top: 1px solid var(--border); padding: 30px 0; color: var(--muted); font-size: 14px; }
+  .foot { width: min(1120px, calc(100% - 48px)); margin-inline: auto; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="brand" href="./">
+      <span class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="13.5" r="4.4" /><path d="M8 6.5h8" />
+        </svg>
+      </span>
+      Imadeo
+    </a>
+    <nav>
+      <a href="./">Home</a>
+      <a href="./#download">Download</a>
+      <a href="https://github.com/eranabir/imadeo">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="toc">
+    <p>Contents</p>
+    <a href="#docker">Install with Docker</a>
+    <a href="#library">Where the library lives</a>
+    <a href="#first-run">First run</a>
+    <a href="#uploading">Uploading</a>
+    <a href="#timeline">The timeline</a>
+    <a href="#albums">Albums and folders</a>
+    <a href="#people">People</a>
+    <a href="#search">Search</a>
+    <a href="#duplicates">Duplicates</a>
+    <a href="#locked">Locked</a>
+    <a href="#accounts">Accounts and invites</a>
+    <a href="#email">Email</a>
+    <a href="#backup">Backing up</a>
+  </aside>
+
+  <article>
+    <h1>Documentation</h1>
+    <p class="lede">
+      How to get Imadeo running, and what each part of it does once it is.
+    </p>
+
+    <section id="docker">
+      <h2>Install with Docker</h2>
+      <p>
+        Imadeo runs as four containers: the app, Postgres, Redis, and a
+        machine-learning worker. They come up together from one compose file.
+      </p>
+
+<pre><code><span class="c"># fetch the compose file and a starting configuration</span>
+mkdir imadeo &amp;&amp; cd imadeo
+curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
+
+<span class="c"># edit .env, then bring the stack up</span>
+docker compose up -d</code></pre>
+
+      <p>
+        There is no separate web container. The app serves its own interface, so
+        the only port you need to reach is the server's.
+      </p>
+
+      <div class="note warn">
+        <strong>Not yet published.</strong> The compose file currently builds the
+        images from source rather than pulling them, so this needs a checkout of
+        the repository until the images are published to a registry.
+      </div>
+
+      <h3>What each service does</h3>
+      <table>
+        <tr><th>Service</th><th>Purpose</th></tr>
+        <tr><td><code>server</code></td><td>The API, the background workers, and the web interface.</td></tr>
+        <tr><td><code>database</code></td><td>Postgres with pgvector, which stores both the metadata and the image embeddings that make search work.</td></tr>
+        <tr><td><code>redis</code></td><td>The job queue. Thumbnails, metadata extraction, face detection and video transcoding all run through it.</td></tr>
+        <tr><td><code>machine-learning</code></td><td>Face detection and the image/text model behind search. Runs locally; nothing is sent anywhere.</td></tr>
+      </table>
+    </section>
+
+    <section id="library">
+      <h2>Where the library lives</h2>
+      <p>
+        <code>UPLOAD_LOCATION</code> in <code>.env</code> is the setting that
+        matters most, and the one to get right before the first upload. It is the
+        host directory bound into the container, and everything Imadeo writes
+        lives under it.
+      </p>
+
+<pre><code>UPLOAD_LOCATION=/volume1/photos</code></pre>
+
+      <table>
+        <tr><th>Directory</th><th>Holds</th></tr>
+        <tr><td><code>library/</code></td><td>Your original files, untouched.</td></tr>
+        <tr><td><code>thumbs/</code></td><td>Generated thumbnails and preview sizes.</td></tr>
+        <tr><td><code>encoded-video/</code></td><td>Transcoded copies for playback in the browser.</td></tr>
+        <tr><td><code>profile/</code></td><td>Profile pictures.</td></tr>
+        <tr><td><code>backups/</code></td><td>Database dumps.</td></tr>
+        <tr><td><code>upload/</code></td><td>Scratch space for uploads in progress.</td></tr>
+      </table>
+
+      <div class="note">
+        Originals are stored as ordinary files in ordinary directories. Nothing is
+        repackaged into a proprietary format, so the library remains usable
+        without Imadeo — you can copy it, back it up, or walk away with it.
+      </div>
+
+      <h3>Moving an existing library</h3>
+      <p>
+        Stop the stack, move the directory, point <code>UPLOAD_LOCATION</code> at
+        its new path, and start again. Paths are stored relative to the library
+        root, so nothing needs rewriting in the database.
+      </p>
+<pre><code>docker compose down
+mv /volume1/photos /volume2/photos
+<span class="c"># set UPLOAD_LOCATION=/volume2/photos in .env</span>
+docker compose up -d</code></pre>
+    </section>
+
+    <section id="first-run">
+      <h2>First run</h2>
+      <p>
+        Open the server's address in a browser. A server with no accounts shows
+        the registration screen instead of a login, because the only thing that
+        makes sense on an empty server is creating the first administrator.
+      </p>
+      <p>
+        That first account is the admin. Every account created afterwards — by
+        invitation or directly — is an ordinary user with its own separate
+        library.
+      </p>
+    </section>
+
+    <section id="uploading">
+      <h2>Uploading</h2>
+      <p>
+        <strong>Upload</strong> in the header takes individual files, or a whole
+        folder. Choosing a folder brings its structure across intact rather than
+        flattening everything into one pile.
+      </p>
+      <p>
+        Uploads are checked against what you already have. If a file matches
+        something in your library, Imadeo says so rather than silently making a
+        second copy — but you can override that and keep the duplicate, which
+        keeps its original filename and gets its own entry.
+      </p>
+      <p>
+        Once a file lands, work is queued: metadata is read, thumbnails are
+        generated, video is transcoded, faces are detected, and the image is
+        embedded for search. Large uploads finish appearing gradually.
+      </p>
+    </section>
+
+    <section id="timeline">
+      <h2>The timeline</h2>
+      <p>
+        <strong>Photos</strong> is everything you have, grouped by the day it was
+        taken. The rail down the right side lists the years in your library;
+        clicking one jumps to it.
+      </p>
+
+      <h3>Selecting</h3>
+      <ul>
+        <li>Click the circle on a photo to select it.</li>
+        <li><strong>Shift-click</strong> selects everything between two photos, across day boundaries.</li>
+        <li>Hover a date heading and a circle appears beside it — that takes the whole day at once.</li>
+        <li>With a selection active, the bar at the bottom can favourite, download, or move to trash.</li>
+      </ul>
+
+      <h3>Sorting</h3>
+      <p>
+        The default is date taken. <strong>Recently added</strong> is the useful
+        one after an upload: a photo shot in 2009 files itself under 2009 and can
+        look like it never arrived, and sorting by when it was uploaded answers
+        that.
+      </p>
+    </section>
+
+    <section id="albums">
+      <h2>Albums and folders</h2>
+      <p>
+        These are different things, deliberately.
+      </p>
+      <ul>
+        <li><strong>Folders</strong> mirror the directory structure your files
+          arrived in. Upload a tree and it comes across as it was.</li>
+        <li><strong>Albums</strong> are sets you assemble yourself. A photo can be
+          in several albums and still sit in its original folder.</li>
+      </ul>
+      <p>
+        Right-clicking a photo, or a selection, offers to add it to an album.
+      </p>
+    </section>
+
+    <section id="people">
+      <h2>People</h2>
+      <p>
+        Faces are detected as photos arrive and grouped by who they belong to.
+        Nobody is named at first — open <strong>People &amp; Pets</strong>, click
+        a face, and give it a name. Every photo of that person is grouped from
+        then on.
+      </p>
+      <ul>
+        <li><strong>Merge</strong> combines two groups that turned out to be the
+          same person.</li>
+        <li><strong>Not this person</strong> corrects a wrong match. The photo is
+          kept; only the association is removed, and it will not come back on the
+          next pass.</li>
+        <li><strong>Use as cover</strong> picks which photo their thumbnail is
+          cropped from.</li>
+        <li>Hiding a person removes them from the grid without touching any
+          photos.</li>
+      </ul>
+      <p>
+        You can also assign a photo to someone by hand, from the right-click menu,
+        whether or not a face was detected in it.
+      </p>
+    </section>
+
+    <section id="search">
+      <h2>Search</h2>
+      <p>
+        The header search field looks at filenames, descriptions and dates. The
+        icon at its right opens the advanced options.
+      </p>
+      <table>
+        <tr><th>Search type</th><th>Matches</th></tr>
+        <tr><td>Context</td><td>What a photo <em>shows</em>. Describe the picture — "a dog on a beach" — and it is matched against the image itself, with no tags or filenames involved.</td></tr>
+        <tr><td>File name or extension</td><td>The original filename, or a file type such as <code>.mov</code>.</td></tr>
+        <tr><td>Description</td><td>Text you have written on a photo.</td></tr>
+        <tr><td>Album or folder</td><td>The name of an album or folder.</td></tr>
+      </table>
+      <p>
+        Any of these can be narrowed to a date range, or to particular people.
+      </p>
+      <div class="note">
+        Context search ranks the whole library by similarity rather than filtering
+        it, so it always returns something. Judge the top results, not the count.
+      </div>
+    </section>
+
+    <section id="duplicates">
+      <h2>Duplicates</h2>
+      <p>
+        <strong>Duplicates</strong> groups photos that are the same picture rather
+        than the same file. A resized copy, a re-saved export and a version that
+        came back through a messaging app all match, even though their bytes
+        differ and no two filenames agree.
+      </p>
+      <p>
+        Nothing is deleted for you. Each group shows what it found so you can keep
+        the one you want.
+      </p>
+    </section>
+
+    <section id="locked">
+      <h2>Locked</h2>
+      <p>
+        Photos moved to <strong>Locked</strong> are kept out of the timeline,
+        search results and albums. They are reachable only from that section.
+      </p>
+      <div class="note warn">
+        <strong>Locked is not encryption.</strong> It hides photos from the
+        interface; the files remain readable on disk to anyone with access to the
+        server.
+      </div>
+    </section>
+
+    <section id="accounts">
+      <h2>Accounts and invites</h2>
+      <p>
+        Under <strong>Settings</strong>, an administrator can invite someone by
+        email or create an account directly.
+      </p>
+      <ul>
+        <li><strong>Invitation</strong> sends a link that opens registration with
+          the address already filled in. It requires email to be configured.</li>
+        <li><strong>Create a user</strong> sets up the account and password
+          yourself, with no email involved.</li>
+      </ul>
+      <p>
+        Each account has its own library. People do not see each other's photos
+        unless something is shared with them.
+      </p>
+    </section>
+
+    <section id="email">
+      <h2>Email</h2>
+      <p>
+        Email is optional. Without it Imadeo works normally, but invitations and
+        address-change confirmations cannot be sent — the invite button stays
+        disabled until a server is configured.
+      </p>
+      <p>
+        Settings takes ordinary SMTP details from your provider. One field is
+        easy to miss: <strong>the public address</strong> of your server. Links in
+        outgoing email are built from it, so if it is left pointing at localhost,
+        an invitation will work for you and for nobody else.
+      </p>
+<pre><code><span class="c"># reachable from wherever the recipient opens the link</span>
+https://photos.example.com</code></pre>
+    </section>
+
+    <section id="backup">
+      <h2>Backing up</h2>
+      <p>Two things need backing up, and they are not the same:</p>
+      <ul>
+        <li><strong>The library directory</strong> — your actual photos and
+          videos. This is the part that cannot be regenerated.</li>
+        <li><strong>The database</strong> — albums, names on faces, favourites,
+          and everything else you have organised. Losing it means the files
+          survive but the organisation does not.</li>
+      </ul>
+      <p>
+        Thumbnails and transcoded video are derived and can be rebuilt, so they
+        are not worth the backup space.
+      </p>
+<pre><code>docker compose exec -T database pg_dump -U "$DB_USERNAME" "$DB_DATABASE_NAME" \
+  &gt; imadeo-$(date +%F).sql</code></pre>
+    </section>
+  </article>
+</div>
+
+<footer>
+  <div class="foot">
+    <span>Imadeo — self-hosted photo management.</span>
+    <span><a href="https://github.com/eranabir/imadeo">GitHub</a> · <a href="https://github.com/eranabir/imadeo/issues">Issues</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
