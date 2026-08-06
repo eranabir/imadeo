@@ -1,20 +1,34 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { signOut, storedToken, type Session } from './src/lib/auth';
+import { forget, load, type ServerInfo } from './src/lib/server';
 import { ConnectScreen } from './src/screens/ConnectScreen';
-import { load, type ServerInfo } from './src/lib/server';
+import { SignInScreen } from './src/screens/SignInScreen';
 import { colors } from './src/theme';
 
 export default function App() {
   const [server, setServer] = useState<ServerInfo | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
   const [restoring, setRestoring] = useState(true);
 
-  // A saved address should not make anyone retype it on every launch.
+  // Neither the address nor the session should be retyped on every launch.
   useEffect(() => {
-    load()
-      .then((url) => { if (url) setServer({ url, version: 'unknown' }); })
-      .finally(() => setRestoring(false));
+    (async () => {
+      const [url, token] = await Promise.all([load(), storedToken()]);
+      if (url) setServer({ url, version: 'unknown' });
+      if (url && token) setSignedIn(true);
+      setRestoring(false);
+    })();
   }, []);
+
+  // Changing server invalidates the session with it — a token from one server
+  // means nothing to another.
+  const changeServer = async () => {
+    await Promise.all([forget(), signOut()]);
+    setSignedIn(false);
+    setServer(null);
+  };
 
   if (restoring) {
     return (
@@ -27,19 +41,29 @@ export default function App() {
 
   return (
     <>
-      {server ? <SignInPlaceholder url={server.url} /> : <ConnectScreen onConnected={setServer} />}
+      {!server ? (
+        <ConnectScreen onConnected={setServer} />
+      ) : !signedIn ? (
+        <SignInScreen
+          serverUrl={server.url}
+          onSignedIn={() => setSignedIn(true)}
+          onChangeServer={changeServer}
+        />
+      ) : (
+        <Home url={server.url} onSignOut={async () => { await signOut(); setSignedIn(false); }} />
+      )}
       <StatusBar style="light" />
     </>
   );
 }
 
-/** Next screen up: the existing JWT login, once the server is known. */
-import { Text } from 'react-native';
-function SignInPlaceholder({ url }: { url: string }) {
+/** Placeholder until the library and backup sections land. */
+function Home({ url, onSignOut }: { url: string; onSignOut: () => void }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
-      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>Connected</Text>
-      <Text style={{ color: colors.muted, marginTop: 8, textAlign: 'center' }}>{url}</Text>
+      <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }}>Signed in</Text>
+      <Text style={{ color: colors.muted, marginTop: 8 }}>{url.replace(/^https?:\/\//, '')}</Text>
+      <Text onPress={onSignOut} style={{ color: colors.accent, marginTop: 24, fontSize: 15 }}>Sign out</Text>
     </View>
   );
 }
