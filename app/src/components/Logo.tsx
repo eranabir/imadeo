@@ -1,57 +1,34 @@
 /**
- * Imadeo mark: three photo frames fanned out like prints dropped on a table.
+ * Imadeo mark: a frame split between a still and a video.
  *
- * Two things are deliberate. The silhouette is not a rounded square with a ring
- * in it, and the palette is teal through cyan rather than violet/fuchsia/orange
- * — between them those are what make a mark read as Instagram. A stack of
- * frames says "a library of pictures" and nods at the folder tree the app is
- * built around.
+ * The app holds both, and every earlier version of this mark said only one of
+ * them — a camera lens, or a stack of prints. The split frame is the one shape
+ * that carries the whole product.
+ *
+ * The gradient runs cyan to violet, the two ends of the sidebar palette, so the
+ * mark belongs to the same system as the navigation beside it. It is used
+ * identically here, in the mobile app and on the website; if it changes, it has
+ * to change in all three.
  */
-export function Logo({ size = 36, rounded = 'rounded-[30%]' }: { size?: number; rounded?: string }) {
+export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; rounded?: string }) {
   return (
     <span
-      className={`grid shrink-0 place-items-center bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-700 shadow-sm ${rounded}`}
+      className={`grid shrink-0 place-items-center bg-gradient-to-br from-cyan-500 to-violet-500 shadow-sm ${rounded}`}
       style={{ width: size, height: size }}
     >
-      <svg
-        viewBox="0 0 32 32"
-        width={size * 0.62}
-        height={size * 0.62}
-        fill="none"
-        aria-hidden
-        focusable="false"
-      >
-        {/* Back frame, tilted away */}
-        <rect
-          x="4.5"
-          y="7"
-          width="17"
-          height="17"
-          rx="3.4"
-          transform="rotate(-13 13 15.5)"
-          fill="white"
-          fillOpacity="0.38"
-        />
-        {/* Middle frame */}
-        <rect
-          x="7"
-          y="6.5"
-          width="18"
-          height="18"
-          rx="3.6"
-          transform="rotate(-5 16 15.5)"
-          fill="white"
-          fillOpacity="0.62"
-        />
-        {/* Front frame, carrying the "photo": a horizon and a sun */}
-        <rect x="9.5" y="8.5" width="18.5" height="18.5" rx="4" fill="white" />
-        {/* A low sun over a headland: the one warm note, kept small. */}
-        <circle cx="15.6" cy="14.6" r="2.15" fill="currentColor" className="text-amber-400" />
+      <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden focusable="false">
+        <rect x="13" y="16" width="38" height="32" rx="6" stroke="white" strokeWidth="4" />
+        {/* The divider: stills on the left, motion on the right. */}
+        <path d="M32 16v32" stroke="white" strokeWidth="3.4" />
         <path
-          d="M9.5 24.2l5.1-5.05a1.6 1.6 0 0 1 2.25 0l2.4 2.38 2.2-2.16a1.6 1.6 0 0 1 2.25 0L28 22.9v.1a4 4 0 0 1-4 4H13.5a4 4 0 0 1-4-4z"
-          fill="currentColor"
-          className="text-teal-600"
+          d="M16 44l7-7 5 5"
+          stroke="white"
+          strokeWidth="3.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
+        <circle cx="22" cy="26" r="2.8" fill="white" />
+        <path d="M38 27l8 5-8 5z" fill="white" />
       </svg>
     </span>
   );
@@ -62,9 +39,7 @@ export function LogoLockup({ size = 36, showText = true }: { size?: number; show
   return (
     <span className="flex items-center gap-2.5">
       <Logo size={size} />
-      {showText && (
-        <span className="text-[17px] font-semibold tracking-tight">Imadeo</span>
-      )}
+      {showText && <span className="text-[17px] font-semibold tracking-tight">Imadeo</span>}
     </span>
   );
 }
