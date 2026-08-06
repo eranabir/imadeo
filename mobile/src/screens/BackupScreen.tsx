@@ -29,6 +29,8 @@ const PAGE = 60;
 export function BackupScreen({ serverUrl, onSignOut }: Props) {
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
+  /** Real file paths for the tiles, keyed by asset id. */
+  const [uris, setUris] = useState<Record<string, string>>({});
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<number | null>(null);
@@ -51,6 +53,23 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
       setAssets(page.assets);
       setTotal(page.totalCount);
       setPending(await pendingCount());
+
+      // Tiles cannot render asset.uri on iOS: it is a ph:// reference and the
+      // image loader rejects it the same way networking does. Resolving a real
+      // path per asset is a round trip each, so it is done once for the page
+      // that is actually on screen rather than for the whole library.
+      const resolved: Record<string, string> = {};
+      await Promise.all(
+        page.assets.map(async (asset) => {
+          try {
+            const info = await MediaLibrary.getAssetInfoAsync(asset);
+            if (info.localUri) resolved[asset.id] = info.localUri;
+          } catch {
+            // Leave it out; the tile shows its placeholder.
+          }
+        }),
+      );
+      setUris(resolved);
     } finally {
       setLoading(false);
     }
@@ -239,7 +258,8 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
                 an aspectRatio box measures as zero on some platforms and the
                 tile renders as a flat placeholder. */}
             <Image
-              source={{ uri: item.uri }}
+              // No fallback to item.uri: that is the ph:// path that throws.
+              source={uris[item.id] ? { uri: uris[item.id] } : undefined}
               style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
               resizeMode="cover"
             />
