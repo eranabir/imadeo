@@ -68,13 +68,7 @@ export default function App() {
           onChangeServer={changeServer}
         />
       ) : (
-        <BackupScreen
-          serverUrl={server.url}
-          onSignOut={async () => {
-            await signOut();
-            setSignedIn(false);
-          }}
-        />
+        <BackupScreen serverUrl={server.url} />
       )}
       <StatusBar style="light" />
     </>

@@ -15,7 +15,6 @@ import { colors } from '../theme';
 
 interface Props {
   serverUrl: string;
-  onSignOut: () => void;
 }
 
 const PAGE = 60;
@@ -27,11 +26,9 @@ const PAGE = 60;
  * so a run continues while this screen is open and resumes from where it
  * stopped next time.
  */
-export function BackupScreen({ serverUrl, onSignOut }: Props) {
+export function BackupScreen({ serverUrl }: Props) {
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
-  /** Real file paths for the tiles, keyed by asset id. */
-  const [uris, setUris] = useState<Record<string, string>>({});
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState<number | null>(null);
@@ -39,7 +36,7 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
   const [error, setError] = useState<string | null>(null);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
-  /** Dismisses the permission prompt without granting it or signing out. */
+  /** Dismisses the permission prompt without granting it. */
   const [skipped, setSkipped] = useState(false);
 
   const load = useCallback(async () => {
@@ -54,27 +51,6 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
       setAssets(page.assets);
       setTotal(page.totalCount);
       setPending(await pendingCount());
-
-      // Tiles cannot render asset.uri on iOS: it is a ph:// reference and the
-      // image loader rejects it the same way networking does. Resolving a real
-      // path per asset is a round trip each, so it is done once for the page
-      // that is actually on screen rather than for the whole library.
-      const resolved: Record<string, string> = {};
-
-      // Photos resolve in parallel: getAssetInfoAsync is cheap and independent.
-      await Promise.all(
-        page.assets
-          .filter((a) => a.mediaType !== 'video')
-          .map(async (asset) => {
-            try {
-              const info = await MediaLibrary.getAssetInfoAsync(asset);
-              if (info.localUri) resolved[asset.id] = info.localUri;
-            } catch {
-              // Leave it out; the tile shows its placeholder.
-            }
-          }),
-      );
-      setUris({ ...resolved });
 
     } finally {
       setLoading(false);
@@ -120,10 +96,10 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
             <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Turn on backup</Text>
           </Pressable>
           <Text
-            onPress={onSignOut}
+            onPress={() => setSkipped(true)}
             style={{ color: colors.faint, fontSize: 14, textAlign: 'center', marginTop: 22 }}
           >
-            Sign out
+            Skip for now
           </Text>
         </View>
       );
@@ -318,9 +294,6 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         }
       />
 
-      <Pressable onPress={onSignOut} style={{ padding: 18, alignItems: 'center' }}>
-        <Text style={{ color: colors.faint, fontSize: 14 }}>Sign out</Text>
-      </Pressable>
     </View>
   );
 }
