@@ -626,46 +626,6 @@
   </div>
 </section>
 
-<section id="install" class="alt">
-  <div class="wrap">
-    <h2>Run it with Docker</h2>
-    <p class="sub">
-      Two files and one command. Everything Imadeo needs — the app, Postgres,
-      Redis and the machine-learning worker — comes up together.
-    </p>
-
-<pre><span class="c"># fetch the compose file and a starting configuration</span>
-mkdir imadeo &amp;&amp; cd imadeo
-curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
-
-<span class="c"># point UPLOAD_LOCATION at wherever the library should live,</span>
-<span class="c"># then bring the stack up</span>
-docker compose up -d</pre>
-
-    <p class="sub" style="margin-bottom:22px">
-      Open the server's port and create the first account. There is no separate
-      web container — the app serves its own interface.
-    </p>
-
-    <h3 style="font-size:18px;margin:0 0 8px;font-weight:640;letter-spacing:-.015em">Where the library lives</h3>
-    <p class="sub">
-      <code>UPLOAD_LOCATION</code> in <code>.env</code> is the one path that
-      matters. Everything Imadeo writes — originals, thumbnails, transcoded
-      video, profile pictures and backups — sits under it, so a NAS install is
-      a single line:
-    </p>
-
-<pre>UPLOAD_LOCATION=/volume1/photos</pre>
-
-    <p class="note">
-      Imadeo is under active development. Check the repository for the current
-      state before pointing it at a library you care about, and keep your own
-      backups.
-    </p>
-  </div>
-</section>
-
 <footer>
   <div class="wrap foot">
     <span>Imadeo — self-hosted photo management.</span>
