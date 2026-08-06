@@ -138,6 +138,7 @@
   <aside class="toc">
     <p>Contents</p>
     <a href="#docker">Install with Docker</a>
+    <a href="#truenas">TrueNAS SCALE</a>
     <a href="#library">Where the library lives</a>
     <a href="#first-run">First run</a>
     <a href="#uploading">Uploading</a>
@@ -192,6 +193,51 @@ docker compose up -d</code></pre>
         <tr><td><code>redis</code></td><td>The job queue. Thumbnails, metadata extraction, face detection and video transcoding all run through it.</td></tr>
         <tr><td><code>machine-learning</code></td><td>Face detection and the image/text model behind search. Runs locally; nothing is sent anywhere.</td></tr>
       </table>
+    </section>
+
+    <section id="truenas">
+      <h2>TrueNAS SCALE</h2>
+      <p>
+        SCALE runs ordinary Docker, so the compose file above works as-is. Since
+        24.10 the apps system is Docker Compose rather than Kubernetes, which
+        means Imadeo installs the same way it does anywhere else.
+      </p>
+
+      <h3>Create a dataset first</h3>
+      <p>
+        Make a dataset for the library rather than pointing Imadeo at a path
+        inside the boot pool — that pool is small and is not meant to hold data.
+        In <strong>Datasets</strong>, add one under your storage pool, then use
+        its path as <code>UPLOAD_LOCATION</code>:
+      </p>
+
+<pre><code>UPLOAD_LOCATION=/mnt/tank/photos</code></pre>
+
+      <h3>Install</h3>
+      <p>
+        From <strong>Apps → Discover → Custom App</strong>, choose the option to
+        install via YAML and paste the compose file. Or from a shell, exactly as
+        on any other machine:
+      </p>
+
+<pre><code>mkdir -p /mnt/tank/apps/imadeo &amp;&amp; cd /mnt/tank/apps/imadeo
+curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
+<span class="c"># set UPLOAD_LOCATION to your dataset, then</span>
+docker compose up -d</code></pre>
+
+      <div class="note">
+        Keep the compose file and <code>.env</code> on a data pool, not on the
+        boot pool. A SCALE upgrade can reset the boot pool, and anything stored
+        there goes with it.
+      </div>
+
+      <div class="note warn">
+        <strong>No catalog app yet.</strong> Installing from
+        <strong>Apps → Discover</strong> with a form for the dataset and ports
+        needs Imadeo published to a container registry first — a catalog entry
+        pulls a tag, it cannot build from source.
+      </div>
     </section>
 
     <section id="library">
@@ -439,7 +485,7 @@ https://photos.example.com</code></pre>
 
 <footer>
   <div class="foot">
-    <span>Imadeo — self-hosted photo management.</span>
+    <span>Imadeo — self-hosted media management.</span>
     <span><a href="https://github.com/eranabir/imadeo">GitHub</a> · <a href="https://github.com/eranabir/imadeo/issues">Issues</a></span>
   </div>
 </footer>
