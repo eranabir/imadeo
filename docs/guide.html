@@ -203,15 +203,34 @@ docker compose up -d</code></pre>
         means Imadeo installs the same way it does anywhere else.
       </p>
 
-      <h3>Create a dataset first</h3>
+      <div class="note">
+        Written against TrueNAS Community Edition 24.10 (Electric Eel) or later,
+        where the apps system moved to Docker Compose. Earlier releases used
+        Kubernetes and are not covered here.
+      </div>
+
+      <h3>Create two datasets first</h3>
       <p>
-        Make a dataset for the library rather than pointing Imadeo at a path
-        inside the boot pool — that pool is small and is not meant to hold data.
-        In <strong>Datasets</strong>, add one under your storage pool, then use
-        its path as <code>UPLOAD_LOCATION</code>:
+        Imadeo needs two, not one. The library is the obvious half; the database
+        is the half people miss, and losing it means the files survive but every
+        album, name and favourite is gone. A parent with two children keeps them
+        together:
       </p>
 
-<pre><code>UPLOAD_LOCATION=/mnt/tank/photos</code></pre>
+      <table>
+        <tr><th>Dataset</th><th>Holds</th></tr>
+        <tr><td><code>/mnt/tank/imadeo/library</code></td><td>Your photos and videos, plus thumbnails and transcodes.</td></tr>
+        <tr><td><code>/mnt/tank/imadeo/database</code></td><td>Postgres. Albums, names on faces, favourites — everything you have organised.</td></tr>
+      </table>
+
+      <p>
+        Both go in <code>.env</code>. Neither default is safe on SCALE:
+        <code>DB_DATA_LOCATION</code> is a path relative to the compose file, so
+        left alone it puts your database wherever you happened to unpack things.
+      </p>
+
+<pre><code>UPLOAD_LOCATION=/mnt/tank/imadeo/library
+DB_DATA_LOCATION=/mnt/tank/imadeo/database</code></pre>
 
       <h3>Install</h3>
       <p>
