@@ -352,6 +352,11 @@
   .tag.ready { background: color-mix(in srgb, #10b981 16%, transparent); color: #10b981; }
   .tag.wip   { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #f59e0b; }
 
+  /* Only the card you can actually act on carries a button. The two in
+     development would otherwise offer a link to nothing. */
+  .dl-btn { align-self: flex-start; margin-top: 4px; }
+  .dl-btn svg { width: 14px; height: 14px; }
+
   footer { border-top: 1px solid var(--border); padding: 34px 0; color: var(--muted); font-size: 14px; }
   .foot { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: center; }
   footer a { color: var(--muted); text-decoration: none; }
@@ -589,6 +594,10 @@
         </div>
         <p>The full stack — app, database, queue and the machine-learning worker — in one compose file. Works on Synology, Unraid, TrueNAS and any Linux box.</p>
         <span class="tag ready">Available now</span>
+        <a class="btn btn-primary dl-btn" href="#install">
+          Installation guide
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
       </div>
 
       <div class="dl-card soon">
