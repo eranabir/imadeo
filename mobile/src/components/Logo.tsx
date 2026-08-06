@@ -9,13 +9,13 @@ interface Props {
  * The Imadeo mark: a frame split between a still and a video.
  *
  * The app holds both, and a camera lens only said one of them. The gradient is
- * the two ends of the sidebar palette rather than the full spectrum, so it
+ * emerald through teal into deep cyan rather than the full spectrum, so it
  * belongs to the same design system as everything around it.
  */
 export function Logo({ size = 56 }: Props) {
   return (
     <LinearGradient
-      colors={['#06b6d4', '#8b5cf6']}
+      colors={['#34d399', '#14b8a6', '#0e7490']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{

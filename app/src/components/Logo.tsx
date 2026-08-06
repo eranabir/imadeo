@@ -5,15 +5,15 @@
  * them — a camera lens, or a stack of prints. The split frame is the one shape
  * that carries the whole product.
  *
- * The gradient runs cyan to violet, the two ends of the sidebar palette, so the
- * mark belongs to the same system as the navigation beside it. It is used
+ * The gradient runs emerald through teal into deep cyan — the same family as the
+ * accent, and deliberately not violet or fuchsia, which read as Instagram. Used
  * identically here, in the mobile app and on the website; if it changes, it has
  * to change in all three.
  */
 export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; rounded?: string }) {
   return (
     <span
-      className={`grid shrink-0 place-items-center bg-gradient-to-br from-cyan-500 to-violet-500 shadow-sm ${rounded}`}
+      className={`grid shrink-0 place-items-center bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-700 shadow-sm ${rounded}`}
       style={{ width: size, height: size }}
     >
       <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden focusable="false">
