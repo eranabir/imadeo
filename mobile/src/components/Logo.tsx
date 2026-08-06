@@ -37,8 +37,8 @@ export function Logo({ size = 56 }: Props) {
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <Circle cx="22" cy="26" r="2.8" fill="#fff" />
-        <Path d="M38 27l8 5-8 5z" fill="#fff" />
+        <Circle cx="22" cy="26" r="2.8" fill="#fbbf24" />
+        <Path d="M38 27l8 5-8 5z" fill="#f43f5e" />
       </Svg>
     </LinearGradient>
   );

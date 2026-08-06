@@ -27,8 +27,8 @@ export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; 
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <circle cx="22" cy="26" r="2.8" fill="white" />
-        <path d="M38 27l8 5-8 5z" fill="white" />
+        <circle cx="22" cy="26" r="2.8" fill="#fbbf24" />
+        <path d="M38 27l8 5-8 5z" fill="#f43f5e" />
       </svg>
     </span>
   );
