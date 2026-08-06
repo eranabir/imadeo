@@ -74,11 +74,21 @@ export async function runBackup(
     if (shouldStop()) break;
 
     try {
-      // getAssetInfoAsync resolves the real local file. On iOS the plain `uri`
-      // is a ph:// reference that fetch cannot read, and localUri is what a
-      // multipart body actually needs.
-      const info = await MediaLibrary.getAssetInfoAsync(asset);
-      const uri = info.localUri ?? asset.uri;
+      // On iOS `asset.uri` is a ph:// reference into the Photos database.
+      // Networking cannot read those — handing one to fetch throws "No
+      // suitable URL request handler found for ph://" and takes down the
+      // screen. Only a real file:// path from getAssetInfoAsync will do.
+      //
+      // shouldDownloadFromNetwork pulls the original back for photos that
+      // iCloud has offloaded; without it those resolve to nothing on a phone
+      // using Optimise Storage, which is most of them.
+      const info = await MediaLibrary.getAssetInfoAsync(asset, {
+        shouldDownloadFromNetwork: true,
+      });
+      const uri = info.localUri;
+      if (!uri || uri.startsWith('ph://')) {
+        throw new Error(`No local file for ${asset.filename}`);
+      }
 
       const form = new FormData();
       form.append('assetData', {
