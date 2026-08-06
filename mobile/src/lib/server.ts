@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import { getItem, removeItem, setItem } from './storage';
 
 const KEY = 'imadeo.server';
 
@@ -62,13 +62,13 @@ export async function probe(input: string): Promise<ServerInfo> {
 }
 
 export async function save(url: string) {
-  await SecureStore.setItemAsync(KEY, url);
+  await setItem(KEY, url);
 }
 
 export async function load(): Promise<string | null> {
-  return SecureStore.getItemAsync(KEY);
+  return getItem(KEY);
 }
 
 export async function forget() {
-  await SecureStore.deleteItemAsync(KEY);
+  await removeItem(KEY);
 }

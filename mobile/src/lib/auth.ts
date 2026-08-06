@@ -1,4 +1,4 @@
-import * as SecureStore from 'expo-secure-store';
+import { getItem, removeItem, setItem } from './storage';
 
 const ACCESS = 'imadeo.access';
 const REFRESH = 'imadeo.refresh';
@@ -37,18 +37,18 @@ export async function login(baseUrl: string, email: string, password: string): P
   }
   if (!body?.accessToken) throw new Error('The server did not return a session.');
 
-  await SecureStore.setItemAsync(ACCESS, body.accessToken);
-  if (body.refreshToken) await SecureStore.setItemAsync(REFRESH, body.refreshToken);
+  await setItem(ACCESS, body.accessToken);
+  if (body.refreshToken) await setItem(REFRESH, body.refreshToken);
   return body as Session;
 }
 
 export async function storedToken() {
-  return SecureStore.getItemAsync(ACCESS);
+  return getItem(ACCESS);
 }
 
 export async function signOut() {
   await Promise.all([
-    SecureStore.deleteItemAsync(ACCESS),
-    SecureStore.deleteItemAsync(REFRESH),
+    removeItem(ACCESS),
+    removeItem(REFRESH),
   ]);
 }

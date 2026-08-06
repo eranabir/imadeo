@@ -15,10 +15,18 @@ export default function App() {
   // Neither the address nor the session should be retyped on every launch.
   useEffect(() => {
     (async () => {
-      const [url, token] = await Promise.all([load(), storedToken()]);
-      if (url) setServer({ url, version: 'unknown' });
-      if (url && token) setSignedIn(true);
-      setRestoring(false);
+      // Secure storage can fail — it is unavailable on web, and a locked
+      // keystore can throw on device. Either way the app has to fall through to
+      // the connect screen rather than sit on a spinner forever.
+      try {
+        const [url, token] = await Promise.all([load(), storedToken()]);
+        if (url) setServer({ url, version: 'unknown' });
+        if (url && token) setSignedIn(true);
+      } catch {
+        // Nothing restored; start from the beginning.
+      } finally {
+        setRestoring(false);
+      }
     })();
   }, []);
 
