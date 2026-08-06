@@ -60,27 +60,37 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
       // path per asset is a round trip each, so it is done once for the page
       // that is actually on screen rather than for the whole library.
       const resolved: Record<string, string> = {};
-      await Promise.all(
-        page.assets.map(async (asset) => {
-          try {
-            const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (!info.localUri) return;
 
-            // A video's localUri is the movie itself, and Image cannot draw
-            // one — it needs a still. A frame from the first second stands in
-            // as the poster.
-            if (asset.mediaType === 'video') {
-              const thumb = await VideoThumbnails.getThumbnailAsync(info.localUri, { time: 500 });
-              resolved[asset.id] = thumb.uri;
-            } else {
-              resolved[asset.id] = info.localUri;
+      // Photos resolve in parallel: getAssetInfoAsync is cheap and independent.
+      await Promise.all(
+        page.assets
+          .filter((a) => a.mediaType !== 'video')
+          .map(async (asset) => {
+            try {
+              const info = await MediaLibrary.getAssetInfoAsync(asset);
+              if (info.localUri) resolved[asset.id] = info.localUri;
+            } catch {
+              // Leave it out; the tile shows its placeholder.
             }
-          } catch {
-            // Leave it out; the tile shows its placeholder.
-          }
-        }),
+          }),
       );
-      setUris(resolved);
+      setUris({ ...resolved });
+
+      // Videos go one at a time. Each poster frame runs through the hardware
+      // decoder, and asking for a dozen at once made all but the first fail —
+      // photos appeared while every video stayed blank. Results are published
+      // as they arrive so the grid fills in rather than waiting for the last.
+      for (const asset of page.assets.filter((a) => a.mediaType === 'video')) {
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(asset);
+          if (!info.localUri) continue;
+          const thumb = await VideoThumbnails.getThumbnailAsync(info.localUri, { time: 500 });
+          resolved[asset.id] = thumb.uri;
+          setUris({ ...resolved });
+        } catch {
+          // A codec the decoder will not open; the tile keeps its placeholder.
+        }
+      }
     } finally {
       setLoading(false);
     }
