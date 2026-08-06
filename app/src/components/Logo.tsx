@@ -1,14 +1,14 @@
 /**
- * Imadeo mark: a frame split between a still and a video.
+ * Imadeo mark: a photo and a video, overlapping like prints on a table.
  *
- * The app holds both, and every earlier version of this mark said only one of
- * them — a camera lens, or a stack of prints. The split frame is the one shape
- * that carries the whole product.
+ * Two frames rather than one split down the middle. A single divided frame only
+ * held together at large sizes — at 26px in the top bar the detail inside it
+ * disappeared. Two offset shapes keep a silhouette that still reads small.
  *
- * The gradient runs emerald through teal into deep cyan — the same family as the
- * accent, and deliberately not violet or fuchsia, which read as Instagram. Used
- * identically here, in the mobile app and on the website; if it changes, it has
- * to change in all three.
+ * The amber frame carries a sun over a horizon; the sky-blue one in front
+ * carries a play triangle. Both are from the app's own palette, on the
+ * emerald-through-cyan tile the accent is drawn from. Used identically here, in
+ * the mobile app and on the website; if it changes, it changes in all three.
  */
 export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; rounded?: string }) {
   return (
@@ -16,19 +16,25 @@ export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; 
       className={`grid shrink-0 place-items-center bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-700 shadow-sm ${rounded}`}
       style={{ width: size, height: size }}
     >
-      <svg viewBox="0 0 64 64" width={size} height={size} fill="none" aria-hidden focusable="false">
-        <rect x="13" y="16" width="38" height="32" rx="6" stroke="white" strokeWidth="4" />
-        {/* The divider: stills on the left, motion on the right. */}
-        <path d="M32 16v32" stroke="white" strokeWidth="3.4" />
-        <path
-          d="M16 44l7-7 5 5"
-          stroke="#38bdf8"
-          strokeWidth="3.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden focusable="false">
+        {/* Behind: the photo. */}
+        <rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" />
+        <circle cx="19" cy="21" r="2.6" fill="#fff" />
+        <path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" />
+
+        {/* In front: the video. Its stroke is the tile colour, so the frames stay
+            separate without an outline that would vanish when scaled down. */}
+        <rect
+          x="26"
+          y="27"
+          width="26"
+          height="24"
+          rx="5"
+          fill="#38bdf8"
+          stroke="#14b8a6"
+          strokeWidth="3"
         />
-        <circle cx="22" cy="26" r="2.8" fill="#fbbf24" />
-        <path d="M38 27l8 5-8 5z" fill="#f43f5e" />
+        <path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" />
       </svg>
     </span>
   );

@@ -1940,6 +1940,7 @@ __metadata:
   resolution: "@imadeo/mobile@workspace:mobile"
   dependencies:
     "@expo/metro-runtime": "npm:~6.1.2"
+    "@react-native-masked-view/masked-view": "npm:0.3.2"
     "@types/react": "npm:~19.2.2"
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
@@ -3343,6 +3344,16 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/9f98fdaba008dfc58050de60a77670b885792df473cf82c1cef8daee919a5dd5a77d270209f5f0b0abfaac78cb1627396e3ff56c81b735be550409426fe8b040
+  languageName: node
+  linkType: hard
+
+"@react-native-masked-view/masked-view@npm:0.3.2":
+  version: 0.3.2
+  resolution: "@react-native-masked-view/masked-view@npm:0.3.2"
+  peerDependencies:
+    react: ">=16"
+    react-native: ">=0.57"
+  checksum: 10c0/4ec84b7af2ded49dc21f17cc723a0ef341076cbe40cf758dd2daff8734bea63ba83e2fee7e63958984385314b8915b6804135997e07697abdd4141217c847fe9
   languageName: node
   linkType: hard
 

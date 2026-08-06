@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
@@ -5,12 +7,17 @@ interface Props {
   size?: number;
 }
 
+
 /**
- * The Imadeo mark: a frame split between a still and a video.
+ * The Imadeo mark: a photo and a video, overlapping like prints on a table.
  *
- * The app holds both, and a camera lens only said one of them. The gradient is
- * emerald through teal into deep cyan rather than the full spectrum, so it
- * belongs to the same design system as everything around it.
+ * Two frames rather than one split down the middle. A single divided frame only
+ * held together at large sizes — at 26px in a header the detail inside it
+ * disappeared. Two offset shapes keep a silhouette that still reads small.
+ *
+ * The amber frame carries a sun over a horizon; the sky-blue one in front
+ * carries a play triangle. Both colours are from the app's own palette, on the
+ * emerald-through-cyan tile the accent is drawn from.
  */
 export function Logo({ size = 56 }: Props) {
   return (
@@ -27,19 +34,88 @@ export function Logo({ size = 56 }: Props) {
       }}
     >
       <Svg width={size} height={size} viewBox="0 0 64 64">
-        <Rect x="13" y="16" width="38" height="32" rx="6" fill="none" stroke="#fff" strokeWidth={4} />
-        <Path d="M32 16v32" stroke="#fff" strokeWidth={3.4} />
-        <Path
-          d="M16 44l7-7 5 5"
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth={3.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        {/* Behind: the photo. */}
+        <Rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" />
+        <Circle cx="19" cy="21" r="2.6" fill="#fff" />
+        <Path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" />
+
+        {/* In front: the video. Its stroke is the tile colour, so the two frames
+            stay separate without an outline that would vanish when scaled. */}
+        <Rect
+          x="26"
+          y="27"
+          width="26"
+          height="24"
+          rx="5"
+          fill="#38bdf8"
+          stroke="#14b8a6"
+          strokeWidth={3}
         />
-        <Circle cx="22" cy="26" r="2.8" fill="#fbbf24" />
-        <Path d="M38 27l8 5-8 5z" fill="#f43f5e" />
+        <Path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" />
       </Svg>
     </LinearGradient>
+  );
+}
+
+/**
+ * Mark plus the app's name, with colour travelling through the letters.
+ *
+ * Each letter runs the same loop offset a little further along, so the hue
+ * arrives at one letter after another and reads as a wave crossing the word.
+ * Animating a single colour for the whole word made it change all at once,
+ * which looked like a status light rather than an effect.
+ *
+ * Built from per-letter interpolation rather than a masked gradient: masking
+ * needs a native view that does not composite on web, and this has to look the
+ * same everywhere.
+ */
+const WORD = 'Imadeo'.split('');
+const HUES = ['#e8eff2', '#34d399', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e', '#e8eff2'];
+
+export function LogoLockup({ size = 48 }: Props) {
+  const wave = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(wave, {
+        toValue: 1,
+        duration: 4200,
+        easing: Easing.linear,
+        // Colour cannot be driven natively, but one interpolation per letter at
+        // this duration is far below anything the JS thread notices.
+        useNativeDriver: false,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [wave]);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+      <Logo size={size} />
+      <View style={{ flexDirection: 'row' }}>
+        {WORD.map((letter, index) => {
+          // Each letter starts a fraction later, which is what makes the colour
+          // sweep along the word instead of landing on all of it together.
+          const shift = index / (WORD.length * 1.6);
+          const color = wave.interpolate({
+            inputRange: HUES.map((_, i) => {
+              const at = i / (HUES.length - 1) + shift;
+              return at > 1 ? at - 1 : at;
+            }).sort((a, b) => a - b),
+            outputRange: HUES,
+          });
+
+          return (
+            <Animated.Text
+              key={index}
+              style={{ color, fontSize: 32, fontWeight: '700', letterSpacing: -0.8 }}
+            >
+              {letter}
+            </Animated.Text>
+          );
+        })}
+      </View>
+    </View>
   );
 }

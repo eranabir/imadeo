@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
+    "@react-native-masked-view/masked-view": "0.3.2",
     "expo": "54.0.35",
     "expo-linear-gradient": "~15.0.8",
     "expo-secure-store": "~15.0.8",

@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { probe, save, type ServerInfo } from '../lib/server';
-import { Logo } from '../components/Logo';
+import { LogoLockup } from '../components/Logo';
 import { colors } from '../theme';
 
 interface Props {
@@ -51,7 +51,7 @@ export function ConnectScreen({ onConnected }: Props) {
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ marginBottom: 28 }}><Logo /></View>
+        <View style={{ marginBottom: 28 }}><LogoLockup /></View>
 
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
           Connect to your server
