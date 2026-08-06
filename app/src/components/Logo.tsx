@@ -22,7 +22,7 @@ export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; 
         <path d="M32 16v32" stroke="white" strokeWidth="3.4" />
         <path
           d="M16 44l7-7 5 5"
-          stroke="white"
+          stroke="#38bdf8"
           strokeWidth="3.6"
           strokeLinecap="round"
           strokeLinejoin="round"

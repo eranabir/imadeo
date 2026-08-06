@@ -32,7 +32,7 @@ export function Logo({ size = 56 }: Props) {
         <Path
           d="M16 44l7-7 5 5"
           fill="none"
-          stroke="#fff"
+          stroke="#38bdf8"
           strokeWidth={3.6}
           strokeLinecap="round"
           strokeLinejoin="round"
