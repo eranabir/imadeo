@@ -3,6 +3,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   FlatList,
   Pressable,
   RefreshControl,
@@ -103,9 +104,10 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
             saved to {serverUrl.replace(/^https?:\/\//, '')}.
           </Text>
           <Pressable
-            onPress={() => {
+            onPress={async () => {
               setSkipped(false);
-              void requestPermission();
+              const next = await requestPermission();
+              if (!next.granted && !next.canAskAgain) await Linking.openSettings();
             }}
             style={({ pressed }) => ({
               backgroundColor: colors.accent,
@@ -137,7 +139,13 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
           out which photos your server does not have yet.
         </Text>
         <Pressable
-          onPress={requestPermission}
+          onPress={async () => {
+            const next = await requestPermission();
+            // iOS only ever shows the system prompt once. After that
+            // requestPermission returns immediately with the old answer and
+            // the button looks broken — Settings is the only route left.
+            if (!next.granted && !next.canAskAgain) await Linking.openSettings();
+          }}
           style={({ pressed }) => ({
             backgroundColor: colors.accent,
             borderRadius: 999,
