@@ -13,7 +13,7 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://imadeo.app/" />
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f7d8c'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M11 9h10' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2306b6d4'/%3E%3Cstop offset='.45' stop-color='%238b5cf6'/%3E%3Cstop offset='.75' stop-color='%23f43f5e'/%3E%3Cstop offset='1' stop-color='%23f59e0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Cpath d='M11 9h10' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
 
 <style>
   :root {
@@ -70,9 +70,11 @@
 
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.02em; font-size: 17px; }
 
+  /* Four stops rather than two shades of teal — the library this manages is
+     colourful, and a single-hue mark read as corporate next to it. */
   .mark {
     width: 28px; height: 28px; border-radius: 8px; flex: none;
-    background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+    background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 45%, #f43f5e 75%, #f59e0b 100%);
     display: grid; place-items: center;
   }
   .mark svg { width: 17px; height: 17px; }
@@ -95,7 +97,26 @@
 
   /* ---------- hero ---------- */
 
-  .hero { padding: 92px 0 72px; text-align: center; }
+  /* An asymmetric split: copy on the left, the app itself alongside it and
+     bleeding off the right edge. Deliberately not the centred hero-then-
+     screenshot stack that every self-hosted project uses. */
+  .hero {
+    padding: 84px 0 76px;
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.18fr);
+    align-items: center;
+    gap: 54px;
+    text-align: left;
+  }
+  @media (max-width: 940px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; text-align: center; padding-top: 64px; }
+  }
+  /* The bleed only applies where the hero is actually split. Applied
+     unconditionally it pushed the stacked layout past the viewport and gave
+     the whole page a horizontal scrollbar. */
+  @media (min-width: 941px) {
+    .hero .shot { margin-right: -8vw; }
+  }
 
   .pill {
     display: inline-flex; align-items: center; gap: 8px;
@@ -117,14 +138,20 @@
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
 
-  .lede { max-width: 620px; margin: 0 auto 34px; font-size: clamp(17px, 2vw, 19.5px); color: var(--muted); }
+  .lede { max-width: 620px; margin: 0 0 32px; font-size: clamp(16.5px, 1.7vw, 18.5px); color: var(--muted); }
 
-  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  @media (max-width: 940px) {
+    .lede { margin-inline: auto; }
+    .cta { justify-content: center; }
+  }
 
   /* ---------- window mock ---------- */
 
+  /* Runs past the container's right edge so the window reads as a real app
+     continuing off-screen rather than a framed screenshot on a slide. */
   .shot {
-    margin-top: 64px;
     border: 1px solid var(--border);
     border-radius: 16px;
     overflow: hidden;
@@ -302,6 +329,29 @@
 
   /* ---------- footer ---------- */
 
+  /* ---------- download ---------- */
+
+  .dl { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); }
+
+  .dl-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 26px 24px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .dl-card.soon { opacity: .62; }
+
+  .dl-card .plat { display: flex; align-items: center; gap: 11px; }
+  .dl-card .plat svg { width: 26px; height: 26px; }
+  .dl-card h3 { margin: 0; font-size: 17.5px; font-weight: 640; letter-spacing: -.015em; }
+  .dl-card p { margin: 0; color: var(--muted); font-size: 14.5px; flex: 1; }
+
+  .tag {
+    align-self: flex-start; font-size: 11.5px; font-weight: 620;
+    padding: 3px 10px; border-radius: 999px; letter-spacing: .015em;
+  }
+  .tag.ready { background: color-mix(in srgb, #10b981 16%, transparent); color: #10b981; }
+  .tag.wip   { background: color-mix(in srgb, #f59e0b 16%, transparent); color: #f59e0b; }
+
   footer { border-top: 1px solid var(--border); padding: 34px 0; color: var(--muted); font-size: 14px; }
   .foot { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; align-items: center; }
   footer a { color: var(--muted); text-decoration: none; }
@@ -323,13 +373,14 @@
     <nav>
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#privacy">Privacy</a>
-      <a class="hide-sm" href="#install">Install</a>
+      <a class="hide-sm" href="#download">Download</a>
       <a class="btn btn-primary" href="https://github.com/eranabir/imadeo">GitHub</a>
     </nav>
   </div>
 </header>
 
 <div class="wrap hero">
+  <div class="hero-copy">
   <span class="pill">Self-hosted · open source</span>
   <h1>Your photos.<br /><span class="grad">Your server.</span></h1>
   <p class="lede">
@@ -338,8 +389,9 @@
     library never leaves it.
   </p>
   <div class="cta">
-    <a class="btn btn-primary" href="#install">Get started</a>
+    <a class="btn btn-primary" href="#download">Download</a>
     <a class="btn btn-ghost" href="https://github.com/eranabir/imadeo">View source</a>
+  </div>
   </div>
 
   <div class="shot">
@@ -511,6 +563,54 @@
       <div>
         <div class="n">Yours</div>
         <p>Files stay in a plain folder you can back up, move, or walk away with</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>Download</h2>
+    <p class="sub">
+      Imadeo runs wherever Docker does — a NAS, a home server, or the machine
+      already under your desk.
+    </p>
+
+    <div class="dl">
+      <div class="dl-card">
+        <div class="plat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="10" width="3" height="3"/><rect x="7" y="10" width="3" height="3"/>
+            <rect x="11" y="10" width="3" height="3"/><rect x="7" y="6.5" width="3" height="3"/>
+            <rect x="11" y="6.5" width="3" height="3"/><rect x="11" y="3" width="3" height="3"/>
+            <path d="M2 15.5c3.5 3.6 12.5 3.4 16-2.4 1.6.9 3.2.4 4-.6"/>
+          </svg>
+          <h3>Docker</h3>
+        </div>
+        <p>The full stack — app, database, queue and the machine-learning worker — in one compose file. Works on Synology, Unraid, TrueNAS and any Linux box.</p>
+        <span class="tag ready">Available now</span>
+      </div>
+
+      <div class="dl-card soon">
+        <div class="plat">
+          <svg viewBox="0 0 24 24" fill="#38bdf8">
+            <path d="M3 5.4 10.4 4.4v7.1H3zM11.6 4.2 21 3v8.5h-9.4zM3 12.6h7.4v7.1L3 18.6zM11.6 12.6H21V21l-9.4-1.3z"/>
+          </svg>
+          <h3>Windows</h3>
+        </div>
+        <p>A native installer that carries the whole stack, so there is nothing to configure before the first photo goes in.</p>
+        <span class="tag wip">In development</span>
+      </div>
+
+      <div class="dl-card soon">
+        <div class="plat">
+          <svg viewBox="0 0 24 24" fill="#a78bfa">
+            <path d="M16.4 12.6c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.5 0-2.8.9-3.6 2.2-1.5 2.6-.4 6.5 1.1 8.7.7 1 1.6 2.2 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.6.7 2.8.7c1.1 0 1.9-1.1 2.6-2.1.8-1.2 1.2-2.4 1.2-2.4s-2.2-.9-2.2-3.5zM14.3 5.5c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1.1 1.7-.9 2.6 1 .1 2-.5 2.6-1.2z"/>
+          </svg>
+          <h3>macOS</h3>
+        </div>
+        <p>Signed and notarised, so it opens without a security warning. Same stack, packaged for the Mac.</p>
+        <span class="tag wip">In development</span>
       </div>
     </div>
   </div>
