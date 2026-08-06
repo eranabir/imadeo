@@ -155,6 +155,8 @@
   }
   .search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .search svg { width: 12px; height: 12px; flex: none; }
+  /* The advanced-search trigger that sits at the far end of the field. */
+  .search .adv { margin-left: auto; opacity: .85; }
   @media (max-width: 560px) { .search { display: none; } }
 
   .up {
@@ -240,7 +242,9 @@
   .tile:nth-child(3n+1) { background: linear-gradient(140deg, #3f5f7a, #1b2b38); }
   .tile:nth-child(3n+2) { background: linear-gradient(140deg, #63788a, #202f3a); }
 
-  .rail { width: 46px; flex: none; border-left: 1px solid var(--border); padding: 18px 0; font-size: 10px; color: var(--muted); }
+  /* No rule on the year rail either — like the sidebar, it sits on the same
+     surface as the grid rather than in a pane of its own. */
+  .rail { width: 46px; flex: none; padding: 18px 0; font-size: 10px; color: var(--muted); }
   .rail div { display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding-right: 8px; margin-bottom: 30px; font-variant-numeric: tabular-nums; }
   .rail div::after { content: ""; width: 6px; height: 1px; background: var(--border); }
   .rail div.on { color: var(--accent); font-weight: 640; }
@@ -354,6 +358,7 @@
       <span class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
         <span>Search your photos and videos…</span>
+        <svg class="adv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg>
       </span>
 
       <span class="up">
