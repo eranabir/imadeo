@@ -1,5 +1,5 @@
 import * as MediaLibrary from 'expo-media-library';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { pendingCount, runBackup, type Progress } from '../lib/backup';
 import { colors } from '../theme';
 
 interface Props {
@@ -21,15 +22,20 @@ const PAGE = 60;
 /**
  * What is on the phone, and what has reached the server.
  *
- * Nothing uploads on its own yet — this is the part that has to be right first:
- * knowing what exists, under a permission model where "granted" does not mean
- * "all of it".
+ * Backup runs in the foreground only: iOS grants no arbitrary background time,
+ * so a run continues while this screen is open and resumes from where it
+ * stopped next time.
  */
 export function BackupScreen({ serverUrl, onSignOut }: Props) {
   const [permission, requestPermission] = MediaLibrary.usePermissions();
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  /** Read inside the upload loop, so Stop takes effect on the next item. */
+  const stop = useRef(false);
 
   const load = useCallback(async () => {
     if (!permission?.granted) return;
@@ -42,6 +48,7 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
       });
       setAssets(page.assets);
       setTotal(page.totalCount);
+      setPending(await pendingCount());
     } finally {
       setLoading(false);
     }
@@ -115,6 +122,69 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
             You have shared only selected photos. Imadeo can back up those, and
             nothing else, until you widen access in Settings.
           </Text>
+        )}
+      </View>
+
+      <View style={{ paddingHorizontal: 20, paddingBottom: 14 }}>
+        <Pressable
+          onPress={async () => {
+            if (progress) {
+              // Already running: this press is a stop.
+              stop.current = true;
+              return;
+            }
+            stop.current = false;
+            setError(null);
+            setProgress({ done: 0, total: 0, failed: 0 });
+            try {
+              await runBackup(serverUrl, setProgress, () => stop.current);
+              setPending(await pendingCount());
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Backup failed.');
+            } finally {
+              setProgress(null);
+            }
+          }}
+          disabled={pending === 0 && !progress}
+          style={({ pressed }) => ({
+            backgroundColor: progress ? colors.surface : colors.accent,
+            borderWidth: progress ? 1 : 0,
+            borderColor: colors.border,
+            borderRadius: 999,
+            paddingVertical: 14,
+            alignItems: 'center',
+            opacity: pending === 0 && !progress ? 0.45 : pressed ? 0.85 : 1,
+          })}
+        >
+          <Text style={{ color: progress ? colors.text : '#fff', fontSize: 16, fontWeight: '600' }}>
+            {progress
+              ? `Stop — ${progress.done} of ${progress.total}`
+              : pending === 0
+                ? 'Everything is backed up'
+                : `Back up ${pending === null ? '' : pending.toLocaleString()} items`}
+          </Text>
+        </Pressable>
+
+        {progress && progress.total > 0 && (
+          <View style={{ height: 3, borderRadius: 999, backgroundColor: colors.border, marginTop: 12, overflow: 'hidden' }}>
+            <View
+              style={{
+                height: '100%',
+                width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                backgroundColor: colors.accent,
+              }}
+            />
+          </View>
+        )}
+
+        {progress && progress.failed > 0 && (
+          <Text style={{ color: colors.faint, fontSize: 13, marginTop: 10 }}>
+            {progress.failed} could not be sent. They stay queued for next time.
+          </Text>
+        )}
+
+        {error && (
+          <Text style={{ color: colors.danger, fontSize: 14, marginTop: 10 }}>{error}</Text>
         )}
       </View>
 
