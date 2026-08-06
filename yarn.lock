@@ -1949,6 +1949,7 @@ __metadata:
     expo-media-library: "npm:~18.2.1"
     expo-secure-store: "npm:~15.0.8"
     expo-status-bar: "npm:~3.0.9"
+    expo-video-thumbnails: "npm:~10.0.8"
     react: "npm:19.1.0"
     react-dom: "npm:19.1.0"
     react-native: "npm:0.81.5"
@@ -7421,6 +7422,15 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/b35ed996a3da45a657075447bbf687dad4e7d5321129182e58737ea0fa4aeb8bb145bbe20967abd6823587a738e4c6fd62c41d18d8c11094ff926e2079c02fc2
+  languageName: node
+  linkType: hard
+
+"expo-video-thumbnails@npm:~10.0.8":
+  version: 10.0.8
+  resolution: "expo-video-thumbnails@npm:10.0.8"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/3738a784a770891148135b079408c2475a880947e866a267b18721fac653ea02d907c0d4805bdf2fb676004a4c01fe86fc55f077fb9aaa733b6b1af155e2b5a9
   languageName: node
   linkType: hard
 

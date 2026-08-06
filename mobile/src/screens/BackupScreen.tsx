@@ -1,4 +1,5 @@
 import * as MediaLibrary from 'expo-media-library';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -63,7 +64,17 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         page.assets.map(async (asset) => {
           try {
             const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (info.localUri) resolved[asset.id] = info.localUri;
+            if (!info.localUri) return;
+
+            // A video's localUri is the movie itself, and Image cannot draw
+            // one — it needs a still. A frame from the first second stands in
+            // as the poster.
+            if (asset.mediaType === 'video') {
+              const thumb = await VideoThumbnails.getThumbnailAsync(info.localUri, { time: 500 });
+              resolved[asset.id] = thumb.uri;
+            } else {
+              resolved[asset.id] = info.localUri;
+            }
           } catch {
             // Leave it out; the tile shows its placeholder.
           }
