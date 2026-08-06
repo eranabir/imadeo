@@ -1625,6 +1625,7 @@ __metadata:
   dependencies:
     "@types/react": "npm:~19.2.2"
     expo: "npm:57.0.10"
+    expo-secure-store: "npm:^57.0.1"
     expo-status-bar: "npm:~57.0.1"
     react: "npm:19.2.3"
     react-native: "npm:0.86.2"
@@ -6435,6 +6436,15 @@ __metadata:
   peerDependencies:
     react-native: "*"
   checksum: 10c0/6d64592976c97b8a831d30baeca9748ba88acb66d755e108be6a569bb7bf19e7369d65305eb2e62bfbf9fd187a5b39c4ccd91bf633857999f4a24da1e0f4c0d4
+  languageName: node
+  linkType: hard
+
+"expo-secure-store@npm:^57.0.1":
+  version: 57.0.1
+  resolution: "expo-secure-store@npm:57.0.1"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/79439f0e4e38a4668da57a0262867a558f9e37bb657d627ce8e19cb3db9a3de003eacb95f738c6dba9a1ba644bd94aab31b6e906dd87d36a911dbd00a4ea128c
   languageName: node
   linkType: hard
 
