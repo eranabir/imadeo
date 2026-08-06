@@ -69,7 +69,16 @@ export function Timeline() {
   });
 
   return (
+    /**
+     * The rail is a flex sibling of everything else, including the header, so
+     * its sticky box starts at the very top of the scroll area. Nested below the
+     * header it could not rise past its parent's top edge, so it sat one header
+     * lower until the first scroll and then jumped up — it appeared to move with
+     * the page.
+     */
     <div className="min-h-full">
+      <div className="flex min-h-full">
+      <div className="min-w-0 flex-1">
       <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Photos</h1>
@@ -122,10 +131,9 @@ export function Timeline() {
         />
       )}
 
-      {/* The rail is a sticky sibling of the grid, not an overlay, so it never
+      {/* The rail reserves its own column rather than overlaying, so it never
           covers a photo at the right-hand edge. */}
-      <div className="flex">
-        <div className="min-w-0 flex-1 px-2 pb-24 pt-4">
+        <div className="px-2 pb-24 pt-4">
         {groups.map(({ day, items }) => {
           const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
 
@@ -181,6 +189,7 @@ export function Timeline() {
           );
         })}
         </div>
+      </div>
 
       {/* Only meaningful when the groups are dates — sorting by name or size
           leaves nothing for a date rail to point at. */}

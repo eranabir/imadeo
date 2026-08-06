@@ -136,42 +136,56 @@ export function TimelineScrubber({ sections }: Props) {
 
   if (sections.length < 2) return null;
 
-  // With many sections most labels would overlap, so only every nth is drawn.
-  const step = Math.ceil(sections.length / 22);
+  /**
+   * One marker per year, not per day.
+   *
+   * A full date is far wider than the rail, so the label spilled leftward across
+   * the photos — the rail looked like it was printing on top of the grid. A year
+   * fits inside the rail's own width, so nothing escapes it. Each year points at
+   * the first section belonging to it, which is where a jump should land.
+   */
+  const years: { year: string; index: number; count: number }[] = [];
+  sections.forEach((section, index) => {
+    const year = section.id.slice(0, 4);
+    const existing = years.find((entry) => entry.year === year);
+    if (existing) existing.count += section.count;
+    else years.push({ year, index, count: section.count });
+  });
+
+  const activeYear = sections[active]?.id.slice(0, 4);
 
   return (
     <div
       ref={rail}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
-      className="pointer-events-auto sticky top-0 z-20 hidden h-[calc(100vh-4rem)] w-14 shrink-0 select-none lg:block"
+      // Fixed width with the labels clipped to it, so a marker can never reach
+      // out over the grid no matter how the content below changes.
+      className="pointer-events-auto sticky top-0 z-20 hidden h-[calc(100vh-4rem)] w-14 shrink-0 select-none overflow-hidden lg:block"
     >
       <div className="relative h-full">
-        {sections.map((section, index) => {
-          const isActive = index === active;
-          const showLabel = isActive || hovering || index % step === 0;
+        {years.map(({ year, index, count }) => {
+          const isActive = year === activeYear;
 
           return (
             <button
-              key={section.id}
+              key={year}
               type="button"
               onClick={() => jump(index)}
-              title={`${section.label} · ${section.count} ${section.count === 1 ? 'item' : 'items'}`}
+              aria-label={`Jump to ${year} — ${count} ${count === 1 ? 'item' : 'items'}`}
               style={{ top: `${(offsets[index] ?? 0) * 100}%` }}
               className={clsx(
                 'absolute right-2 flex -translate-y-1/2 items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1 text-[10px] tabular-nums transition',
-                isActive
-                  ? 'font-semibold text-accent'
-                  : 'text-content-muted hover:text-content',
+                isActive ? 'font-semibold text-accent' : 'text-content-muted hover:text-content',
               )}
             >
               <span
                 className={clsx(
                   'whitespace-nowrap transition-opacity',
-                  showLabel ? 'opacity-100' : 'opacity-0',
+                  isActive || hovering ? 'opacity-100' : 'opacity-70',
                 )}
               >
-                {section.label}
+                {year}
               </span>
               <span
                 className={clsx(
