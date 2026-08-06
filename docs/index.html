@@ -174,8 +174,10 @@
 
   .shot-body { display: flex; min-height: 330px; text-align: left; }
 
+  /* No rule between the sidebar and the content — the app runs them into one
+     surface, and a divider here made the mock read as two panes. */
   .side {
-    width: 178px; flex: none; border-right: 1px solid var(--border);
+    width: 178px; flex: none;
     padding: 12px 10px; display: flex; flex-direction: column;
   }
   @media (max-width: 640px) { .side { display: none; } }
