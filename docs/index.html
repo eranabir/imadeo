@@ -137,22 +137,87 @@
   }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
 
+  /* top bar of the mock — brand, search, upload, avatar */
+  .app-top {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 14px; border-bottom: 1px solid var(--border);
+  }
+  .app-brand { display: flex; align-items: center; gap: 8px; font-weight: 640; font-size: 13.5px; letter-spacing: -.015em; }
+  .app-brand .mark { width: 21px; height: 21px; border-radius: 6px; }
+  .app-brand .mark svg { width: 13px; height: 13px; }
+
+  .search {
+    flex: 1; max-width: 300px; margin-inline: auto;
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--bg);
+    font-size: 11.5px; color: var(--muted); min-width: 0;
+  }
+  .search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .search svg { width: 12px; height: 12px; flex: none; }
+  @media (max-width: 560px) { .search { display: none; } }
+
+  .up {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    background: var(--accent); color: #fff;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 570;
+  }
+  .up svg { width: 12px; height: 12px; }
+
+  .avatar {
+    width: 23px; height: 23px; border-radius: 50%; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+    color: #fff; font-size: 9.5px; font-weight: 640;
+    display: grid; place-items: center; letter-spacing: .02em;
+  }
+
   .shot-body { display: flex; min-height: 330px; text-align: left; }
 
-  .side { width: 176px; flex: none; border-right: 1px solid var(--border); padding: 14px 12px; }
+  .side {
+    width: 178px; flex: none; border-right: 1px solid var(--border);
+    padding: 12px 10px; display: flex; flex-direction: column;
+  }
   @media (max-width: 640px) { .side { display: none; } }
 
   .side-item {
     display: flex; align-items: center; gap: 9px;
-    padding: 7px 10px; border-radius: 9px;
-    font-size: 13.5px; color: var(--muted);
+    padding: 6px 10px; border-radius: 9px;
+    font-size: 12.5px; color: var(--muted);
   }
-  .side-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 560; }
-  .side-item i { width: 13px; height: 13px; border-radius: 3.5px; background: currentColor; opacity: .55; flex: none; }
+  .side-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 570; }
+  .side-item svg { width: 14px; height: 14px; flex: none; }
+  .side-item b { margin-left: auto; font-weight: 500; font-size: 11px; opacity: .8; font-variant-numeric: tabular-nums; }
+  .side-item.nest { padding-left: 22px; font-size: 12px; }
 
-  .canvas { flex: 1; padding: 16px 18px; min-width: 0; }
-  .day { font-size: 13.5px; font-weight: 620; margin: 0 0 9px; }
-  .day:not(:first-child) { margin-top: 20px; }
+  /* storage widget, pinned to the bottom of the sidebar like the app */
+  .storage {
+    margin-top: auto; border: 1px solid var(--border); border-radius: 10px;
+    padding: 9px 11px; font-size: 10.5px; color: var(--muted);
+  }
+  .storage .row { display: flex; justify-content: space-between; font-weight: 570; color: var(--text); margin-bottom: 6px; }
+  .storage .track { height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; margin-bottom: 6px; }
+  .storage .fill { height: 100%; width: 55%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+
+  .canvas { flex: 1; padding: 0 0 16px; min-width: 0; }
+
+  .page-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 11px 16px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+  }
+  .page-head .t { font-size: 14px; font-weight: 650; letter-spacing: -.015em; }
+  .page-head .n { font-size: 11px; color: var(--muted); margin-left: 7px; font-weight: 400; }
+  .sort {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 9px; font-size: 11px; color: var(--muted); white-space: nowrap;
+  }
+  .sort b { color: var(--text); font-weight: 570; }
+  @media (max-width: 560px) { .sort { display: none; } }
+
+  .canvas .tiles, .canvas .day { margin-inline: 16px; }
+  .day { font-size: 12.5px; font-weight: 640; margin: 0 16px 7px; }
+  .day:not(:first-of-type) { margin-top: 18px; }
 
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
   .tile { aspect-ratio: 1; border-radius: 7px; background: var(--border); }
@@ -260,18 +325,85 @@
 
   <div class="shot">
     <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+
+    <div class="app-top">
+      <span class="app-brand">
+        <span class="mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="12" cy="13.5" r="4.4" /><path d="M8 6.5h8" />
+          </svg>
+        </span>
+        Imadeo
+      </span>
+
+      <span class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+        <span>Search your photos and videos…</span>
+      </span>
+
+      <span class="up">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 17V5"/><path d="m6.5 10.5 5.5-5.5 5.5 5.5"/><path d="M4 19h16"/></svg>
+        Upload
+      </span>
+      <span class="avatar">EA</span>
+    </div>
+
     <div class="shot-body">
       <aside class="side">
-        <div class="side-item on"><i></i> Photos</div>
-        <div class="side-item"><i></i> Albums</div>
-        <div class="side-item"><i></i> Folders</div>
-        <div class="side-item"><i></i> People &amp; Pets</div>
-        <div class="side-item"><i></i> Favorites</div>
-        <div class="side-item"><i></i> Locked</div>
-        <div class="side-item"><i></i> Duplicates</div>
-        <div class="side-item"><i></i> Trash</div>
+        <div class="side-item on">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+          Photos
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Albums
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Folders
+        </div>
+        <div class="side-item nest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Travel <b>17</b>
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+          People &amp; Pets
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6c0 4.8-7 9.4-7 9.4z"/></svg>
+          Favorites
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          Locked
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/></svg>
+          Duplicates <b>2</b>
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/></svg>
+          Trash
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.4a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.3-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1.3z"/></svg>
+          Settings
+        </div>
+
+        <div class="storage">
+          <div class="row"><span>Storage</span><span>55%</span></div>
+          <div class="track"><div class="fill"></div></div>
+          1.2 TB of 1.8 TB used
+        </div>
       </aside>
+
       <div class="canvas">
+        <div class="page-head">
+          <span class="t">Photos <span class="n">248 items</span></span>
+          <span class="sort">Sort by <b>Date taken</b></span>
+        </div>
+
         <p class="day">Aug 5, 2026</p>
         <div class="tiles">
           <div class="tile"></div><div class="tile"></div><div class="tile"></div>
