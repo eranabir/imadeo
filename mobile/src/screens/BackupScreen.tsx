@@ -65,7 +65,7 @@ export function BackupScreen({ serverUrl }: Props) {
   // granted" rather than shown as a spinner: on Android in Expo Go it can stay
   // null indefinitely, and an endless spinner is worse than a prompt that
   // works.
-  if (!permission?.granted) {
+  if (!permission?.granted || skipped) {
     // Skipped: the prompt is out of the way, but backup is plainly off and one
     // tap from being on. Signing out would have been a strange price for saying
     // "not yet".
@@ -227,6 +227,18 @@ export function BackupScreen({ serverUrl }: Props) {
 
         {error && (
           <Text style={{ color: colors.danger, fontSize: 14, marginTop: 10 }}>{error}</Text>
+        )}
+
+        {/* Skipping stays available once access is granted: someone may want
+            past this screen without starting a run. Hidden mid-run, where the
+            useful control is Stop. */}
+        {!progress && (
+          <Text
+            onPress={() => setSkipped(true)}
+            style={{ color: colors.faint, fontSize: 14, textAlign: 'center', marginTop: 14 }}
+          >
+            Skip for now
+          </Text>
         )}
       </View>
 
