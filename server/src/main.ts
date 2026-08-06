@@ -3,10 +3,14 @@ import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import type { NextFunction, Request, Response } from 'express';
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 
@@ -17,7 +21,7 @@ import type { AppConfig } from './config/configuration';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService<AppConfig, true>);
 
   app.setGlobalPrefix('api');
@@ -67,6 +71,32 @@ async function bootstrap() {
     .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'api_key')
     .build();
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swagger));
+
+  /**
+   * Serves the built web client from this same process when it is present.
+   *
+   * A packaged install is then a single container rather than an app image plus
+   * a separate web server, which matters most on a NAS: one thing to start, one
+   * port to forward, and no reverse proxy to configure before anything renders.
+   *
+   * Absent in development, where Vite serves the client on its own port — hence
+   * the existence check rather than an unconditional mount.
+   */
+  const clientDir = join(__dirname, '..', 'www');
+  if (existsSync(clientDir)) {
+    app.useStaticAssets(clientDir, { index: false, maxAge: '1y' });
+
+    // A client-side route is not a file on disk. Without this, a refresh on
+    // /albums/<id> looks for that path, finds nothing and 404s before React
+    // ever loads. Everything under /api is left alone so a genuinely unknown
+    // endpoint still returns a 404 instead of a page of HTML.
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+      res.sendFile(join(clientDir, 'index.html'));
+    });
+
+    logger.log(`Serving the web client from ${clientDir}`);
+  }
 
   const port = config.get('port', { infer: true });
   await app.listen(port, '0.0.0.0');
