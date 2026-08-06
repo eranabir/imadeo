@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -48,17 +49,14 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
   });
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28 }}
-      keyboardShouldPersistTaps="handled"
-      /* The keyboard shifts the scroll offset rather than the layout. Wrapping
-         this in a KeyboardAvoidingView shrank the container instead, and with
-         the content centred everything above the field re-centred a frame
-         before the field itself moved — the logo appeared to jump ahead of it. */
-      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-      keyboardDismissMode="interactive"
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={{ marginBottom: 28 }}><LogoLockup /></View>
 
         <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
@@ -132,6 +130,7 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
         <Text style={{ color: colors.faint, fontSize: 13, textAlign: 'center', marginTop: 22 }}>
           Your photos stay on your own server.
         </Text>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
