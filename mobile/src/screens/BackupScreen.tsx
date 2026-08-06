@@ -263,46 +263,49 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         }
         renderItem={({ item }) => (
           <View style={{ flex: 1 / size, aspectRatio: 1, padding: 1 }}>
-            {/* Explicit dimensions rather than flex: an Image with flex inside
-                an aspectRatio box measures as zero on some platforms and the
-                tile renders as a flat placeholder. */}
-            {/* Videos get a drawn tile rather than a poster frame. Generating
-                one runs the file through the hardware decoder, which in Expo Go
-                returned a frame for the first video and nothing for the rest;
-                a tile that always renders beats a thumbnail that usually does
-                not. */}
-            {item.mediaType === 'video' ? (
+            {/* One image for everything. expo-image reads a ph:// asset
+                directly and asks the Photos framework for the thumbnail iOS
+                has already generated — including for videos, which is why no
+                decoding is needed here at all.
+
+                An earlier version branched videos off to a drawn placeholder.
+                That branch survived the move to expo-image and kept them from
+                ever reaching it, so they stayed blank long after the real fix
+                had landed. */}
+            <Image
+              source={item.uri}
+              style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
+              contentFit="cover"
+              recyclingKey={item.id}
+              transition={120}
+            />
+            {item.mediaType === 'video' && (
               <View
                 style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: colors.surface,
+                  position: 'absolute',
+                  right: 5,
+                  bottom: 4,
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: 3,
                 }}
               >
                 <View
                   style={{
                     width: 0,
                     height: 0,
-                    borderTopWidth: 9,
-                    borderBottomWidth: 9,
-                    borderLeftWidth: 15,
+                    borderTopWidth: 4,
+                    borderBottomWidth: 4,
+                    borderLeftWidth: 7,
                     borderTopColor: 'transparent',
                     borderBottomColor: 'transparent',
-                    borderLeftColor: colors.muted,
+                    borderLeftColor: '#fff',
                   }}
                 />
-                <Text style={{ color: colors.faint, fontSize: 11, marginTop: 8 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}>
                   {Math.round(item.duration)}s
                 </Text>
               </View>
-            ) : (
-              <Image
-                  source={item.uri}
-                style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
-                resizeMode="cover"
-              />
             )}
           </View>
         )}
