@@ -20,7 +20,16 @@ export default function App() {
       // keystore can throw on device. Either way the app has to fall through to
       // the connect screen rather than sit on a spinner forever.
       try {
-        const [url, token] = await Promise.all([load(), storedToken()]);
+        // Secure storage can hang rather than fail — it did on an Android
+        // emulator, leaving the app on its spinner indefinitely. A rejection
+        // would have been caught below; a promise that never settles would
+        // not, so restore is given a deadline of its own.
+        const [url, token] = await Promise.race([
+          Promise.all([load(), storedToken()]),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('storage timed out')), 4000),
+          ),
+        ]);
         if (url) setServer({ url, version: 'unknown' });
         if (url && token) setSignedIn(true);
       } catch {

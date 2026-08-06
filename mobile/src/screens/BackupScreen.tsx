@@ -84,15 +84,11 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
     void load();
   }, [load]);
 
-  if (!permission) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
+  // A null permission means the check has not settled. It is treated as "not
+  // granted" rather than shown as a spinner: on Android in Expo Go it can stay
+  // null indefinitely, and an endless spinner is worse than a prompt that
+  // works.
+  if (!permission?.granted) {
     // Skipped: the prompt is out of the way, but backup is plainly off and one
     // tap from being on. Signing out would have been a strange price for saying
     // "not yet".
@@ -179,7 +175,7 @@ export function BackupScreen({ serverUrl, onSignOut }: Props) {
         {/* iOS and Android 14 both allow granting a hand-picked subset. Someone
             in that state sees a count far below what they expect, so it has to
             be named rather than left looking like a bug. */}
-        {permission.accessPrivileges === 'limited' && (
+        {permission?.accessPrivileges === 'limited' && (
           <Text style={{ color: colors.faint, fontSize: 13, lineHeight: 19, marginTop: 10 }}>
             You have shared only selected photos. Imadeo can back up those, and
             nothing else, until you widen access in Settings.
