@@ -70,7 +70,10 @@ export function Logo({ size = 56 }: Props) {
  * same everywhere.
  */
 const WORD = 'Imadeo'.split('');
-const HUES = ['#e8eff2', '#34d399', '#38bdf8', '#a78bfa', '#fbbf24', '#f43f5e', '#e8eff2'];
+// The tile's own range — emerald through teal and cyan into sky — rather than
+// a full spectrum. Violet, amber and rose belonged to the sidebar icons, not
+// to the brand, and pulled the wordmark away from everything around it.
+const HUES = ['#e8eff2', '#34d399', '#2dd4bf', '#22d3ee', '#38bdf8', '#5eead4', '#e8eff2'];
 
 export function LogoLockup({ size = 48 }: Props) {
   const wave = useRef(new Animated.Value(0)).current;
