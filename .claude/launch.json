@@ -9,6 +9,20 @@
         "dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "workspace",
+        "@imadeo/mobile",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8090"
+      ],
+      "port": 8090
     }
   ]
 }

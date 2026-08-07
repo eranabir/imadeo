@@ -3,6 +3,18 @@ import { getItem, removeItem, setItem } from './storage';
 const ACCESS = 'imadeo.access';
 const REFRESH = 'imadeo.refresh';
 
+/**
+ * The access token, held in memory once it has been read.
+ *
+ * Every thumbnail on every grid carries it as a header. Without this a screen
+ * of 200 tiles is 200 trips to the Keychain, each of them asynchronous, and the
+ * grid renders in visible waves as they resolve.
+ *
+ * Kept here rather than beside the callers so that `signOut` cannot forget to
+ * invalidate it — the cache and the store it mirrors change in the same place.
+ */
+let cached: string | null = null;
+
 export interface Session {
   accessToken: string;
   refreshToken: string;
@@ -39,14 +51,18 @@ export async function login(baseUrl: string, email: string, password: string): P
 
   await setItem(ACCESS, body.accessToken);
   if (body.refreshToken) await setItem(REFRESH, body.refreshToken);
+  cached = body.accessToken;
   return body as Session;
 }
 
 export async function storedToken() {
-  return getItem(ACCESS);
+  if (cached) return cached;
+  cached = await getItem(ACCESS);
+  return cached;
 }
 
 export async function signOut() {
+  cached = null;
   await Promise.all([
     removeItem(ACCESS),
     removeItem(REFRESH),

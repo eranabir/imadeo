@@ -1,119 +1,361 @@
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
-import { storedToken } from '../lib/auth';
-import { colors } from '../theme';
-
-interface Asset {
-  id: string;
-  type: 'IMAGE' | 'VIDEO';
-  duration?: number | null;
-}
+import * as MediaLibrary from 'expo-media-library';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, FlatList, Linking, RefreshControl, Text, View } from 'react-native';
+import { Empty } from '../components/AssetGrid';
+import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import { Icon } from '../components/Icon';
+import { Button } from '../components/ui';
+import { pendingCount, runBackup, type Progress } from '../lib/backup';
+import { colors, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Props {
   serverUrl: string;
 }
 
+const PAGE = 120;
 const COLUMNS = 3;
 
-/** What is already on the server, as opposed to what is still on the phone. */
+/**
+ * What is on this phone.
+ *
+ * The device's own camera roll, and how much of it has reached the server. The
+ * server's copy lives under Imadeo — this screen is deliberately the local one,
+ * so "is this photo safe yet" has an answer without leaving the first tab.
+ *
+ * Backup runs in the foreground only on both platforms: a run continues while
+ * this screen is open and resumes from where it stopped next time.
+ */
 export function LibraryScreen({ serverUrl }: Props) {
-  const [assets, setAssets] = useState<Asset[]>([]);
+  /**
+   * Photos and videos only.
+   *
+   * Left to itself the module asks for all three granular Android permissions,
+   * audio included. A backup app asking for the music library is both wrong and
+   * a good reason to tap Deny — and on Android 13+ a denial covers the whole
+   * request, so the audio prompt was taking photo access down with it.
+   */
+  const [permission, requestPermission, checkPermission] = MediaLibrary.usePermissions({
+    granularPermissions: ['photo', 'video'],
+  });
+  const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const [pending, setPending] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Read inside the upload loop, so Stop takes effect on the next item. */
+  const stop = useRef(false);
+
+  const clearance = useHeaderClearance(0);
 
   const load = useCallback(async () => {
+    // Limited access still reads — of the subset that was shared.
+    if (!permission?.granted && permission?.accessPrivileges !== 'limited') return;
     setLoading(true);
-    setError(null);
     try {
-      const auth = await storedToken();
-      setToken(auth);
-
-      const response = await fetch(`${serverUrl}/api/assets?size=120&sortBy=date&order=desc`, {
-        headers: { Authorization: `Bearer ${auth}` },
+      const page = await MediaLibrary.getAssetsAsync({
+        first: PAGE,
+        mediaType: ['photo', 'video'],
+        sortBy: [MediaLibrary.SortBy.creationTime],
       });
-      if (!response.ok) throw new Error(`Server answered ${response.status}`);
-
-      const body = await response.json();
-      setAssets(body.items ?? []);
-      setTotal(body.pagination?.total ?? null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load your library.');
+      setAssets(page.assets);
+      setTotal(page.totalCount);
+      setPending(await pendingCount());
     } finally {
       setLoading(false);
     }
-  }, [serverUrl]);
+  }, [permission?.granted, permission?.accessPrivileges]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  /**
+   * Picking "Select photos" is granting access, not refusing it.
+   *
+   * Both platforms let someone hand over a chosen subset instead of the whole
+   * library, and that answer comes back as `granted: false` with
+   * `accessPrivileges: 'limited'`. Reading only `granted` shut those people out
+   * of the app entirely and told them to go and enable a permission they had
+   * just enabled. Imadeo can back up whatever it is shown; how much that is, is
+   * their business, and the note further down says how much it turned out to be.
+   */
+  const allowed = permission?.granted || permission?.accessPrivileges === 'limited';
+
+  // A null permission means the check has not settled. It is treated as "not
+  // granted" rather than shown as a spinner: on Android it can stay null
+  // indefinitely, and an endless spinner is worse than a prompt that works.
+  if (!allowed) {
+    return (
+      <AskForAccess
+        permission={permission}
+        onRequest={requestPermission}
+        onRecheck={checkPermission}
+      />
+    );
+  }
+
+  const backedUp = pending === 0;
+  const host = serverUrl.replace(/^https?:\/\//, '');
+
+  /** Start, or stop what is already running. */
+  const backUp = async () => {
+    if (progress) {
+      // Already running: this press is a stop.
+      stop.current = true;
+      return;
+    }
+    if (backedUp) {
+      await load();
+      return;
+    }
+    stop.current = false;
+    setError(null);
+    setProgress({ done: 0, total: 0, failed: 0 });
+    try {
+      await runBackup(serverUrl, setProgress, () => stop.current);
+      setPending(await pendingCount());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backup failed.');
+    } finally {
+      setProgress(null);
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ paddingHorizontal: 20, paddingTop: 64, paddingBottom: 12 }}>
-        <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.5 }}>
-          Library
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 14, marginTop: 4 }}>
-          {total === null ? 'Loading…' : `${total.toLocaleString()} on your server`}
-          {' · '}
-          {serverUrl.replace(/^https?:\/\//, '')}
-        </Text>
-        {error && (
-          <Text style={{ color: colors.danger, fontSize: 14, marginTop: 10 }}>{error}</Text>
+      {/*
+        Backing up is the one thing this screen is for, so it lives in the bar
+        rather than in a card the grid scrolls away. A card meant the button
+        left the screen exactly when a run was worth watching, and it cost a
+        third of the first screenful before a single photo was visible.
+      */}
+      <Header
+        title="Library"
+        icon="phone"
+        subtitle={
+          progress
+            ? `${progress.done} of ${progress.total} sent to ${host}`
+            : total === null
+              ? 'Reading this phone…'
+              : backedUp
+                ? `${total.toLocaleString()} on this phone · all backed up`
+                : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`
+        }
+        action={
+          <HeaderAction
+            label={progress ? 'Stop' : backedUp ? 'Check' : 'Back up'}
+            icon={progress ? 'close' : backedUp ? 'done' : 'backup'}
+            onPress={() => void backUp()}
+          />
+        }
+      >
+        {progress && progress.total > 0 && (
+          <View style={{ height: 3, backgroundColor: colors.border }}>
+            <View
+              style={{
+                height: '100%',
+                width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                backgroundColor: colors.accent,
+              }}
+            />
+          </View>
         )}
-      </View>
+      </Header>
 
       <FlatList
         data={assets}
         keyExtractor={(item) => item.id}
         numColumns={COLUMNS}
+        key={COLUMNS}
+        contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE }}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.accent} />
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={load}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.surface}
+            progressViewOffset={clearance}
+          />
+        }
+        ListHeaderComponent={
+          error || progress?.failed || permission.accessPrivileges === 'limited' ? (
+            <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 8 }}>
+              {error && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error}</Text>}
+
+              {progress && progress.failed > 0 && (
+                <Text style={{ color: colors.faint, fontSize: 12.5 }}>
+                  {progress.failed} could not be sent. They stay queued for next time.
+                </Text>
+              )}
+
+              {/* Both platforms allow granting a hand-picked subset. Someone in
+                  that state sees a count far below what they expect, so it has
+                  to be named rather than left looking like a bug. */}
+              {permission.accessPrivileges === 'limited' && (
+                <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 19 }}>
+                  You have shared only selected photos with Imadeo. It can back
+                  up those, and nothing else, until you widen access in Settings.
+                </Text>
+              )}
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <View style={{ flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 }}>
-            {/* Thumbnails are behind the same auth as everything else, so the
-                token travels as a header rather than in the URL — a query
-                string would end up in server logs. */}
+            {/* One image for everything. expo-image reads a ph:// asset
+                directly and asks the Photos framework for the thumbnail iOS
+                has already generated — including for videos, which is why no
+                decoding is needed here at all. */}
             <Image
-              source={{
-                uri: `${serverUrl}/api/assets/${item.id}/thumbnail`,
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-              }}
+              source={item.uri}
               style={{ width: '100%', height: '100%', backgroundColor: colors.surface }}
               contentFit="cover"
               recyclingKey={item.id}
               transition={120}
             />
-            {item.type === 'VIDEO' && (
+            {item.mediaType === 'video' && (
               <View
                 style={{
                   position: 'absolute',
                   right: 5,
-                  bottom: 4,
-                  width: 0,
-                  height: 0,
-                  borderTopWidth: 4,
-                  borderBottomWidth: 4,
-                  borderLeftWidth: 7,
-                  borderTopColor: 'transparent',
-                  borderBottomColor: 'transparent',
-                  borderLeftColor: '#fff',
+                  bottom: 5,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
                 }}
-              />
+              >
+                <Icon name="play" size={11} color="#fff" />
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: '600',
+                    textShadowColor: 'rgba(0,0,0,0.6)',
+                    textShadowRadius: 3,
+                  }}
+                >
+                  {Math.round(item.duration)}s
+                </Text>
+              </View>
             )}
           </View>
         )}
         ListEmptyComponent={
           loading ? null : (
-            <Text style={{ color: colors.faint, textAlign: 'center', marginTop: 40 }}>
-              Nothing here yet. Back up some photos and they will appear.
-            </Text>
+            <Empty
+              icon="phone"
+              title="No photos on this phone"
+              body="Anything you take from now on will show up here, ready to send to your server."
+            />
           )
         }
+      />
+    </View>
+  );
+}
+
+/**
+ * The permission gate.
+ *
+ * Two states, and both are written from the phone's side of the screen. What
+ * stands between Imadeo and the camera roll — which build this is, which
+ * Android version, which manifest declares what — is the developer's problem
+ * and appears nowhere here. Somebody using the app has one question, whether
+ * their photos can be backed up, and one place to answer it.
+ */
+function AskForAccess({
+  permission,
+  onRequest,
+  onRecheck,
+}: {
+  permission: MediaLibrary.PermissionResponse | null;
+  onRequest: () => Promise<MediaLibrary.PermissionResponse>;
+  onRecheck: () => Promise<MediaLibrary.PermissionResponse>;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [refused, setRefused] = useState(false);
+
+  /**
+   * Asks the system again every time the app comes back to the front.
+   *
+   * The whole point of the Settings button is that the answer changes while
+   * Imadeo is in the background — and nothing was re-reading it, so granting
+   * access and switching back left this screen still insisting it had none.
+   * The remembered refusal is dropped at the same moment, or it would outlive
+   * the thing it was describing.
+   */
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      setRefused(false);
+      void onRecheck();
+    });
+    return () => subscription.remove();
+  }, [onRecheck]);
+
+  /** Asking is over: the system will not put the question again. */
+  const settled = refused || (permission !== null && !permission.canAskAgain);
+
+  /**
+   * Asks, and refuses to hang.
+   *
+   * The request does not always answer. Android will not show a dialog for
+   * `READ_MEDIA_VISUAL_USER_SELECTED` unless the app also asks for
+   * `READ_MEDIA_IMAGES`, and a host app that declares only the first leaves the
+   * promise pending forever — which looked exactly like a dead button, because
+   * a promise that never resolves leaves the screen as it was. A deadline turns
+   * that silence into an answer.
+   */
+  const ask = async () => {
+    setAsking(true);
+    try {
+      const answer = await Promise.race([
+        onRequest(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (!answer || !answer.granted) setRefused(true);
+    } catch {
+      setRefused(true);
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
+      <View
+        style={{
+          width: 72,
+          height: 72,
+          borderRadius: 36,
+          backgroundColor: colors.surface,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 22,
+        }}
+      >
+        <Icon name="phone" size={32} color={colors.accent} />
+      </View>
+
+      <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.6 }}>
+        {settled ? 'Imadeo cannot see your photos' : 'Let Imadeo see your photos'}
+      </Text>
+      <Text
+        style={{ color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 12, marginBottom: 28 }}
+      >
+        {settled
+          ? 'Nothing on this phone can be backed up until photo access is switched on. You can turn it on for Imadeo in your phone’s settings.'
+          : 'Nothing is uploaded until you ask for it. Access is only used to work out which photos your server does not have yet.'}
+      </Text>
+
+      <Button
+        label={settled ? 'Open Settings' : 'Allow access'}
+        icon={settled ? 'settings' : 'check'}
+        busy={asking}
+        onPress={() => (settled ? void Linking.openSettings() : void ask())}
       />
     </View>
   );

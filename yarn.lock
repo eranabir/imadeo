@@ -1945,15 +1945,20 @@ __metadata:
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
     expo: "npm:54.0.35"
+    expo-blur: "npm:~15.0.8"
+    expo-constants: "npm:~18.0.13"
+    expo-glass-effect: "npm:~0.1.10"
     expo-image: "npm:~3.0.11"
     expo-linear-gradient: "npm:~15.0.8"
     expo-media-library: "npm:~18.2.1"
     expo-secure-store: "npm:~15.0.8"
     expo-status-bar: "npm:~3.0.9"
+    expo-video: "npm:~3.0.16"
     expo-video-thumbnails: "npm:~10.0.8"
     react: "npm:19.1.0"
     react-dom: "npm:19.1.0"
     react-native: "npm:0.81.5"
+    react-native-safe-area-context: "npm:~5.6.0"
     react-native-svg: "npm:15.12.1"
     react-native-web: "npm:^0.21.0"
     typescript: "npm:~6.0.3"
@@ -7304,6 +7309,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-blur@npm:~15.0.8":
+  version: 15.0.8
+  resolution: "expo-blur@npm:15.0.8"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/d71f3330928e5fa3be3f8e1ee69736669b4cdbcc2c9f44ac8f552a0279dbcc03cccddf8aed1454d86a00d56b53f855aaec574d0e53898166a22b367586ba1544
+  languageName: node
+  linkType: hard
+
 "expo-constants@npm:~18.0.13":
   version: 18.0.13
   resolution: "expo-constants@npm:18.0.13"
@@ -7337,6 +7353,17 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/a010c42cfd472078dbd8a94df57df9b816bbd4d69ac46aa588cf9f91c8348ebd4b1e00dc2dc0757e4a0c56ddab32455aef230ba697590b021b5d237cc37c4db6
+  languageName: node
+  linkType: hard
+
+"expo-glass-effect@npm:~0.1.10":
+  version: 0.1.10
+  resolution: "expo-glass-effect@npm:0.1.10"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/eda9252a8899e3377f9252e555121bb634bb72cf6b826e7bc2798dd96194173343b6fb9bdba079eb253fcb072ba33970a4a7881fae348d8cf378ae8de996d9cf
   languageName: node
   linkType: hard
 
@@ -7447,6 +7474,17 @@ __metadata:
   peerDependencies:
     expo: "*"
   checksum: 10c0/3738a784a770891148135b079408c2475a880947e866a267b18721fac653ea02d907c0d4805bdf2fb676004a4c01fe86fc55f077fb9aaa733b6b1af155e2b5a9
+  languageName: node
+  linkType: hard
+
+"expo-video@npm:~3.0.16":
+  version: 3.0.16
+  resolution: "expo-video@npm:3.0.16"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/b0f9e7c2597f2c44515eb34c16fbd0e79f19bcc4227c99788f9a98833832418a0717fcf2d06f66d2aba3ceb8e08733b28c2b6d662da304eccd728e6aa12a7ef2
   languageName: node
   linkType: hard
 
@@ -11262,6 +11300,16 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/28cebd5f1f3632864ff5e342278721d1e5e38627ae73859a8814012116ef15c629fee7137a6c9c97bb05d94bbe639b0b47e69b36fc2735ab53ed31570140663f
+  languageName: node
+  linkType: hard
+
+"react-native-safe-area-context@npm:~5.6.0":
+  version: 5.6.2
+  resolution: "react-native-safe-area-context@npm:5.6.2"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/3c8df21a1dbac83116b9c9bd5d20b7c1bb7649ecef44a111af6fb6b237241f5f4d692189eec30a69f5701b857249257da3621b9e17165460a2bb71faac7b92ae
   languageName: node
   linkType: hard
 
