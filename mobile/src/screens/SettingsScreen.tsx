@@ -1,10 +1,63 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Glass, liquidGlass } from '../components/Glass';
 import { Header, useHeaderClearance } from '../components/Header';
 import { Icon, type IconName } from '../components/Icon';
+import { Toggle } from '../components/ui';
 import { useResource } from '../lib/api';
+import { isAvailable, isEnabled, lastRun, setEnabled, type LastRun } from '../lib/autobackup';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
+
+/** What the last background run did, in a line. */
+function summary(run: LastRun | null): string {
+  if (!run) return 'On — waiting for the first run.';
+  const when = new Date(run.at).toLocaleString();
+  if (run.sent === 0 && run.failed === 0) return `On — nothing new at ${when}.`;
+  return `On — sent ${run.sent} at ${when}${run.failed > 0 ? `, ${run.failed} failed` : ''}.`;
+}
+
+/**
+ * The background-backup setting, and whether the phone will honour it.
+ *
+ * Availability is asked for separately because it is not the same question as
+ * whether it is switched on: someone can turn it on and have the system refuse
+ * anyway, and a row that only said "On" would be lying to them.
+ */
+function useAutoBackup() {
+  const [on, setOn] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [last, setLast] = useState<LastRun | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [enabled, allowed, run] = await Promise.all([isEnabled(), isAvailable(), lastRun()]);
+    setOn(enabled);
+    setAvailable(allowed);
+    setLast(run);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const toggle = useCallback(
+    async (next: boolean) => {
+      setBusy(true);
+      // Moved before the await so the switch answers the finger rather than the
+      // system; `refresh` puts it back if the registration is refused.
+      setOn(next);
+      try {
+        await setEnabled(next);
+      } finally {
+        await refresh();
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  return { on, available, last, busy, toggle };
+}
 
 interface Props {
   serverUrl: string;
@@ -26,6 +79,7 @@ interface Statistics {
 
 export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) {
   const { data } = useResource<Statistics>(serverUrl, '/assets/statistics');
+  const auto = useAutoBackup();
   const clearance = useHeaderClearance();
 
   return (
@@ -52,7 +106,20 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
         </Group>
 
         <Group>
-          <Row icon="backup" label="Backup" value="While the app is open" />
+          <SwitchRow
+            icon="backup"
+            label="Back up in the background"
+            hint={
+              auto.available === false
+                ? 'Your phone has background activity switched off for Imadeo.'
+                : auto.on
+                  ? summary(auto.last)
+                  : 'Off — photos go only while Imadeo is open.'
+            }
+            on={auto.on}
+            disabled={auto.available === false || auto.busy}
+            onChange={auto.toggle}
+          />
           <Row
             icon="sparkle"
             label="Appearance"
@@ -60,6 +127,18 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
             last
           />
         </Group>
+
+        {auto.on && (
+          <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 19, marginTop: -6, marginBottom: 16 }}>
+            {/* Said plainly, because the alternative is someone deciding the
+                feature is broken when it is working exactly as the platform
+                allows. Neither iOS nor Android will wake an app the moment a
+                photo is taken. */}
+            Your phone decides when to run this — usually while charging on
+            Wi-Fi, and at most every 15 minutes. Opening Imadeo always sends
+            anything outstanding straight away.
+          </Text>
+        )}
 
         <Action label="Connect to a different server" onPress={onChangeServer} />
         <Action label="Sign out" onPress={onSignOut} danger />
@@ -73,11 +152,8 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
             marginTop: 26,
           }}
         >
-          {/* Written as an iOS limitation, which it is not — Imadeo does no
-              background work on either platform. Naming the wrong operating
-              system to an Android user is worse than saying nothing. */}
-          Backup runs while Imadeo is open. A run picks up from where it
-          stopped the next time you open the app.
+          A run always picks up from where it stopped, whether it was you
+          opening the app or your phone deciding it was a good moment.
         </Text>
       </ScrollView>
     </View>
@@ -95,6 +171,45 @@ function Group({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+    </View>
+  );
+}
+
+/** A row whose value is a switch rather than a reading. */
+function SwitchRow({
+  icon,
+  label,
+  hint,
+  on,
+  onChange,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  hint: string;
+  on: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <Icon name={icon} size={18} color={colors.faint} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>
+          {hint}
+        </Text>
+      </View>
+      <Toggle on={on} onChange={onChange} label={label} disabled={disabled} />
     </View>
   );
 }

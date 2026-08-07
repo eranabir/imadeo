@@ -1,7 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Platform,
   Pressable,
@@ -285,6 +287,68 @@ export function SheetRow({
         </View>
       </View>
     </Touchable>
+  );
+}
+
+/**
+ * An on/off switch, drawn rather than taken from the platform.
+ *
+ * React Native's `Switch` picks up the system accent and the light appearance,
+ * which on a screen that is dark on every phone reads as a control belonging to
+ * something else. This one is the app's own primary, and the knob's travel is
+ * the whole animation.
+ */
+export function Toggle({
+  on,
+  onChange,
+  label,
+  disabled,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  const slide = useRef(new Animated.Value(on ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(slide, {
+      toValue: on ? 1 : 0,
+      duration: 160,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [on, slide]);
+
+  return (
+    <Pressable
+      onPress={() => onChange(!on)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on, disabled }}
+      accessibilityLabel={label}
+      hitSlop={8}
+      style={{
+        width: 50,
+        height: 30,
+        borderRadius: radius.pill,
+        padding: 3,
+        backgroundColor: on ? colors.primary : colors.border,
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <Animated.View
+        style={{
+          width: 24,
+          height: 24,
+          borderRadius: 12,
+          backgroundColor: on ? colors.onPrimary : colors.muted,
+          transform: [
+            { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [0, 20] }) },
+          ],
+        }}
+      />
+    </Pressable>
   );
 }
 

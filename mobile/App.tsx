@@ -8,6 +8,7 @@ import { Tabs, type Tab } from './src/components/Tabs';
 import { signOut, storedToken } from './src/lib/auth';
 import { forget, load, type ServerInfo } from './src/lib/server';
 import { NavigationProvider, PushedScreen, useNavigation, type Route } from './src/navigation';
+import { restore as restoreAutoBackup } from './src/lib/autobackup';
 import { SelectionProvider } from './src/selection';
 import { AlbumScreen } from './src/screens/AlbumScreen';
 import { BrowseScreen } from './src/screens/BrowseScreen';
@@ -48,6 +49,9 @@ export default function App() {
         // Nothing restored; start from the beginning.
       } finally {
         setRestoring(false);
+        // The background schedule can be lost to an app update or a restore,
+        // while the setting that asked for it survives. Put it back to match.
+        void restoreAutoBackup();
       }
     })();
   }, []);

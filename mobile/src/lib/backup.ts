@@ -1,9 +1,21 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { storedToken } from './auth';
-import { getItem, setItem } from './storage';
+import { getItem, removeItem, setItem } from './storage';
 
 const DONE_KEY = 'imadeo.uploaded';
 const DEVICE_KEY = 'imadeo.deviceId';
+
+/**
+ * The upload log lives in a file, not the keychain.
+ *
+ * It used to go through `SecureStore`, which is the platform keychain: iOS
+ * warns above 2KB per value and neither platform intends it for bulk data. A
+ * phone with ten thousand photos produces a JSON array of ten thousand UUIDs,
+ * and it is not a secret in any case — it is bookkeeping about which of your
+ * own photos you have already sent to your own server.
+ */
+const DONE_FILE = `${FileSystem.documentDirectory ?? ''}uploaded.json`;
 
 /**
  * Which device assets have already reached the server.
@@ -14,17 +26,39 @@ const DEVICE_KEY = 'imadeo.deviceId';
  * re-uploads, it does not duplicate.
  */
 async function loadDone(): Promise<Set<string>> {
-  const raw = await getItem(DONE_KEY);
-  if (!raw) return new Set();
+  const parse = (raw: string) => {
+    try {
+      return new Set(JSON.parse(raw) as string[]);
+    } catch {
+      return null;
+    }
+  };
+
   try {
-    return new Set(JSON.parse(raw) as string[]);
+    const info = await FileSystem.getInfoAsync(DONE_FILE);
+    if (info.exists) {
+      const parsed = parse(await FileSystem.readAsStringAsync(DONE_FILE));
+      if (parsed) return parsed;
+    }
   } catch {
-    return new Set();
+    // Unreadable file: fall through and treat it as an empty log.
   }
+
+  // Anything written by an older build is still in the keychain. Carry it over
+  // once so an upgrade does not re-send the whole camera roll, then let go of it.
+  const legacy = await getItem(DONE_KEY);
+  if (legacy) {
+    const parsed = parse(legacy) ?? new Set<string>();
+    await saveDone(parsed);
+    await removeItem(DONE_KEY);
+    return parsed;
+  }
+
+  return new Set();
 }
 
 async function saveDone(done: Set<string>) {
-  await setItem(DONE_KEY, JSON.stringify([...done]));
+  await FileSystem.writeAsStringAsync(DONE_FILE, JSON.stringify([...done]));
 }
 
 /**
@@ -46,10 +80,67 @@ async function deviceId(): Promise<string> {
   return fresh;
 }
 
+/**
+ * Every format the server will take, by extension.
+ *
+ * The uploader used to label everything `video/mp4` or `image/jpeg` whatever it
+ * actually was, so a HEIC arrived claiming to be a JPEG and a MOV claiming to
+ * be an MP4. The server survives that — it reads the extension first — but the
+ * wrong type is then stored and sent back on download, and anything that trusts
+ * the header rather than the name gets a file that is not what it says.
+ */
+const MIME: Record<string, string> = {
+  // Images
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.avif': 'image/avif', '.heic': 'image/heic', '.heif': 'image/heif',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
+  '.jxl': 'image/jxl',
+  // Raw
+  '.dng': 'image/x-adobe-dng', '.cr2': 'image/x-canon-cr2', '.cr3': 'image/x-canon-cr3',
+  '.nef': 'image/x-nikon-nef', '.arw': 'image/x-sony-arw', '.raf': 'image/x-fuji-raf',
+  '.orf': 'image/x-olympus-orf', '.rw2': 'image/x-panasonic-rw2', '.pef': 'image/x-pentax-pef',
+  '.srw': 'image/x-samsung-srw', '.raw': 'image/x-dcraw',
+  // Video
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo',
+  '.mkv': 'video/x-matroska', '.webm': 'video/webm', '.m4v': 'video/x-m4v',
+  '.3gp': 'video/3gpp', '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg',
+  '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv', '.mts': 'video/mp2t',
+  '.m2ts': 'video/mp2t', '.insv': 'video/mp4',
+};
+
+/** The real type of a file, from its name. Falls back to what the kind implies. */
+export function mimeOf(filename: string, kind: MediaLibrary.MediaTypeValue): string {
+  const dot = filename.lastIndexOf('.');
+  const extension = dot === -1 ? '' : filename.slice(dot).toLowerCase();
+  return MIME[extension] ?? (kind === 'video' ? 'video/mp4' : 'image/jpeg');
+}
+
+/** One item's outcome, as far as the run has got. */
+export interface Attempt {
+  id: string;
+  filename: string;
+  /** Why it failed. Absent while waiting, sending, or once it has landed. */
+  reason?: string;
+}
+
 export interface Progress {
   done: number;
   total: number;
   failed: number;
+  /**
+   * The queue, in the order it will be sent, and where the run has reached.
+   *
+   * A count alone answers "how much is left" and nothing else — not which
+   * photo is going up, not which ones did not make it, not why. This is what
+   * the progress screen reads.
+   */
+  queue: Attempt[];
+  /** Index into `queue` of the item being sent right now, or -1 between items. */
+  at: number;
+  /** Ids that have landed on the server during this run. */
+  sent: string[];
+  /** The ones that did not, each with the reason it gave. */
+  failures: Attempt[];
 }
 
 /**
@@ -86,11 +177,24 @@ export async function runBackup(
   const pending = page.assets.filter(
     (asset) => !done.has(asset.id) && (wanted === null || wanted.has(asset.id)),
   );
-  const progress: Progress = { done: 0, total: pending.length, failed: 0 };
+  const progress: Progress = {
+    done: 0,
+    total: pending.length,
+    failed: 0,
+    queue: pending.map((asset) => ({ id: asset.id, filename: asset.filename })),
+    at: -1,
+    sent: [],
+    failures: [],
+  };
   onProgress({ ...progress });
 
-  for (const asset of pending) {
+  for (const [index, asset] of pending.entries()) {
     if (shouldStop()) break;
+
+    // Published before the upload starts, so the screen can say which photo is
+    // in flight rather than only how many have been.
+    progress.at = index;
+    onProgress({ ...progress });
 
     try {
       // On iOS `asset.uri` is a ph:// reference into the Photos database.
@@ -109,38 +213,89 @@ export async function runBackup(
         throw new Error(`No local file for ${asset.filename}`);
       }
 
-      const form = new FormData();
-      form.append('assetData', {
-        uri,
-        name: asset.filename,
-        type: asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-      } as unknown as Blob);
-      form.append('deviceAssetId', asset.id);
-      form.append('deviceId', id);
-      form.append('fileCreatedAt', new Date(asset.creationTime).toISOString());
-      form.append('fileModifiedAt', new Date(asset.modificationTime).toISOString());
-
-      const response = await fetch(`${baseUrl}/api/assets/upload`, {
-        method: 'POST',
+      /**
+       * Streamed from disk rather than assembled in memory.
+       *
+       * `fetch` with a `FormData` holding a file URI reads the whole file into
+       * the JS heap before sending a byte of it. One 400MB video is enough to
+       * kill the app outright, which is what a backup of eighty items was doing
+       * partway through — and doing again on the next attempt, because it
+       * stopped at the same file every time.
+       *
+       * `uploadAsync` hands the path to the platform's own HTTP stack, which
+       * reads it off disk as it goes. Memory then does not depend on how big
+       * the video is.
+       */
+      const response = await FileSystem.uploadAsync(`${baseUrl}/api/assets/upload`, uri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: 'assetData',
+        mimeType: mimeOf(asset.filename, asset.mediaType),
         headers: { Authorization: `Bearer ${token}` },
-        body: form,
+        parameters: {
+          deviceAssetId: asset.id,
+          deviceId: id,
+          fileCreatedAt: new Date(asset.creationTime).toISOString(),
+          fileModifiedAt: new Date(asset.modificationTime).toISOString(),
+        },
       });
 
-      if (!response.ok) throw new Error(String(response.status));
+      if (response.status < 200 || response.status >= 300) {
+        // The status alone ends up in front of someone as the reason a photo
+        // is missing, and "413" is not a reason. The server's own message is
+        // used when it sends one — `uploadAsync` hands back the body as text,
+        // not as something with `.json()` on it.
+        let said: string | undefined;
+        try {
+          const body = JSON.parse(response.body) as { message?: string | string[] };
+          said = Array.isArray(body.message) ? body.message[0] : body.message;
+        } catch {
+          // Not JSON — a proxy's HTML error page, most likely.
+        }
+        throw new Error(
+          said ??
+            (response.status === 413
+              ? 'Too large for this server'
+              : response.status === 401
+                ? 'Signed out — sign in again'
+                : `Server answered ${response.status}`),
+        );
+      }
 
       done.add(asset.id);
       progress.done += 1;
-      // Written as we go, so closing the app mid-run does not repeat everything
-      // already sent.
-      if (progress.done % 10 === 0) await saveDone(done);
-    } catch {
+      progress.sent.push(asset.id);
+      /**
+       * Recorded after every single upload, not every tenth.
+       *
+       * Batching assumed the run ends by returning. It does not have to — the
+       * app can be killed by the system mid-backup, and everything since the
+       * last multiple of ten is then sent again on the next attempt. A local
+       * file write costs nothing next to having just uploaded a video.
+       */
+      await saveDone(done);
+    } catch (e) {
       progress.failed += 1;
+      /**
+       * Kept, rather than only counted.
+       *
+       * "3 could not be sent" is not something anyone can act on. A name and
+       * the reason is: a video too large for the server's limit and a photo
+       * iCloud never handed over are different problems with different fixes.
+       */
+      progress.failures.push({
+        id: asset.id,
+        filename: asset.filename,
+        reason: e instanceof Error ? e.message : 'Upload failed',
+      });
     }
 
     onProgress({ ...progress });
   }
 
+  progress.at = -1;
   await saveDone(done);
+  onProgress({ ...progress });
   return progress;
 }
 

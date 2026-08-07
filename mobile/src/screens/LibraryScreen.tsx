@@ -12,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import { Empty } from '../components/AssetGrid';
+import { BackupProgressScreen } from './BackupProgressScreen';
 import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
 import { Icon } from '../components/Icon';
-import { Button } from '../components/ui';
+import { Button, Touchable } from '../components/ui';
 import { pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
@@ -113,6 +114,10 @@ export function LibraryScreen({ serverUrl }: Props) {
       rather than beside the list, which is below the permission gate's early
       return. */
   const [viewing, setViewing] = useState<MediaLibrary.Asset | null>(null);
+  /** The per-item backup list, opened from the progress bar. */
+  const [showProgress, setShowProgress] = useState(false);
+  /** Whether a run is in flight. `progress` outlives it, as the last account. */
+  const [running, setRunning] = useState(false);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
 
@@ -179,7 +184,7 @@ export function LibraryScreen({ serverUrl }: Props) {
 
   /** Start, or stop what is already running. */
   const backUp = async () => {
-    if (progress) {
+    if (running) {
       // Already running: this press is a stop.
       stop.current = true;
       return;
@@ -187,7 +192,8 @@ export function LibraryScreen({ serverUrl }: Props) {
     const only = picked.length > 0 ? picked : undefined;
     stop.current = false;
     setError(null);
-    setProgress({ done: 0, total: 0, failed: 0 });
+    setRunning(true);
+    setProgress({ done: 0, total: 0, failed: 0, queue: [], at: -1, sent: [], failures: [] });
     try {
       await runBackup(serverUrl, setProgress, () => stop.current, only);
       setPending(await pendingCount());
@@ -196,7 +202,15 @@ export function LibraryScreen({ serverUrl }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Backup failed.');
     } finally {
-      setProgress(null);
+      /**
+       * The run stops; its record does not.
+       *
+       * `progress` used to be thrown away here, which meant the moment a backup
+       * finished there was no longer anywhere to see which photos had failed —
+       * exactly when someone wants to look. `running` says whether anything is
+       * in flight; `progress` is the last run's account of itself.
+       */
+      setRunning(false);
     }
   };
 
@@ -222,7 +236,7 @@ export function LibraryScreen({ serverUrl }: Props) {
         title={picked.length > 0 ? `${picked.length} selected` : 'Library'}
         icon="phone"
         subtitle={
-          progress
+          running && progress
             ? `${progress.done} of ${progress.total} sent to ${host}`
             : picked.length > 0
               ? pickedPending === 0
@@ -240,7 +254,7 @@ export function LibraryScreen({ serverUrl }: Props) {
          * offering a second way to do nothing in particular.
          */
         action={
-          progress ? (
+          running ? (
             <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
           ) : picked.length > 0 ? (
             pickedPending === 0 ? (
@@ -257,16 +271,37 @@ export function LibraryScreen({ serverUrl }: Props) {
           )
         }
       >
-        {progress && progress.total > 0 && (
-          <View style={{ height: 3, backgroundColor: colors.border }}>
+        {/*
+          Inset from the bar's edges rather than run to them.
+
+          It used to sit flush along the bottom, which is exactly where the
+          header's rounded corners are — so the last few percent at each end
+          was clipped away and the track looked broken before it had started.
+          Held inside the curve, with its own rounding, it reads as a bar.
+        */}
+        {running && progress && progress.total > 0 && (
+          <Touchable
+            onPress={() => setShowProgress(true)}
+            label="See what is being backed up"
+            radius={radius.pill}
+            style={{
+              height: 4,
+              marginHorizontal: 16,
+              marginBottom: 12,
+              borderRadius: radius.pill,
+              backgroundColor: colors.border,
+              overflow: 'hidden',
+            }}
+          >
             <View
               style={{
                 height: '100%',
                 width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                borderRadius: radius.pill,
                 backgroundColor: colors.primary,
               }}
             />
-          </View>
+          </Touchable>
         )}
       </Header>
 
@@ -309,10 +344,26 @@ export function LibraryScreen({ serverUrl }: Props) {
             <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 8 }}>
               {error && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error}</Text>}
 
+              {/*
+                The way back into the run's account once it has finished.
+
+                The progress bar is the other way in, and it is only on screen
+                while something is uploading — which is the one time nobody
+                needs to go looking for what went wrong.
+              */}
               {progress && progress.failed > 0 && (
-                <Text style={{ color: colors.faint, fontSize: 12.5 }}>
-                  {progress.failed} could not be sent. They stay queued for next time.
-                </Text>
+                <Touchable
+                  onPress={() => setShowProgress(true)}
+                  radius={radius.sm}
+                  label="See which photos failed"
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: colors.faint, fontSize: 12.5, flex: 1 }}>
+                      {progress.failed} could not be sent. They stay queued for next time.
+                    </Text>
+                    <Icon name="forward" size={13} color={colors.faint} />
+                  </View>
+                </Touchable>
               )}
 
               {/* Both platforms allow granting a hand-picked subset. Someone in
@@ -389,6 +440,23 @@ export function LibraryScreen({ serverUrl }: Props) {
             />
           )}
         </Pressable>
+      </Modal>
+
+      {/*
+        The per-item account of the run.
+
+        A modal rather than a pushed screen because it belongs to this tab's
+        state — the run is owned here, and routing it through the navigation
+        stack would mean lifting the whole backup into a context so a sibling
+        screen could read it.
+      */}
+      <Modal
+        visible={showProgress}
+        animationType="slide"
+        onRequestClose={() => setShowProgress(false)}
+        statusBarTranslucent
+      >
+        <BackupProgressScreen progress={progress} onBack={() => setShowProgress(false)} />
       </Modal>
     </View>
   );
