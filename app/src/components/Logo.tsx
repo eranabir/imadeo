@@ -7,13 +7,13 @@
  *
  * The amber frame carries a sun over a horizon; the sky-blue one in front
  * carries a play triangle. Both are from the app's own palette, on the
- * emerald-through-cyan tile the accent is drawn from. Used identically here, in
+ * sky tile the primary is drawn from. Used identically here, in
  * the mobile app and on the website; if it changes, it changes in all three.
  */
 export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; rounded?: string }) {
   return (
     <span
-      className={`grid shrink-0 place-items-center bg-gradient-to-br from-emerald-400 via-teal-500 to-cyan-700 shadow-sm ${rounded}`}
+      className={`grid shrink-0 place-items-center bg-gradient-to-br from-secondary via-primary to-primary-deep shadow-sm ${rounded}`}
       style={{ width: size, height: size }}
     >
       <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden focusable="false">
@@ -30,8 +30,8 @@ export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; 
           width="26"
           height="24"
           rx="5"
-          fill="#38bdf8"
-          stroke="#14b8a6"
+          fill="#3fc9ff"
+          stroke="#0369a1"
           strokeWidth="3"
         />
         <path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" />

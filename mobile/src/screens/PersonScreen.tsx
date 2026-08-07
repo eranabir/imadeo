@@ -158,7 +158,7 @@ function NameSheet({
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <Icon name="person" size={20} color={colors.accent} />
+            <Icon name="person" size={20} color={colors.primary} />
             <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', letterSpacing: -0.3 }}>
               Who is this?
             </Text>
@@ -183,7 +183,7 @@ function NameSheet({
               paddingVertical: 13,
               borderRadius: 14,
               borderWidth: 1,
-              borderColor: focused ? colors.accent : colors.border,
+              borderColor: focused ? colors.primary : colors.border,
               backgroundColor: colors.bg,
             }}
           />
@@ -216,7 +216,7 @@ function NameSheet({
                 flex: 1,
                 paddingVertical: 13,
                 borderRadius: 999,
-                backgroundColor: colors.accent,
+                backgroundColor: colors.primary,
                 alignItems: 'center',
                 opacity: pressed ? 0.85 : 1,
               })}

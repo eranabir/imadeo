@@ -181,14 +181,21 @@ export function UploadButton({
   return (
     <>
       <div className="relative" ref={menuRef}>
-        <div className="flex items-center">
+        {/* The gradient lives on the wrapper, not on the two buttons. Given to
+            each half separately it restarts at the divider and the seam shows.
+            Matches the account avatar in TopBar. */}
+        <div
+          className={`flex items-center rounded-full bg-gradient-to-br from-secondary to-primary-deep ${
+            compact ? '' : 'w-full'
+          }`}
+        >
           <button
             type="button"
             onClick={() => pick('files')}
             className={
               compact
-                ? 'flex h-10 items-center gap-2 rounded-l-full bg-accent pl-4 pr-3 text-sm font-medium text-white transition hover:bg-accent-hover'
-                : 'flex h-10 w-full items-center justify-center gap-2 rounded-l-full bg-accent px-4 text-sm font-medium text-white transition hover:bg-accent-hover'
+                ? 'flex h-10 items-center gap-2 rounded-l-full pl-4 pr-3 text-sm font-medium text-white transition hover:bg-black/10'
+                : 'flex h-10 w-full items-center justify-center gap-2 rounded-l-full px-4 text-sm font-medium text-white transition hover:bg-black/10'
             }
           >
             <Upload size={16} />
@@ -201,7 +208,7 @@ export function UploadButton({
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Upload options"
-              className="grid h-10 w-8 place-items-center rounded-r-full bg-accent pr-1 text-white transition hover:bg-accent-hover"
+              className="grid h-10 w-8 place-items-center rounded-r-full pr-1 text-white transition hover:bg-black/10"
             >
               <ChevronDown size={15} />
             </button>
@@ -311,7 +318,7 @@ export function UploadButton({
 
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 transition-[width]"
+              className="h-full rounded-full bg-gradient-to-r from-secondary to-primary-deep transition-[width]"
               style={{ width: `${overall}%` }}
             />
           </div>
@@ -342,7 +349,7 @@ export function UploadButton({
                 <Link
                   to="/?sort=added"
                   onClick={() => setProgress(null)}
-                  className="mt-1.5 inline-block text-xs font-medium text-accent hover:underline"
+                  className="mt-1.5 inline-block text-xs font-medium text-primary hover:underline"
                 >
                   See what was just added →
                 </Link>
@@ -368,7 +375,7 @@ export function UploadButton({
                         setSkippedFiles([]);
                         void uploadAll(again, true);
                       }}
-                      className="rounded-control bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-accent-hover"
+                      className="rounded-control bg-primary px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-hover"
                     >
                       Upload anyway
                     </button>

@@ -176,7 +176,7 @@ export function TimelineScrubber({ sections }: Props) {
               style={{ top: `${(offsets[index] ?? 0) * 100}%` }}
               className={clsx(
                 'absolute right-2 flex -translate-y-1/2 items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1 text-[10px] tabular-nums transition',
-                isActive ? 'font-semibold text-accent' : 'text-content-muted hover:text-content',
+                isActive ? 'font-semibold text-primary' : 'text-content-muted hover:text-content',
               )}
             >
               <span
@@ -190,7 +190,7 @@ export function TimelineScrubber({ sections }: Props) {
               <span
                 className={clsx(
                   'block h-px rounded-full transition-all',
-                  isActive ? 'w-3 bg-accent' : 'w-1.5 bg-border-strong',
+                  isActive ? 'w-3 bg-primary' : 'w-1.5 bg-border-strong',
                 )}
               />
             </button>

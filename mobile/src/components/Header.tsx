@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, shadow, wash } from '../theme';
-import { Glass, liquidGlass } from './Glass';
 import { Icon, type IconName } from './Icon';
 import { Touchable } from './ui';
 
@@ -13,10 +12,10 @@ interface Props {
   title: string;
   subtitle?: string;
   /**
-   * The section's glyph, on an accent plate beside the title.
+   * The section's glyph, on a primary plate beside the title.
    *
    * There is no per-section colour and no prop to set one. Every header in the
-   * app is `colors.accent`.
+   * app is `colors.primary`.
    */
   icon?: IconName;
   /** Shows a back chevron. Omit on a tab's own screen, which has nowhere back. */
@@ -28,19 +27,20 @@ interface Props {
 }
 
 /**
- * A glass bar the content scrolls underneath.
+ * The bar every screen wears, solid and identical on all of them.
  *
- * Hangs from the top edge with its lower corners rounded, so it reads as a
- * sheet laid over the grid rather than a strip of chrome the grid begins after.
- * That is the same shape as the floating tab bar at the other end of the
- * screen, and the two are meant to be recognisably one system.
+ * It used to be glass, and what showed through it was whatever each screen
+ * happened to be scrolling — so the same bar was a different colour on Library
+ * than on Search, and over a pale photograph the title lost its background
+ * entirely. One opaque surface means one bar, and a title that is legible over
+ * anything because nothing gets behind it.
  *
- * The plate behind the section glyph is always the accent. An earlier version
+ * The plate behind the section glyph is always the primary. An earlier version
  * gave each section its own hue; the palette is closed and nothing here picks
  * up a new colour.
  *
- * Because it floats, every list below it has to open with `headerClearance`
- * worth of padding, or its first row starts life hidden.
+ * It still floats above the content, so every list below it has to open with
+ * `headerClearance` worth of padding, or its first row starts life hidden.
  */
 export function Header({ title, subtitle, icon, onBack, action, children }: Props) {
   const insets = useSafeAreaInsets();
@@ -50,7 +50,7 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
      * The shadow lives out here, on a view that clips nothing.
      *
      * A shadow and `overflow: hidden` cannot share a node on iOS — the clip
-     * takes the shadow with it — and `Glass` has to clip, or the material
+     * takes the shadow with it — and the bar has to clip, or its surface
      * spills past the rounded bottom corners. So the two jobs are split: this
      * view casts, the one inside it clips.
      */
@@ -80,16 +80,11 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
           overflow: 'hidden',
         }}
       >
-    <Glass
-      radius={0}
-      style={{
-        paddingTop: insets.top,
-        // Liquid glass draws its own edge; the blurred fallback needs one or
-        // the bar has no bottom at all over a pale photograph.
-        ...(liquidGlass
-          ? null
-          : { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' }),
-      }}
+    <View
+      // No bottom border: the bar is opaque and already casts a shadow, and a
+      // hairline inside the rounded clip read as a seam across the corners
+      // rather than as an edge.
+      style={{ backgroundColor: colors.surface, paddingTop: insets.top }}
     >
       <View
         style={{
@@ -109,7 +104,7 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
             style={{ width: 38, height: 38 }}
           >
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="back" size={21} color={colors.accent} strong />
+              <Icon name="back" size={21} color={colors.primary} strong />
             </View>
           </Touchable>
         )}
@@ -120,12 +115,12 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
               width: 38,
               height: 38,
               borderRadius: radius.sm,
-              backgroundColor: wash(colors.accent),
+              backgroundColor: wash(colors.primary),
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Icon name={icon} size={20} color={colors.accent} strong />
+            <Icon name={icon} size={20} color={colors.primary} strong />
           </View>
         )}
 
@@ -152,7 +147,7 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
       </View>
 
       {children}
-    </Glass>
+    </View>
       </View>
     </View>
   );
@@ -194,11 +189,11 @@ export function HeaderAction({
           paddingHorizontal: 13,
           paddingVertical: 8,
           borderRadius: radius.pill,
-          backgroundColor: wash(colors.accent),
+          backgroundColor: wash(colors.primary),
         }}
       >
-        {icon && <Icon name={icon} size={15} color={colors.accent} strong />}
-        <Text style={{ color: colors.accent, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+        {icon && <Icon name={icon} size={15} color={colors.primary} strong />}
+        <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>{label}</Text>
       </View>
     </Touchable>
   );

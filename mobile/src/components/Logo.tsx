@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { BRAND } from '../theme';
 
 interface Props {
   size?: number;
@@ -17,12 +18,12 @@ interface Props {
  *
  * The amber frame carries a sun over a horizon; the sky-blue one in front
  * carries a play triangle. Both colours are from the app's own palette, on the
- * emerald-through-cyan tile the accent is drawn from.
+ * sky-blue tile the primary is drawn from.
  */
 export function Logo({ size = 56 }: Props) {
   return (
     <LinearGradient
-      colors={['#34d399', '#14b8a6', '#0e7490']}
+      colors={[...BRAND]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{
@@ -47,8 +48,8 @@ export function Logo({ size = 56 }: Props) {
           width="26"
           height="24"
           rx="5"
-          fill="#38bdf8"
-          stroke="#14b8a6"
+          fill="#3fc9ff"
+          stroke="#0369a1"
           strokeWidth={3}
         />
         <Path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" />
@@ -73,7 +74,7 @@ const WORD = 'Imadeo'.split('');
 // The tile's own range — emerald through teal and cyan into sky — rather than
 // a full spectrum. Violet, amber and rose belonged to the sidebar icons, not
 // to the brand, and pulled the wordmark away from everything around it.
-const HUES = ['#e8eff2', '#34d399', '#2dd4bf', '#22d3ee', '#38bdf8', '#5eead4', '#e8eff2'];
+const HUES = ['#e8eff2', '#7cdbff', '#3fc9ff', '#0ea5e9', '#3fc9ff', '#7cdbff', '#e8eff2'];
 
 export function LogoLockup({ size = 48 }: Props) {
   const wave = useRef(new Animated.Value(0)).current;

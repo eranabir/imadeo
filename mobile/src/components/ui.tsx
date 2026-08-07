@@ -12,7 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BRAND, colors, radius, ripple, shadow } from '../theme';
+import { BRAND, colors, radius, ripple, shadow, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 
 /**
@@ -98,7 +98,7 @@ export function Card({
 /**
  * The primary action, in the brand ramp from the app icon.
  *
- * A flat accent fill was the same teal as the selected tab and the folder
+ * A flat primary fill was the same sky as the selected tab and the folder
  * icons, so nothing on a screen looked more important than anything else.
  */
 export function Button({
@@ -119,7 +119,7 @@ export function Button({
   style?: StyleProp<ViewStyle>;
 }) {
   const tint =
-    variant === 'primary' ? colors.onAccent : variant === 'danger' ? colors.danger : colors.text;
+    variant === 'primary' ? colors.onPrimary : variant === 'danger' ? colors.danger : colors.text;
 
   const body = (
     <View
@@ -311,14 +311,14 @@ export function Chip({
           paddingVertical: 8,
           borderRadius: radius.pill,
           borderWidth: 1,
-          borderColor: active ? colors.accent : colors.border,
-          backgroundColor: active ? 'rgba(20, 184, 166, 0.16)' : 'transparent',
+          borderColor: active ? colors.primary : colors.border,
+          backgroundColor: active ? wash(colors.primary) : 'transparent',
         }}
       >
-        {icon && <Icon name={icon} size={14} color={active ? colors.accent : colors.muted} />}
+        {icon && <Icon name={icon} size={14} color={active ? colors.primary : colors.muted} />}
         <Text
           style={{
-            color: active ? colors.accent : colors.muted,
+            color: active ? colors.primary : colors.muted,
             fontSize: 13.5,
             fontWeight: active ? '700' : '500',
           }}

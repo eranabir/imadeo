@@ -41,7 +41,7 @@ function Field({
         paddingVertical: 13,
         borderRadius: radius.md,
         borderWidth: 1,
-        borderColor: focused ? colors.accent : colors.border,
+        borderColor: focused ? colors.primary : colors.border,
         backgroundColor: colors.bg,
       }}
     />
@@ -295,7 +295,7 @@ function Destination({
           paddingLeft: 12 + indent * 16,
         }}
       >
-        <Icon name={icon} size={18} color={colors.accent} />
+        <Icon name={icon} size={18} color={colors.primary} />
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
             {label}

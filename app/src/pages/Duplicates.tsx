@@ -148,7 +148,7 @@ export function Duplicates() {
                         'rounded-full px-2 py-0.5 text-[11px] font-medium',
                         group.kind === 'identical'
                           ? 'bg-danger-soft text-danger'
-                          : 'bg-accent-soft text-accent',
+                          : 'bg-primary-soft text-primary',
                       )}
                     >
                       {group.kind === 'identical' ? 'Identical files' : 'Looks the same'}
@@ -234,7 +234,7 @@ export function Duplicates() {
                             <button
                               type="button"
                               onClick={() => setViewing(asset as unknown as Asset)}
-                              className="text-[11px] font-medium text-accent hover:underline"
+                              className="text-[11px] font-medium text-primary hover:underline"
                             >
                               View
                             </button>

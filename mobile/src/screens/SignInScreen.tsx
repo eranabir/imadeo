@@ -69,7 +69,7 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
         <Pressable onPress={onChangeServer} hitSlop={8} style={{ marginTop: 8, marginBottom: 30 }}>
           <Text style={{ color: colors.muted, fontSize: 15 }}>
             {serverUrl.replace(/^https?:\/\//, '')}
-            <Text style={{ color: colors.accent }}>  Change</Text>
+            <Text style={{ color: colors.primary }}>  Change</Text>
           </Text>
         </Pressable>
 
@@ -113,7 +113,7 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
           disabled={busy || !email.trim() || !password}
           style={({ pressed }) => ({
             marginTop: 26,
-            backgroundColor: colors.accent,
+            backgroundColor: colors.primary,
             borderRadius: 999,
             paddingVertical: 15,
             alignItems: 'center',

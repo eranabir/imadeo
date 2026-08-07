@@ -17,8 +17,8 @@
 
 <style>
   :root {
-    --accent: #0f7d8c;
-    --accent-bright: #17a2b5;
+    --primary: #0284c7;
+    --secondary: #0ea5e9;
     --bg: #ffffff;
     --surface: #f6f8f9;
     --border: #e2e8ea;
@@ -29,8 +29,8 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --accent: #2bb7ca;
-      --accent-bright: #4fd3e4;
+      --primary: #3fc9ff;
+      --secondary: #7cdbff;
       --bg: #0d1418;
       --surface: #141e24;
       --border: #24333c;
@@ -45,13 +45,18 @@
 
   body {
     margin: 0;
+    /* The hero mock is meant to run off the right edge; without this the bleed
+       is scrollable instead of cropped and the whole page gains a horizontal
+       scrollbar. `clip` rather than `hidden` so this never becomes a scroll
+       container and takes position:sticky down with it. */
+    overflow-x: clip;
     background: var(--bg);
     color: var(--text);
     font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
 
-  a { color: var(--accent); }
+  a { color: var(--primary); }
 
   .wrap { width: min(1080px, calc(100% - 48px)); margin-inline: auto; }
 
@@ -68,16 +73,16 @@
 
   .bar { display: flex; align-items: center; justify-content: space-between; height: 62px; gap: 20px; }
 
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -.02em; font-size: 17px; }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 650; letter-spacing: -.02em; font-size: 20px; }
 
-  /* Emerald through teal into deep cyan — the same family as the app's accent,
+  /* Sky, light to deep — the same family as the app's primary,
      and deliberately not violet or fuchsia, which read as Instagram. */
   .mark {
-    width: 28px; height: 28px; border-radius: 8px; flex: none;
-    background: linear-gradient(135deg, #34d399, #14b8a6 50%, #0e7490);
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    background: linear-gradient(135deg, #7cdbff, #3fc9ff 50%, #0369a1);
     display: grid; place-items: center;
   }
-  .mark svg { width: 17px; height: 17px; }
+  .mark svg { width: 100%; height: 100%; }
 
   nav { display: flex; align-items: center; gap: 22px; font-size: 14.5px; }
   nav a { color: var(--muted); text-decoration: none; }
@@ -90,8 +95,8 @@
     font-size: 14.5px; font-weight: 560; text-decoration: none;
     border: 1px solid transparent; white-space: nowrap;
   }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: var(--accent-bright); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--secondary); }
   .btn-ghost { border-color: var(--border); color: var(--text); }
   .btn-ghost:hover { background: var(--surface); }
 
@@ -121,8 +126,8 @@
   .pill {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 5px 14px; border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary); border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
     font-size: 13px; font-weight: 550; margin-bottom: 26px;
   }
 
@@ -134,7 +139,7 @@
     font-weight: 700;
   }
   h1 .grad {
-    background: linear-gradient(115deg, var(--accent), var(--accent-bright));
+    background: linear-gradient(115deg, var(--primary), var(--secondary));
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
 
@@ -171,7 +176,7 @@
   }
   .app-brand { display: flex; align-items: center; gap: 8px; font-weight: 640; font-size: 13.5px; letter-spacing: -.015em; }
   .app-brand .mark { width: 21px; height: 21px; border-radius: 6px; }
-  .app-brand .mark svg { width: 13px; height: 13px; }
+  .app-brand .mark svg { width: 100%; height: 100%; }
 
   .search {
     flex: 1; max-width: 300px; margin-inline: auto;
@@ -188,7 +193,7 @@
 
   .up {
     display: inline-flex; align-items: center; gap: 6px; flex: none;
-    background: var(--accent); color: #fff;
+    background: var(--primary); color: #fff;
     padding: 5px 12px; border-radius: 999px;
     font-size: 11.5px; font-weight: 570;
   }
@@ -196,7 +201,7 @@
 
   .avatar {
     width: 23px; height: 23px; border-radius: 50%; flex: none;
-    background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
     color: #fff; font-size: 9.5px; font-weight: 640;
     display: grid; place-items: center; letter-spacing: .02em;
   }
@@ -216,7 +221,7 @@
     padding: 6px 10px; border-radius: 9px;
     font-size: 12.5px; color: var(--muted);
   }
-  .side-item.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 570; }
+  .side-item.on { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); font-weight: 570; }
   .side-item svg { width: 14px; height: 14px; flex: none; color: var(--ic, currentColor); }
 
   /* The same per-destination tints the app uses, so the sidebar is
@@ -241,7 +246,7 @@
   }
   .storage .row { display: flex; justify-content: space-between; font-weight: 570; color: var(--text); margin-bottom: 6px; }
   .storage .track { height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; margin-bottom: 6px; }
-  .storage .fill { height: 100%; width: 55%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+  .storage .fill { height: 100%; width: 55%; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--secondary)); }
 
   .canvas { flex: 1; padding: 0 0 16px; min-width: 0; }
 
@@ -274,8 +279,8 @@
   .rail { width: 46px; flex: none; padding: 18px 0; font-size: 10px; color: var(--muted); }
   .rail div { display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding-right: 8px; margin-bottom: 30px; font-variant-numeric: tabular-nums; }
   .rail div::after { content: ""; width: 6px; height: 1px; background: var(--border); }
-  .rail div.on { color: var(--accent); font-weight: 640; }
-  .rail div.on::after { width: 12px; background: var(--accent); }
+  .rail div.on { color: var(--primary); font-weight: 640; }
+  .rail div.on::after { width: 12px; background: var(--primary); }
   @media (max-width: 640px) { .rail { display: none; } }
 
   /* ---------- sections ---------- */
@@ -299,15 +304,15 @@
   .ico {
     width: 34px; height: 34px; border-radius: 10px; margin-bottom: 15px;
     display: grid; place-items: center;
-    background: color-mix(in srgb, var(--accent) 13%, transparent);
-    color: var(--accent);
+    background: color-mix(in srgb, var(--primary) 13%, transparent);
+    color: var(--primary);
   }
   .ico svg { width: 18px; height: 18px; }
 
   /* ---------- privacy strip ---------- */
 
   .strip { display: grid; gap: 30px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); text-align: center; }
-  .strip .n { font-size: 30px; font-weight: 700; letter-spacing: -.03em; color: var(--accent); }
+  .strip .n { font-size: 30px; font-weight: 700; letter-spacing: -.03em; color: var(--primary); }
   .strip p { margin: 4px 0 0; color: var(--muted); font-size: 14.5px; }
 
   /* ---------- code ---------- */
@@ -323,7 +328,7 @@
   pre .c { color: var(--muted); }
 
   .note {
-    border-left: 3px solid var(--accent);
+    border-left: 3px solid var(--primary);
     padding: 2px 0 2px 16px; color: var(--muted); font-size: 14.5px;
   }
 
@@ -369,7 +374,7 @@
   <div class="wrap bar">
     <span class="brand">
       <span class="mark">
-        <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#38bdf8" stroke="#14b8a6" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
+        <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#3fc9ff" stroke="#0369a1" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
       </span>
       Imadeo
     </span>
@@ -404,7 +409,7 @@
     <div class="app-top">
       <span class="app-brand">
         <span class="mark">
-          <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#38bdf8" stroke="#14b8a6" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
+          <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#3fc9ff" stroke="#0369a1" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
         </span>
         Imadeo
       </span>

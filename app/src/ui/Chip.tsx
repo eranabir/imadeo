@@ -15,7 +15,7 @@ export function Chip({ active, icon, className, children, type = 'button', ...re
       className={clsx(
         'inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium transition',
         active
-          ? 'bg-accent text-white'
+          ? 'bg-primary text-white'
           : 'border border-border-subtle text-content hover:border-border-strong hover:bg-surface-sunken',
         className,
       )}

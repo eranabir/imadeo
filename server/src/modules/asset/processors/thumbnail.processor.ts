@@ -57,11 +57,39 @@ export class ThumbnailProcessor extends WorkerHost {
         source = await this.media.extractToJpeg(asset.originalPath, temporary);
       }
 
-      const { thumbnailPath, previewPath } = await this.media.generateImageThumbnails(
-        source,
-        asset.ownerId,
-        asset.id,
-      );
+      /**
+       * The extension list is a guess, so a failure to decode is not fatal.
+       *
+       * HEIC is the case that forced this. sharp claims the format, and then
+       * libheif refuses every full-size iPhone photo: those are stored as a grid
+       * of ~48 tiles, and libheif caps a file at 16 `iref` references by default.
+       * The asset landed with no thumbnail at all and the web client had nothing
+       * to show — browsers cannot render HEIC themselves either.
+       *
+       * ffmpeg already sits behind this path for RAW, so anything sharp turns
+       * out not to be able to open goes the same way rather than being dropped.
+       */
+      let rendered: { thumbnailPath: string; previewPath: string };
+      try {
+        rendered = await this.media.generateImageThumbnails(source, asset.ownerId, asset.id);
+      } catch (error) {
+        if (temporary) throw error; // Already came through ffmpeg; nothing left to try.
+
+        this.logger.warn(
+          `sharp could not decode ${asset.originalFileName}; retrying through ffmpeg: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+
+        temporary = join(
+          this.config.get('storage.incoming', { infer: true }),
+          `${asset.id}-decoded.jpg`,
+        );
+        source = await this.media.extractToJpeg(asset.originalPath, temporary);
+        rendered = await this.media.generateImageThumbnails(source, asset.ownerId, asset.id);
+      }
+
+      const { thumbnailPath, previewPath } = rendered;
 
       const thumbhash = await this.media.generateThumbhash(source).catch(() => null);
       // Computed from the same decoded source the thumbnails came from, so a

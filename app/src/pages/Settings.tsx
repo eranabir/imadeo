@@ -102,7 +102,7 @@ export function Settings() {
               className={clsx(
                 'flex w-full items-center gap-2.5 rounded-full px-3.5 py-2 text-sm transition',
                 section === id
-                  ? 'bg-accent-soft font-medium text-accent'
+                  ? 'bg-primary-soft font-medium text-primary'
                   : 'text-content hover:bg-surface-sunken',
               )}
             >
@@ -831,7 +831,7 @@ function People() {
                 <button
                   type="button"
                   onClick={() => void navigator.clipboard.writeText(inviteLink)}
-                  className="mt-2 text-xs font-medium text-accent hover:underline"
+                  className="mt-2 text-xs font-medium text-primary hover:underline"
                 >
                   Copy link
                 </button>
@@ -1110,7 +1110,7 @@ function SignInProviders() {
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
     >
       {children}
       <ExternalLink size={11} />
@@ -1354,25 +1354,25 @@ function Security() {
 
   const setUpPin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin', { pin })).data,
-    onSuccess: after('Vault PIN set. Locked items now need it.'),
+    onSuccess: after('Private password set. Locked items now need it.'),
     onError,
   });
 
   const changePin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin/change', { pin, newPin })).data,
-    onSuccess: after('PIN changed. Every device must unlock again.'),
+    onSuccess: after('Private password changed. Every device must unlock again.'),
     onError,
   });
 
   const unlock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/unlock', { pin })).data,
-    onSuccess: after('Vault unlocked.'),
+    onSuccess: after('Private items unlocked.'),
     onError,
   });
 
   const lock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/lock')).data,
-    onSuccess: after('Vault locked.'),
+    onSuccess: after('Private items locked.'),
     onError,
   });
 
@@ -1386,32 +1386,31 @@ function Security() {
   return (
     <>
       <Card
-        title="Vault PIN"
-        description="Folders and albums you lock are hidden until this PIN is entered. It is separate from your password."
+        title="Private password"
+        description="Folders and albums you lock are hidden until this password is entered. It is separate from your account password."
       >
         {!vault?.isConfigured ? (
           <div className="space-y-3">
             <Input
-              label="Choose a PIN"
+              label="Choose a private password"
               type="password"
-              inputMode="numeric"
               autoComplete="new-password"
               value={pin}
               onChange={(e) => {
                 setPin(e.target.value);
                 setMessage(null);
               }}
-              hint="At least 4 characters. There is no way to recover it, so keep it somewhere safe."
+              hint="At least 8 characters. There is no way to recover it, so keep it somewhere safe."
             />
             {note}
             <div className="pt-1">
               <Button
                 variant="primary"
                 icon={<ShieldCheck size={15} />}
-                disabled={pin.length < 4 || busy}
+                disabled={pin.length < 8 || busy}
                 onClick={() => setUpPin.mutate()}
               >
-                Set vault PIN
+                Set private password
               </Button>
             </div>
           </div>
@@ -1437,7 +1436,7 @@ function Security() {
             </Row>
 
             <Input
-              label="Current PIN"
+              label="Current private password"
               type="password"
               inputMode="numeric"
               autoComplete="current-password"
@@ -1448,7 +1447,7 @@ function Security() {
               }}
             />
             <Input
-              label="New PIN"
+              label="New private password"
               type="password"
               inputMode="numeric"
               autoComplete="new-password"
@@ -1469,7 +1468,7 @@ function Security() {
                 disabled={!pin || newPin.length < 4 || busy}
                 onClick={() => changePin.mutate()}
               >
-                Change PIN
+                Change private password
               </Button>
               {vault.isUnlocked ? (
                 <Button
@@ -1500,14 +1499,14 @@ function Security() {
         description="What is and is not encrypted on the server, so there are no surprises."
       >
         <Row
-          label="Passwords and PINs"
+          label="Passwords"
           hint="Stored as bcrypt hashes — they cannot be read back out of the database."
         >
           <span className="text-xs font-medium text-success">Hashed</span>
         </Row>
         <Row
-          label="Vault key"
-          hint="Wrapped with your PIN and the server key together, and held in memory only while unlocked. A restart relocks it."
+          label="Private items key"
+          hint="Wrapped with your private password and the server key together, and held in memory only while unlocked. A restart relocks it."
         >
           <span className="text-xs font-medium text-success">Protected</span>
         </Row>
@@ -1563,7 +1562,7 @@ function PathRow({ label, path, hint }: { label: string; path: string; hint?: st
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1600);
           }}
-          className="shrink-0 text-xs font-medium text-accent hover:underline"
+          className="shrink-0 text-xs font-medium text-primary hover:underline"
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
@@ -1642,7 +1641,7 @@ function StorageLocationCard() {
               label={
                 { originals: 'Originals', incoming: 'Incoming uploads', thumbnails: 'Thumbnails',
                   encodedVideo: 'Encoded video', profile: 'Profile images', backups: 'Backups',
-                  vault: 'Vault' }[key] ?? key
+                  vault: 'Private items' }[key] ?? key
               }
               path={path}
             />
@@ -1650,7 +1649,7 @@ function StorageLocationCard() {
           <button
             type="button"
             onClick={() => setShowAll(false)}
-            className="mt-3 text-xs font-medium text-accent hover:underline"
+            className="mt-3 text-xs font-medium text-primary hover:underline"
           >
             Show less
           </button>
@@ -1659,7 +1658,7 @@ function StorageLocationCard() {
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="mt-3 text-xs font-medium text-accent hover:underline"
+          className="mt-3 text-xs font-medium text-primary hover:underline"
         >
           Show all folders
         </button>
@@ -1682,11 +1681,13 @@ function Storage() {
   const diskUsed = stats?.disk?.usedBytes ?? null;
   const diskFree = stats?.disk?.availableBytes ?? null;
 
-  // A quota is the real ceiling when set; otherwise the disk itself is.
-  const capacity = quota ?? diskTotal;
-  const free = quota !== null ? Math.max(0, quota - used) : diskFree;
-  const barValue = quota !== null ? used : (diskUsed ?? used);
-  const percent = capacity && capacity > 0 ? Math.min(100, (barValue / capacity) * 100) : null;
+  // What this account can actually fill: its quota, or — with no quota — what
+  // the disk still has room for. Deliberately not the disk's total size: the
+  // rest of that is taken by things Imadeo does not own, so measuring against it
+  // showed an empty library at 80% full.
+  const capacity = quota ?? (diskFree !== null ? used + diskFree : null);
+  const free = capacity !== null ? Math.max(0, capacity - used) : null;
+  const percent = capacity && capacity > 0 ? Math.min(100, (used / capacity) * 100) : null;
 
   return (
     <>
@@ -1695,20 +1696,26 @@ function Storage() {
       description={
         quota !== null
           ? 'Your quota on this server.'
-          : 'No quota is set, so the limit is the disk the library sits on.'
+          : 'No quota is set, so your library can grow into whatever the disk has left.'
       }
     >
+      {/* Every figure here measures the same thing: this library against the
+          room it has. The disk's own total is reported separately below rather
+          than as the denominator, because the space other things on the machine
+          have taken is not space this account ever had. */}
       <div className="mb-5">
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-2xl font-semibold tabular-nums">{formatBytes(used)}</span>
           <span className="text-xs text-content-muted">
-            {capacity !== null ? `of ${formatBytes(capacity)}` : 'unknown capacity'}
+            {capacity !== null
+              ? `of ${formatBytes(capacity)} ${quota !== null ? 'quota' : 'available'}`
+              : 'unknown capacity'}
           </span>
         </div>
 
         <div className="h-2 overflow-hidden rounded-full bg-surface-sunken">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 transition-[width]"
+            className="h-full rounded-full bg-gradient-to-r from-secondary to-primary-deep transition-[width]"
             style={{ width: `${percent ?? 6}%` }}
           />
         </div>
@@ -1718,6 +1725,15 @@ function Storage() {
           {percent !== null && <span className="tabular-nums">{Math.round(percent)}% used</span>}
         </div>
       </div>
+
+      {quota === null && diskTotal !== null && (
+        <Row
+          label="Server disk"
+          hint="Total size of the disk your library sits on, shared with everything else on the machine."
+        >
+          <span className="text-sm text-content-muted">{formatBytes(diskTotal)}</span>
+        </Row>
+      )}
 
       {diskTotal !== null && quota !== null && (
         <Row label="Disk on the server" hint="Shared by every account on this instance.">
@@ -1795,7 +1811,7 @@ function About() {
         ['Machine learning', data.features.machineLearning],
         ['Duplicate detection', data.features.duplicateDetection],
         ['Trash', data.features.trash],
-        ['Locked vault', data.features.vault],
+        ['Private lock', data.features.vault],
         ['Public registration', data.features.publicRegistration],
       ]
     : [];

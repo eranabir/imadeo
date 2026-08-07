@@ -85,7 +85,7 @@ export function Select<T extends string>({
                 className={clsx(
                   'flex w-full items-center gap-2.5 rounded-[0.5rem] px-2.5 py-2 text-left text-sm transition',
                   option.value === value
-                    ? 'bg-accent-soft text-accent'
+                    ? 'bg-primary-soft text-primary'
                     : 'text-content hover:bg-surface-sunken',
                 )}
               >

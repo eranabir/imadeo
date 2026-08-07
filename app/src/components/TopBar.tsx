@@ -135,7 +135,7 @@ export function TopBar({ stats }: { stats?: AssetStatistics }) {
           onClick={() =>
             setAccountAnchor(accountAnchor ? null : anchorFromElement(avatarRef.current!))
           }
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 text-[13px] font-semibold text-white transition hover:opacity-90"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-secondary to-primary-deep text-[13px] font-semibold text-white transition hover:opacity-90"
         >
           {initialsOf(user?.name ?? '')}
         </button>

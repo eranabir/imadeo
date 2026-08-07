@@ -11,6 +11,12 @@
       "port": 5173
     },
     {
+      "name": "docs",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "serve", "docs", "-l", "4173"],
+      "port": 4173
+    },
+    {
       "name": "mobile-web",
       "runtimeExecutable": "yarn",
       "runtimeArgs": [

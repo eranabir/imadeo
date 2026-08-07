@@ -14,7 +14,7 @@ interface Shared {
  * Radio and checkbox for the design system.
  *
  * Both replace the native controls, which cannot be themed: the browser paints
- * them from the OS, so they ignore the accent colour, sit at the wrong size next
+ * them from the OS, so they ignore the primary colour, sit at the wrong size next
  * to a 32px control, and look wrong in dark mode. Built from a button and a
  * span, they follow the same tokens as everything else.
  *
@@ -53,15 +53,15 @@ function Control({
         className={clsx(
           'grid h-4 w-4 shrink-0 place-items-center border-2 transition',
           type === 'radio' ? 'rounded-full' : 'rounded-[0.3rem]',
-          checked ? 'border-accent' : 'border-border-strong',
-          checked && type === 'checkbox' && 'bg-accent',
+          checked ? 'border-primary' : 'border-border-strong',
+          checked && type === 'checkbox' && 'bg-primary',
           // Focus follows the real input, so keyboard users see the ring.
-          'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent',
+          'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary',
         )}
       >
         {checked &&
           (type === 'radio' ? (
-            <span className="h-2 w-2 rounded-full bg-accent" />
+            <span className="h-2 w-2 rounded-full bg-primary" />
           ) : (
             <Check size={11} strokeWidth={3.5} className="text-white" />
           ))}

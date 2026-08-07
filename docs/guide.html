@@ -11,13 +11,13 @@
 
 <style>
   :root {
-    --accent: #0f7d8c; --accent-bright: #17a2b5;
+    --primary: #0284c7; --secondary: #0ea5e9;
     --bg: #ffffff; --surface: #f6f8f9; --border: #e2e8ea;
     --text: #16212b; --muted: #5c6d78; --radius: 14px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --accent: #2bb7ca; --accent-bright: #4fd3e4;
+      --primary: #3fc9ff; --secondary: #7cdbff;
       --bg: #0d1418; --surface: #141e24; --border: #24333c;
       --text: #e8eff2; --muted: #93a6b1;
     }
@@ -30,7 +30,7 @@
     font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--accent); }
+  a { color: var(--primary); }
 
   header {
     position: sticky; top: 0; z-index: 10;
@@ -45,11 +45,11 @@
   }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -.02em; color: var(--text); text-decoration: none; }
   .mark {
-    width: 28px; height: 28px; border-radius: 8px; flex: none;
-    background: linear-gradient(135deg, #34d399, #14b8a6 50%, #0e7490);
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    background: linear-gradient(135deg, #7cdbff, #3fc9ff 50%, #0369a1);
     display: grid; place-items: center;
   }
-  .mark svg { width: 17px; height: 17px; }
+  .mark svg { width: 100%; height: 100%; }
   nav { display: flex; align-items: center; gap: 22px; font-size: 14.5px; }
   nav a { color: var(--muted); text-decoration: none; }
   nav a:hover { color: var(--text); }
@@ -101,7 +101,7 @@
   td code { white-space: nowrap; }
 
   .note {
-    border-left: 3px solid var(--accent); background: var(--surface);
+    border-left: 3px solid var(--primary); background: var(--surface);
     border-radius: 0 8px 8px 0; padding: 13px 16px; margin: 0 0 16px;
     color: var(--muted); font-size: 14.8px;
   }
@@ -120,7 +120,7 @@
   <div class="bar">
     <a class="brand" href="./">
       <span class="mark">
-        <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#38bdf8" stroke="#14b8a6" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
+        <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#3fc9ff" stroke="#0369a1" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
       </span>
       Imadeo
     </a>

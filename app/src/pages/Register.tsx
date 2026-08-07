@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FolderTree,
   Lock,
@@ -29,6 +29,7 @@ const hues = [178, 196, 210, 165, 188, 152, 222, 172, 205, 140, 192, 235];
 
 export function Register() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const restore = useAuth((state) => state.restore);
   const { theme, cycle } = useTheme();
 
@@ -119,8 +120,8 @@ export function Register() {
       setError('The two passwords do not match.');
       return;
     }
-    if (pin && !/^\d{4,12}$/.test(pin)) {
-      setError('The vault PIN must be 4 to 12 digits, or left empty.');
+    if (pin && pin.length < 8) {
+      setError('The private password must be at least 8 characters, or left empty.');
       return;
     }
 
@@ -135,16 +136,20 @@ export function Register() {
       // The server signs the new account in, so go straight to the library.
       tokens.set(data.accessToken, data.refreshToken);
 
-      // Set the vault PIN now that there is a session to set it against. A
+      // Set the private password now that there is a session to set it against. A
       // failure here must not lose the account that was just created, so it is
       // reported rather than thrown.
       if (pin) {
         try {
           await api.post('/auth/vault/pin', { pin });
         } catch (pinError) {
-          console.warn('Could not set the vault PIN during sign-up', pinError);
+          console.warn('Could not set the private password during sign-up', pinError);
         }
       }
+
+      // The cached answer still says this server has no accounts. Left stale it
+      // sends the app straight back here after the redirect below.
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'registration'] });
 
       await restore();
       navigate('/');
@@ -159,7 +164,11 @@ export function Register() {
 
   return (
     <div className="grid h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-      <div className="relative flex min-h-full flex-col justify-center overflow-y-auto px-6 py-20">
+      {/* safe centring, not plain justify-center: this form is taller than a
+          short viewport, and centred overflow spills past the top of a scroll
+          container where scrollTop cannot reach it. `safe` falls back to
+          flex-start exactly when that would happen. */}
+      <div className="relative flex min-h-full flex-col [justify-content:safe_center] overflow-y-auto px-6 py-20">
         <IconButton
           label={`Theme: ${theme}`}
           onClick={cycle}
@@ -308,29 +317,34 @@ export function Register() {
                   size="lg"
                 />
 
-                {/* The vault PIN is separate from the password on purpose: it is
+                {/* The private password is separate from the account password on purpose: it is
                     what unwraps the encryption key, so it is never stored in a
                     form that the server alone can reverse. */}
-                <div className="rounded-panel border border-border-subtle bg-surface-raised p-4">
+                {/* Extra top margin over the form's space-y-3: this is a bordered
+                    section rather than another field, so it needs to sit apart
+                    from the password inputs above it. */}
+                <div className="mt-6 mb-0 rounded-panel border border-border-subtle bg-surface-raised p-4">
                   <div className="mb-2 flex items-start gap-2.5">
-                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-accent" />
+                    <ShieldCheck size={16} className="mt-0.5 shrink-0 text-primary" />
                     <div>
-                      <p className="text-sm font-medium">Private vault PIN</p>
+                      <p className="text-sm font-medium">Private password</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
-                        Locks the folders and albums you mark private. It is the key to them —
-                        nobody can reset it for you, and it is not your password.
+                        Locks your private folders and albums.
                       </p>
                     </div>
                   </div>
 
+                  {/* The heading above stands in for the field label, so keep the
+                      space a label would have taken (text-xs line plus its
+                      mb-1.5) and the card keeps its rhythm. */}
                   <Input
-                    label="PIN (4–12 digits)"
+                    containerClassName="mt-[1.375rem] w-full"
+                    aria-label="Private password"
                     type="password"
-                    inputMode="numeric"
-                    autoComplete="off"
+                    autoComplete="new-password"
                     value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 12))}
-                    placeholder="••••"
+                    onChange={(e) => setPin(e.target.value)}
+                    placeholder="At least 8 characters"
                     hint="You can set this later in Settings instead."
                   />
                 </div>
@@ -349,7 +363,7 @@ export function Register() {
                   variant="primary"
                   size="lg"
                   block
-                  detached
+                  className="mt-6"
                   disabled={busy}
                   icon={registration?.isFirstUser && !invite ? <ShieldCheck size={16} /> : undefined}
                 >
@@ -369,7 +383,7 @@ export function Register() {
               {!registration?.isFirstUser && !invite && (
                 <p className="mt-6 text-center text-sm text-content-muted">
                   Already have an account?{' '}
-                  <Link to="/login" className="font-medium text-accent hover:underline">
+                  <Link to="/login" className="font-medium text-primary hover:underline">
                     Sign in
                   </Link>
                 </p>
@@ -430,7 +444,7 @@ export function Register() {
               { icon: FolderTree, text: 'Folders and sub-folders that work like your desktop' },
               { icon: Sparkles, text: 'Search by what is in the picture, not the file name' },
               { icon: Users, text: 'Faces grouped automatically, albums shared by link' },
-              { icon: Lock, text: 'A PIN-locked vault for the private ones' },
+              { icon: Lock, text: 'A password lock for the private ones' },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3 text-sm text-white/85">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur">

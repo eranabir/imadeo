@@ -51,14 +51,14 @@ export function FolderCard({ folder, onDrop, onContextMenu }: FolderCardProps) {
       className={clsx(
         'flex items-center gap-3 rounded-panel border px-3.5 py-3 transition',
         isOver
-          ? 'border-accent bg-accent/15 ring-2 ring-accent/40'
-          : 'border-border-subtle bg-surface-raised hover:border-accent hover:bg-surface-sunken',
+          ? 'border-primary bg-primary/15 ring-2 ring-primary/40'
+          : 'border-border-subtle bg-surface-raised hover:border-primary hover:bg-surface-sunken',
       )}
     >
       {folder.isLocked ? (
         <Lock size={18} className="pointer-events-none shrink-0 text-content-muted" />
       ) : (
-        <FolderOpen size={18} className="pointer-events-none shrink-0 text-teal-500" />
+        <FolderOpen size={18} className="pointer-events-none shrink-0 text-primary" />
       )}
       <span className="pointer-events-none min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{folder.name}</span>
@@ -102,8 +102,8 @@ export function AlbumCard({
       className={clsx(
         'group relative overflow-hidden rounded-panel border bg-surface-raised transition',
         isOver
-          ? 'border-accent ring-2 ring-accent/50'
-          : 'border-border-subtle hover:border-accent',
+          ? 'border-primary ring-2 ring-primary/50'
+          : 'border-border-subtle hover:border-primary',
       )}
     >
       {/* The link fills the card but ignores pointer events during a drag, so
@@ -122,8 +122,8 @@ export function AlbumCard({
       </Link>
 
       {isOver && (
-        <span className="pointer-events-none absolute inset-0 grid place-items-center bg-accent/25">
-          <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-white shadow">
+        <span className="pointer-events-none absolute inset-0 grid place-items-center bg-primary/25">
+          <span className="rounded-full bg-primary px-3 py-1 text-xs font-medium text-white shadow">
             Add to “{album.name}”
           </span>
         </span>

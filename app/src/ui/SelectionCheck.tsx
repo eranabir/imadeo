@@ -35,7 +35,7 @@ export function SelectionCheck({ checked, onChange, label, tone = 'surface', cla
       className={clsx(
         'grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition',
         checked
-          ? 'border-accent bg-accent text-white'
+          ? 'border-primary bg-primary text-white'
           : tone === 'media'
             ? 'border-white/85 bg-black/25 text-transparent'
             : 'border-content-muted/50 text-transparent hover:border-content-muted',

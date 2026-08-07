@@ -96,8 +96,8 @@ export function AssetGrid({
           <RefreshControl
             refreshing={loading}
             onRefresh={onRefresh}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
             progressBackgroundColor={colors.surface}
             // Otherwise the spinner appears underneath the glass header.
             progressViewOffset={topInset}
@@ -124,7 +124,7 @@ export function AssetGrid({
               style={{
                 flex: 1,
                 padding: on ? 5 : 0,
-                backgroundColor: on ? colors.accent : 'transparent',
+                backgroundColor: on ? colors.primary : 'transparent',
                 borderRadius: on ? radius.sm : 0,
               }}
             >
@@ -187,13 +187,13 @@ export function AssetGrid({
                   height: 22,
                   borderRadius: 11,
                   borderWidth: 2,
-                  borderColor: on ? colors.accent : 'rgba(255,255,255,0.85)',
-                  backgroundColor: on ? colors.accent : 'rgba(0,0,0,0.28)',
+                  borderColor: on ? colors.primary : 'rgba(255,255,255,0.85)',
+                  backgroundColor: on ? colors.primary : 'rgba(0,0,0,0.28)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                {on && <Icon name="check" size={13} color={colors.onAccent} strong />}
+                {on && <Icon name="check" size={13} color={colors.onPrimary} strong />}
               </View>
             )}
           </Pressable>

@@ -11,10 +11,11 @@
    src/ui consume these names, never raw values, so a change lands everywhere at
    once.
 
-   The palette is deep teal through cyan. It deliberately avoids the
-   violet/fuchsia/orange range, which reads as Instagram, and it sits far enough
-   from the warm tones in most photographs that the chrome never competes with
-   the pictures.
+   The palette is a blue-leaning cyan, hue 210 — the one the marketing pages in
+   docs/ already used, adopted here so the site and the app are the same product.
+   It deliberately avoids the violet/fuchsia/orange range, which reads as
+   Instagram, and it sits far enough from the warm tones in most photographs that
+   the chrome never competes with the pictures.
    --------------------------------------------------------------------------- */
 @theme {
   --color-surface: oklch(99% 0.002 220);
@@ -25,9 +26,19 @@
   --color-border-strong: oklch(79% 0.014 220);
   --color-content: oklch(23% 0.018 230);
   --color-content-muted: oklch(51% 0.019 225);
-  --color-accent: oklch(55% 0.12 183);
-  --color-accent-hover: oklch(48% 0.12 183);
-  --color-accent-soft: oklch(55% 0.12 183 / 0.13);
+  /* Primary is the one colour that means "this is the thing" — selected rows,
+     primary buttons, links, focus rings. Secondary is its lighter partner, used
+     only as the far end of a gradient and never on its own for text. On white,
+     #38bdf8 has nowhere near enough contrast, so light mode runs the same hue
+     several steps darker. */
+  --color-primary: oklch(58.8% 0.139 242);
+  --color-primary-hover: oklch(50% 0.119 243);
+  --color-primary-soft: oklch(58.8% 0.139 242 / 0.13);
+  --color-secondary: oklch(68.5% 0.148 237);
+  /* The deep end of the brand gradient. Secondary sits too close to primary to
+     read as a gradient on a control the size of a button, so anything with a
+     ramp in it runs secondary -> this instead. */
+  --color-primary-deep: oklch(44.3% 0.100 241);
   --color-danger: oklch(55% 0.19 22);
   --color-danger-soft: oklch(55% 0.19 22 / 0.12);
   --color-success: oklch(56% 0.14 160);
@@ -55,9 +66,13 @@
   --color-border-strong: oklch(39% 0.022 230);
   --color-content: oklch(95% 0.006 225);
   --color-content-muted: oklch(69% 0.018 225);
-  --color-accent: oklch(76% 0.125 183);
-  --color-accent-hover: oklch(82% 0.12 183);
-  --color-accent-soft: oklch(76% 0.125 183 / 0.17);
+  /* Sky: #38bdf8 primary, #7dd3fc secondary. On a dark surface the pair can sit
+     at their real lightness — it is only on white that they need darkening. */
+  --color-primary: oklch(79% 0.145 233);
+  --color-primary-hover: oklch(85% 0.11 230);
+  --color-primary-soft: oklch(79% 0.145 233 / 0.21);
+  --color-secondary: oklch(82.8% 0.101 230);
+  --color-primary-deep: oklch(50% 0.119 243);
   --color-danger: oklch(69% 0.17 22);
   --color-danger-soft: oklch(69% 0.17 22 / 0.16);
   --color-success: oklch(74% 0.13 160);
@@ -73,7 +88,7 @@ body {
 
 /* One focus treatment for every interactive element in the system. */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: var(--radius-control);
 }

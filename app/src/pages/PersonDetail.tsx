@@ -224,9 +224,9 @@ export function PersonDetail() {
                   // Matches the button's box exactly — same padding and border
                   // width — so the heading does not jump when it becomes a
                   // field. `focus:outline-none` avoids the global focus ring
-                  // drawing a second box outside the accent border.
+                  // drawing a second box outside the primary border.
                   containerClassName="-ml-1.5 w-56"
-                  className="border-accent text-lg font-semibold tracking-tight focus:outline-none"
+                  className="border-primary text-lg font-semibold tracking-tight focus:outline-none"
                 />
               ) : (
                 <Tooltip label={person.name ? 'Click to rename' : 'Click to add a name'}>
@@ -321,7 +321,7 @@ export function PersonDetail() {
                 setCover.mutate(asset.id);
                 setChoosingCover(false);
               }}
-              className="aspect-square overflow-hidden rounded-control border-2 border-transparent transition hover:border-accent"
+              className="aspect-square overflow-hidden rounded-control border-2 border-transparent transition hover:border-primary"
             >
               <img
                 src={mediaUrl(asset.id, 'thumbnail')}

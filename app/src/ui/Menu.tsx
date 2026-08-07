@@ -98,7 +98,7 @@ export function Menu({
                 )}
               </span>
 
-              {item.checked && <span className="text-accent">✓</span>}
+              {item.checked && <span className="text-primary">✓</span>}
             </button>
           </div>
         ))}

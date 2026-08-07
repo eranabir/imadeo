@@ -104,7 +104,7 @@ export function ConnectScreen({ onConnected }: Props) {
           disabled={checking || address.trim().length === 0}
           style={({ pressed }) => ({
             marginTop: 26,
-            backgroundColor: colors.accent,
+            backgroundColor: colors.primary,
             borderRadius: 999,
             paddingVertical: 15,
             alignItems: 'center',

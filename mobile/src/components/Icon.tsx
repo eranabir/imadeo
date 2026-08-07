@@ -26,7 +26,8 @@ export type IconName =
   | 'check'
   | 'edit'
   | 'phone'
-  | 'done';
+  | 'done'
+  | 'cloud-done';
 
 interface Props {
   name: IconName;
@@ -303,6 +304,21 @@ function shapes(name: IconName, color: string) {
         <>
           <Circle cx="12" cy="12" r="8.6" />
           <Path d="M8.3 12.2l2.6 2.6 4.8-5" />
+        </>
+      );
+
+    /**
+     * On the server, said in the corner of a thumbnail.
+     *
+     * The cloud sits high and the tick low inside it, because at the 13px this
+     * is actually drawn a centred tick closes up against the cloud's own
+     * underside and the whole thing reads as a smudge.
+     */
+    case 'cloud-done':
+      return (
+        <>
+          <Path d="M6.9 17.3a3.9 3.9 0 0 1-.6-7.7 5.4 5.4 0 0 1 10.3-.5 3.8 3.8 0 0 1 .8 7.5" />
+          <Path d="M9.2 14.4l2.1 2.1 4-4.2" />
         </>
       );
   }

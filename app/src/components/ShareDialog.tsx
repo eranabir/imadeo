@@ -174,7 +174,7 @@ export function ShareDialog({
                   key={member.userId}
                   className="flex items-center gap-2.5 rounded-control px-2.5 py-2 hover:bg-surface-sunken"
                 >
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 text-[11px] font-semibold text-white">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-secondary to-primary-deep text-[11px] font-semibold text-white">
                     {member.user.name.charAt(0).toUpperCase()}
                   </span>
                   <span className="min-w-0 flex-1">

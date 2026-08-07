@@ -266,8 +266,8 @@ export function People() {
       )}
 
       {status?.ready && status.pendingAssets > 0 && (
-        <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control bg-accent-soft px-3.5 py-2.5">
-          <p className="text-sm text-accent">
+        <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control bg-primary-soft px-3.5 py-2.5">
+          <p className="text-sm text-primary">
             {status.pendingAssets.toLocaleString()} photos have not been scanned for faces yet.
           </p>
           <Button
@@ -331,7 +331,7 @@ export function People() {
                     className={clsx(
                       'relative block aspect-square overflow-hidden rounded-full bg-surface-sunken transition',
                       isSelected
-                        ? 'ring-3 ring-accent ring-offset-2 ring-offset-surface'
+                        ? 'ring-3 ring-primary ring-offset-2 ring-offset-surface'
                         : 'group-hover:opacity-90',
                     )}
                   >
@@ -350,7 +350,7 @@ export function People() {
                     )}
 
                     {isSelected && (
-                      <span className="absolute bottom-1 right-1 grid h-6 w-6 place-items-center rounded-full bg-accent text-white">
+                      <span className="absolute bottom-1 right-1 grid h-6 w-6 place-items-center rounded-full bg-primary text-white">
                         <Check size={14} strokeWidth={3} />
                       </span>
                     )}
@@ -379,12 +379,12 @@ export function People() {
                       setEditingId(null);
                       if (name !== person.name) rename.mutate({ id: person.id, name });
                     }}
-                    // `focus:outline-none` because the accent border already
+                    // `focus:outline-none` because the primary border already
                     // shows focus; without it the global focus ring sits
                     // outside the border and reads as a second box.
                     size="sm"
                     containerClassName="mt-2 w-full"
-                    className="border-accent text-center font-medium focus:outline-none"
+                    className="border-primary text-center font-medium focus:outline-none"
                   />
                 ) : (
                   <Tooltip label={person.name ? 'Click to rename' : 'Click to add a name'}>

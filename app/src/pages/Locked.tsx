@@ -83,7 +83,7 @@ export function Locked() {
           title={vault?.isConfigured ? 'The vault is locked' : 'Set up your vault'}
           description={
             vault?.isConfigured
-              ? 'Enter your PIN to see the folders and albums you have locked away. They stay out of the timeline, search results and share links.'
+              ? 'Enter your private password to see the folders and albums you have locked away. They stay out of the timeline, search results and share links.'
               : 'Choose a PIN to start locking folders and albums. Locked items are hidden from the timeline, search and every share link.'
           }
           action={
@@ -100,7 +100,7 @@ export function Locked() {
         <EmptyState
           icon={Lock}
           title="Nothing is locked yet"
-          description="Right-click any folder or album and choose “Move to vault” to keep it here."
+          description="Right-click any folder or album and choose “Make private” to keep it here."
         />
       ) : (
         <div className="space-y-7 px-5 pb-24 pt-4">

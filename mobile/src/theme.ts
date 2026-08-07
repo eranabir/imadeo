@@ -1,6 +1,11 @@
 import { Platform, type ViewStyle } from 'react-native';
 
-/** Matches the web client's dark palette so the two do not look like siblings. */
+/**
+ * Matches the web client's dark palette so the two do not look like siblings.
+ *
+ * Primary is Sky and secondary its lighter partner — the same pair the web
+ * client and the marketing pages use, so all three read as one product.
+ */
 export const colors = {
   bg: '#0d1418',
   surface: '#141e24',
@@ -12,9 +17,14 @@ export const colors = {
   text: '#e8eff2',
   muted: '#93a6b1',
   faint: '#5f7480',
-  accent: '#14b8a6',
-  /** Legible on top of `accent`, which is far too light for white text. */
-  onAccent: '#04211d',
+  /** The one colour that means "this is the thing": selected tabs, primary
+   *  buttons, links. */
+  primary: '#3fc9ff',
+  /** Primary's lighter partner. Only ever the far end of a gradient — on its
+   *  own it has too little contrast to carry text or an icon. */
+  secondary: '#7cdbff',
+  /** Legible on top of `primary`, which is far too light for white text. */
+  onPrimary: '#04202e',
   danger: '#f43f5e',
   /** Behind a blur that is too light on its own to carry text. */
   scrim: 'rgba(13, 20, 24, 0.55)',
@@ -35,17 +45,17 @@ export const colors = {
 };
 
 /** The brand ramp from the app icon, for anything that should feel primary. */
-export const BRAND = ['#34d399', '#14b8a6', '#0e7490'] as const;
+export const BRAND = ['#7cdbff', '#3fc9ff', '#0369a1'] as const;
 
 /**
  * The palette is closed.
  *
- * Every icon, title and header plate in the app uses `accent`. An earlier
+ * Every icon, title and header plate in the app uses `primary`. An earlier
  * version gave each section its own hue — violet for folders, amber for albums
  * — copied from the web client's navigation rail. It was not asked for and is
  * gone. Nothing here gains a colour without being asked for first.
  */
-export const wash = (hex: string) => `${hex}26`;
+export const wash = (hex: string) => `${hex}36`;
 
 /** Android's ripple, tuned to be visible on a dark surface without flashing. */
 export const ripple = { color: 'rgba(232, 239, 242, 0.11)', borderless: false };

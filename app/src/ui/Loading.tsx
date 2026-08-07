@@ -27,7 +27,11 @@ export function Loading({
     <div
       role="status"
       aria-live="polite"
-      className={clsx('grid place-items-center gap-5 py-24', className)}
+      // content-center as well as place-items-center: when a caller gives this a
+      // full-height parent the implicit rows would otherwise stretch to fill it,
+      // stranding the tiles and the label at opposite ends instead of grouping
+      // them by the gap.
+      className={clsx('grid content-center place-items-center gap-5 py-24', className)}
     >
       <div className="flex items-end gap-2">
         {tiles.map((tile, index) => (

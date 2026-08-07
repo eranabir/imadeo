@@ -242,7 +242,7 @@ export function FolderView() {
           <Section
             title="Albums"
             note={
-              <Link to="/albums" className="text-accent hover:underline">
+              <Link to="/albums" className="text-primary hover:underline">
                 see every album
               </Link>
             }

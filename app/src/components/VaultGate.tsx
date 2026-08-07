@@ -74,12 +74,12 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
 
   const submit = () => {
     setError(null);
-    if (!/^\d{4,12}$/.test(pin)) {
-      setError('The PIN must be 4 to 12 digits.');
+    if (pin.length < 8) {
+      setError('The private password must be at least 8 characters.');
       return;
     }
     if (isSetup && pin !== confirmPin) {
-      setError('The two PINs do not match.');
+      setError('The two passwords do not match.');
       return;
     }
     (isSetup ? setPinMutation : unlock).mutate();
@@ -92,11 +92,11 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
         reset();
         onClose();
       }}
-      title={isSetup ? 'Set a vault PIN' : 'Unlock the vault'}
+      title={isSetup ? 'Set a private password' : 'Unlock private items'}
       description={
         isSetup
-          ? 'Locked folders and albums are hidden from the timeline, search and every share link. There is no way to recover this PIN, so keep it somewhere safe.'
-          : 'Enter your PIN to open locked folders and albums on this device.'
+          ? 'Locked folders and albums are hidden from the timeline, search and every share link. There is no way to recover this password, so keep it somewhere safe.'
+          : 'Enter your private password to open locked folders and albums on this device.'
       }
       footer={
         <>
@@ -114,38 +114,35 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
             disabled={setPinMutation.isPending || unlock.isPending}
             onClick={submit}
           >
-            {isSetup ? 'Set PIN' : 'Unlock'}
+            {isSetup ? 'Set password' : 'Unlock'}
           </Button>
         </>
       }
     >
       <div className="space-y-3">
         <Input
-          label="PIN"
+          label="Private password"
           type="password"
-          inputMode="numeric"
-          autoComplete="off"
+          autoComplete={isSetup ? 'new-password' : 'current-password'}
           autoFocus
           value={pin}
-          onChange={(event) => setPin(event.target.value.replace(/\D/g, ''))}
+          onChange={(event) => setPin(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !isSetup) submit();
           }}
-          placeholder="••••"
+          placeholder={isSetup ? 'At least 8 characters' : ''}
         />
 
         {isSetup && (
           <Input
-            label="Confirm PIN"
+            label="Confirm private password"
             type="password"
-            inputMode="numeric"
-            autoComplete="off"
+            autoComplete="new-password"
             value={confirmPin}
-            onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, ''))}
+            onChange={(event) => setConfirmPin(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') submit();
             }}
-            placeholder="••••"
           />
         )}
 
@@ -153,8 +150,8 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
 
         <p className="flex items-start gap-2 rounded-control bg-surface-sunken px-3 py-2.5 text-xs text-content-muted">
           <Lock size={13} className="mt-0.5 shrink-0" />
-          The vault re-locks itself automatically after a period of inactivity, and on every
-          other device you are signed in to.
+          Private items re-lock themselves after a period of inactivity, and on every other
+          device you are signed in to.
         </p>
       </div>
     </Dialog>

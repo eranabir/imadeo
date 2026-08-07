@@ -27,7 +27,10 @@ import { useLibraryActions } from './useLibraryActions';
 
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
 const NAV = [
-  { to: '/', label: 'Photos', icon: Images, tint: 'text-cyan-500', end: true },
+  // The primary token rather than a Tailwind cyan: this row's colour and the
+  // selected pill's label are the same colour, and a hand-picked cyan next to
+  // the primary is two cyans that nearly match, which looks like a mistake.
+  { to: '/', label: 'Photos', icon: Images, tint: 'text-primary', end: true },
   { to: '/albums', label: 'Albums', icon: LayoutGrid, tint: 'text-amber-500', end: false },
   // Folders is an ordinary destination like the rest; the tree below it is
   // just a shortcut into that page, not a separate concept.
@@ -132,15 +135,15 @@ export function Layout() {
    */
   const quota = user?.quotaSizeInBytes ? Number(user.quotaSizeInBytes) : null;
   const used = stats ? Number(stats.usageInBytes) : 0;
-  const diskTotal = stats?.disk?.totalBytes ?? null;
   const diskFree = stats?.disk?.availableBytes ?? null;
 
-  const capacity = quota ?? diskTotal;
-  const free = quota !== null ? Math.max(0, quota - used) : diskFree;
+  // Room this library has, not the disk's total size — see the Storage card in
+  // Settings. Measuring an empty library against a disk other things had filled
+  // put this bar at 80% with nothing uploaded.
+  const capacity = quota ?? (diskFree !== null ? used + diskFree : null);
+  const free = capacity !== null ? Math.max(0, capacity - used) : null;
   const percent =
-    capacity !== null && capacity > 0
-      ? Math.min(100, ((quota !== null ? used : (stats?.disk?.usedBytes ?? used)) / capacity) * 100)
-      : null;
+    capacity !== null && capacity > 0 ? Math.min(100, (used / capacity) * 100) : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -167,17 +170,19 @@ export function Layout() {
                     clsx(
                       'group flex items-center gap-3 rounded-full px-3.5 py-2.5 text-sm transition',
                       isActive
-                        ? 'bg-accent-soft font-semibold text-accent'
+                        ? 'bg-primary-soft font-semibold text-primary'
                         : 'text-content hover:bg-surface-sunken',
                     )
                   }
                 >
-                  {({ isActive }) => (
+                  {() => (
                     <>
-                      <Icon
-                        size={18}
-                        className={clsx('shrink-0 transition', isActive ? 'text-accent' : tint)}
-                      />
+                      {/* The tint stays on whether or not this is the current
+                          page. Swapping it for the primary when selected meant
+                          Albums went amber to blue on the way in, so the one
+                          row you were looking at was the one that lost its
+                          colour. The pill and the label carry the state. */}
+                      <Icon size={18} className={clsx('shrink-0 transition', tint)} />
                       <span className="flex-1">{label}</span>
 
                       {/* Creating a folder belongs on the Folders row rather
@@ -253,7 +258,7 @@ export function Layout() {
                         className={clsx(
                           'mx-1 mt-1 rounded-md border border-dashed px-3 py-1.5 text-[11px] transition',
                           rootDrop
-                            ? 'border-accent bg-accent text-white'
+                            ? 'border-primary bg-primary text-white'
                             : 'border-border-strong text-content-muted',
                         )}
                       >
@@ -283,7 +288,7 @@ export function Layout() {
 
             <div className="h-1.5 overflow-hidden rounded-full bg-border-subtle">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-teal-500 to-cyan-600 transition-[width]"
+                className="h-full rounded-full bg-gradient-to-r from-secondary to-primary-deep transition-[width]"
                 style={{ width: `${percent ?? 6}%` }}
               />
             </div>

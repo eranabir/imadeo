@@ -77,13 +77,13 @@ function FolderRow({
         className={clsx(
           'group relative flex items-center gap-1 rounded-md pr-3.5 transition',
           activeId === folder.id
-            ? // The folder being viewed gets the accent bar as well as the tint,
+            ? // The folder being viewed gets the primary bar as well as the tint,
               // so it stays obvious once several branches are open.
-              'bg-accent-soft font-medium text-accent before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-accent'
+              'bg-primary-soft font-medium text-primary before:absolute before:inset-y-1 before:left-0 before:w-[3px] before:rounded-full before:bg-primary'
             : 'hover:bg-surface-sunken',
           // Solid fill rather than an outline: at this row height a ring reads
           // as a rendering glitch, a filled target reads as "drop here".
-          dropTarget && 'bg-accent text-white',
+          dropTarget && 'bg-primary text-white',
         )}
         style={{ paddingLeft: `${folder.depth * 12}px` }}
         draggable
@@ -187,8 +187,8 @@ function AlbumRow({
         className={({ isActive }) =>
           clsx(
             'flex items-center gap-2 rounded-md py-1 pr-3.5 text-sm transition',
-            isActive ? 'bg-accent-soft text-accent' : 'hover:bg-surface-sunken',
-            dropTarget && 'bg-accent text-white',
+            isActive ? 'bg-primary-soft text-primary' : 'hover:bg-surface-sunken',
+            dropTarget && 'bg-primary text-white',
           )
         }
       >

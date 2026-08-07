@@ -52,7 +52,11 @@ function App() {
     void restore();
   }, [restore]);
 
-  const { data: registration, isLoading: checkingSetup } = useQuery({
+  // isFetched, not isLoading: it turns true once the query has settled and stays
+  // true across later refetches. isLoading goes true again on every refetch, and
+  // because this gate unmounts the routes below, a child that refetches the same
+  // key on mount would unmount itself, refetch, remount, and never settle.
+  const { data: registration, isFetched: setupChecked } = useQuery({
     queryKey: ['auth', 'registration'],
     queryFn: async () =>
       (await api.get<{ allowed: boolean; isFirstUser: boolean }>('/auth/registration')).data,
@@ -66,13 +70,16 @@ function App() {
    */
   const needsSetup = registration?.isFirstUser === true;
 
-  if (checkingSetup) {
+  if (!setupChecked) {
     return <Loading className="h-full" />;
   }
 
   const invited = new URLSearchParams(location.search).has('invite');
 
-  if (needsSetup && location.pathname !== '/register') {
+  // Never bounce a signed-in person to setup. Their existence proves the server
+  // has an account, and this query's answer can still be the cached pre-sign-up
+  // one — which sent /register and / redirecting to each other forever.
+  if (needsSetup && status !== 'authenticated' && location.pathname !== '/register') {
     return <Navigate to="/register" replace />;
   }
 

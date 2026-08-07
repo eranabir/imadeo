@@ -45,7 +45,7 @@ export function OAuthCallback() {
           <button
             type="button"
             onClick={() => navigate('/login', { replace: true })}
-            className="mt-4 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white"
+            className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white"
           >
             Back to sign in
           </button>

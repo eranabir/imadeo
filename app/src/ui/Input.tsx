@@ -80,7 +80,7 @@ export function Input({
             SIZES[size],
             adornment ? (size === 'sm' ? 'pl-8' : 'pl-10') : size === 'sm' ? 'pl-3' : 'pl-3.5',
             trailing ? 'pr-9' : size === 'sm' ? 'pr-3' : 'pr-3.5',
-            error ? 'border-danger' : 'border-border-subtle focus:border-accent',
+            error ? 'border-danger' : 'border-border-subtle focus:border-primary',
             className,
           )}
           {...rest}

@@ -44,6 +44,10 @@ export function Login() {
     queryKey: ['auth', 'registration'],
     queryFn: async () =>
       (await api.get<{ allowed: boolean; isFirstUser: boolean }>('/auth/registration')).data,
+    // Matches the staleTime App uses for this same key. Left at the default of 0
+    // it counted the shared cache entry as stale the moment this screen mounted,
+    // so every mount fired the request again.
+    staleTime: 60_000,
     retry: false,
   });
 
@@ -103,7 +107,9 @@ export function Login() {
           `justify-center` with generous padding rather than `items-center`, so
           the form breathes at the top on a tall window and can still scroll
           instead of being clipped on a short one. */}
-      <div className="relative flex min-h-full flex-col justify-center overflow-y-auto px-6 py-20">
+      {/* See Register.tsx: centred content overflows past the top of a scroll
+          container, so centre only when it actually fits. */}
+      <div className="relative flex min-h-full flex-col [justify-content:safe_center] overflow-y-auto px-6 py-20">
         <IconButton
           label={`Theme: ${theme}`}
           onClick={cycle}
@@ -184,7 +190,7 @@ export function Login() {
           {registration?.allowed && (
             <p className="mt-6 text-center text-sm text-content-muted">
               {registration.isFirstUser ? 'No accounts yet.' : 'New here?'}{' '}
-              <Link to="/register" className="font-medium text-accent hover:underline">
+              <Link to="/register" className="font-medium text-primary hover:underline">
                 {registration.isFirstUser ? 'Set up the server' : 'Create an account'}
               </Link>
             </p>
@@ -243,7 +249,7 @@ export function Login() {
               { icon: FolderTree, text: 'Folders and sub-folders that work like your desktop' },
               { icon: Sparkles, text: 'Search by what is in the picture, not the file name' },
               { icon: Users, text: 'Faces grouped automatically, albums shared by link' },
-              { icon: Lock, text: 'A PIN-locked vault for the private ones' },
+              { icon: Lock, text: 'A password lock for the private ones' },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3 text-sm text-white/85">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur">

@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { faceThumbnail, thumbnail, type Person } from '../lib/api';
-import { colors, radius, shadow } from '../theme';
+import { colors, radius, shadow, wash } from '../theme';
 import { Icon } from './Icon';
 import { Touchable } from './ui';
 
@@ -78,12 +78,12 @@ export function FolderCard({
             width: 40,
             height: 40,
             borderRadius: radius.sm,
-            backgroundColor: 'rgba(20, 184, 166, 0.14)',
+            backgroundColor: wash(colors.primary),
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Icon name="folder" size={21} color={folder.color ?? colors.accent} />
+          <Icon name="folder" size={21} color={folder.color ?? colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>

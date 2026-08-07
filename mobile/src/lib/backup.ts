@@ -27,6 +27,16 @@ async function saveDone(done: Set<string>) {
   await setItem(DONE_KEY, JSON.stringify([...done]));
 }
 
+/**
+ * Which of this phone's assets are already on the server.
+ *
+ * The grid marks these, so "is this one safe yet" is answerable per photo
+ * rather than only as a count in the header.
+ */
+export async function uploadedIds(): Promise<Set<string>> {
+  return loadDone();
+}
+
 /** Identifies this phone to the server, so several devices stay distinguishable. */
 async function deviceId(): Promise<string> {
   const existing = await getItem(DEVICE_KEY);
@@ -53,6 +63,12 @@ export async function runBackup(
   baseUrl: string,
   onProgress: (p: Progress) => void,
   shouldStop: () => boolean,
+  /**
+   * Restricts the run to these device asset ids. Omitted, everything this phone
+   * has not sent goes. Anything already uploaded is skipped either way, so
+   * picking a photo that is already safe costs nothing.
+   */
+  only?: string[],
 ): Promise<Progress> {
   const token = await storedToken();
   if (!token) throw new Error('Not signed in.');
@@ -66,7 +82,10 @@ export async function runBackup(
     sortBy: [MediaLibrary.SortBy.creationTime],
   });
 
-  const pending = page.assets.filter((asset) => !done.has(asset.id));
+  const wanted = only ? new Set(only) : null;
+  const pending = page.assets.filter(
+    (asset) => !done.has(asset.id) && (wanted === null || wanted.has(asset.id)),
+  );
   const progress: Progress = { done: 0, total: pending.length, failed: 0 };
   onProgress({ ...progress });
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionBar } from '../selection';
-import { colors, radius, ripple, shadow } from '../theme';
+import { colors, radius, ripple, shadow, wash } from '../theme';
 import { Glass, liquidGlass } from './Glass';
 import { Icon, type IconName } from './Icon';
 
@@ -41,7 +41,14 @@ const PILL_WIDTH = 54;
 /** Padding the indicator has to clear to line up with the icons. */
 const ROW_PAD_Y = 6;
 const ROW_PAD_X = 4;
-const TAB_PAD_Y = 2;
+/**
+ * Each column's own vertical padding, and the indicator's offset within the row.
+ *
+ * The same number in both places or the capsule does not sit on the icon. It was
+ * declared here as 2 while the column below hardcoded 4, so the indicator rode
+ * two points high and every selected glyph sat low inside it.
+ */
+const TAB_PAD_Y = 4;
 
 /**
  * The bar's outer height, so anything floating above it can clear it.
@@ -161,7 +168,7 @@ export function Tabs({ active, onChange }: Props) {
                 width: PILL_WIDTH,
                 height: PILL_HEIGHT,
                 borderRadius: PILL_HEIGHT / 2,
-                backgroundColor: 'rgba(20, 184, 166, 0.22)',
+                backgroundColor: wash(colors.primary),
                 transform: [{ translateX: slide }],
               }}
             />
@@ -189,7 +196,7 @@ export function Tabs({ active, onChange }: Props) {
                 style={({ pressed }) => ({
                   flex: 1,
                   alignItems: 'center',
-                  paddingVertical: 4,
+                  paddingVertical: TAB_PAD_Y,
                   opacity: pressed && Platform.OS !== 'android' ? 0.6 : 1,
                 })}
               >
@@ -205,7 +212,7 @@ export function Tabs({ active, onChange }: Props) {
                   <Icon
                     name={tab.icon}
                     size={ICON}
-                    color={on ? colors.accent : colors.muted}
+                    color={on ? colors.primary : colors.muted}
                     strong={on}
                   />
                 </View>
@@ -217,7 +224,7 @@ export function Tabs({ active, onChange }: Props) {
                   adjustsFontSizeToFit
                   minimumFontScale={0.8}
                   style={{
-                    color: on ? colors.accent : colors.muted,
+                    color: on ? colors.primary : colors.muted,
                     fontSize: 10,
                     fontWeight: on ? '700' : '500',
                     textAlign: 'center',

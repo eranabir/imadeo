@@ -146,7 +146,7 @@ export function SearchOptions({
                   >
                     <span
                       className={`mx-auto block aspect-square w-full overflow-hidden rounded-full bg-surface-sunken ring-2 ring-offset-2 ring-offset-surface-overlay transition ${
-                        picked ? 'ring-accent' : 'ring-transparent'
+                        picked ? 'ring-primary' : 'ring-transparent'
                       }`}
                     >
                       {subject.thumbnailPath ? (
@@ -174,7 +174,7 @@ export function SearchOptions({
               <button
                 type="button"
                 onClick={() => setShowAllPeople(true)}
-                className="mx-auto mt-3 flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
+                className="mx-auto mt-3 flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
               >
                 <ArrowRight size={14} />
                 See all {matching.length}

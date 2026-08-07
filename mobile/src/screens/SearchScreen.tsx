@@ -117,11 +117,11 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
               paddingHorizontal: 13,
               borderRadius: radius.md,
               borderWidth: 1,
-              borderColor: focused ? colors.accent : colors.border,
+              borderColor: focused ? colors.primary : colors.border,
               backgroundColor: colors.surface,
             }}
           >
-            <Icon name="search" size={17} color={focused ? colors.accent : colors.faint} />
+            <Icon name="search" size={17} color={focused ? colors.primary : colors.faint} />
             <TextInput
               value={text}
               onChangeText={setText}

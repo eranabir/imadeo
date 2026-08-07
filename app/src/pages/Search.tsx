@@ -132,7 +132,7 @@ export function Search() {
               type="button"
               onClick={entry.clear}
               title="Remove this filter"
-              className="flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent transition hover:bg-accent/20"
+              className="flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
             >
               {entry.label}
               <X size={11} />
@@ -180,7 +180,7 @@ export function Search() {
       )}
 
       {contextSearch && (
-        <p className="mx-5 mt-3 rounded-control bg-accent-soft px-3.5 py-2 text-xs text-accent">
+        <p className="mx-5 mt-3 rounded-control bg-primary-soft px-3.5 py-2 text-xs text-primary">
           Showing photos that look like “{filters.text}”, closest first. The other filters do not
           apply to this kind of search.
         </p>

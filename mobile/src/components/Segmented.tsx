@@ -64,20 +64,20 @@ export function Segmented<T extends string>({ segments, active, onChange }: Prop
                 paddingVertical: 9,
                 paddingHorizontal: 2,
                 borderRadius: radius.pill,
-                backgroundColor: on ? colors.accent : 'transparent',
+                backgroundColor: on ? colors.primary : 'transparent',
               }}
             >
               {segment.icon && (
                 <Icon
                   name={segment.icon}
                   size={tight ? 13 : 15}
-                  color={on ? colors.onAccent : colors.muted}
+                  color={on ? colors.onPrimary : colors.muted}
                 />
               )}
               <Text
                 numberOfLines={1}
                 style={{
-                  color: on ? colors.onAccent : colors.muted,
+                  color: on ? colors.onPrimary : colors.muted,
                   fontSize: tight ? 12.5 : 14,
                   fontWeight: on ? '700' : '600',
                 }}

@@ -8,7 +8,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -72,8 +71,9 @@ export class CreateApiKeyDto {
 }
 
 export class VaultPinDto {
-  @ApiProperty({ description: '4 to 12 digits' })
-  @Matches(/^\d{4,12}$/, { message: 'PIN must be 4 to 12 digits' })
+  @ApiProperty({ description: 'At least 8 characters. Any characters, not only digits.' })
+  @IsString()
+  @MinLength(8, { message: 'Vault password must be at least 8 characters' })
   pin!: string;
 }
 
@@ -91,8 +91,9 @@ export class AcceptInviteDto {
 }
 
 export class ChangeVaultPinDto extends VaultPinDto {
-  @ApiProperty()
-  @Matches(/^\d{4,12}$/)
+  @ApiProperty({ description: 'At least 8 characters. Any characters, not only digits.' })
+  @IsString()
+  @MinLength(8, { message: 'Vault password must be at least 8 characters' })
   newPin!: string;
 }
 
