@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Imadeo services</title>
+<style>
+  /* Imadeo's own palette, so this looks like part of the project rather than
+     a tool borrowed from somewhere else. Nothing new is invented here. */
+  :root {
+    --bg: #0d1418;
+    --surface: #141e24;
+    --raised: #1b272e;
+    --border: #24333c;
+    --text: #e8eff2;
+    --muted: #93a6b1;
+    --faint: #5f7480;
+    --primary: #3fc9ff;
+    --up: #34d399;
+    --down: #f43f5e;
+    --unknown: #5f7480;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px 20px 56px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  h1 { font-size: 24px; letter-spacing: -0.03em; margin: 0; font-weight: 700; }
+
+  .checked {
+    font-size: 12.5px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lede { color: var(--muted); font-size: 14.5px; margin: 0 0 26px; max-width: 62ch; }
+
+  h2 {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 30px 0 10px;
+    font-weight: 700;
+  }
+
+  .grid { display: grid; gap: 10px; }
+
+  .card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    /* The severity stripe reads before the text does. */
+    border-left: 3px solid var(--unknown);
+  }
+  .card[data-state="up"]      { border-left-color: var(--up); }
+  .card[data-state="down"]    { border-left-color: var(--down); }
+  .card[data-state="unknown"] { border-left-color: var(--unknown); }
+
+  .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--unknown); flex: none; }
+  .card[data-state="up"] .dot   { background: var(--up); box-shadow: 0 0 0 4px rgb(52 211 153 / 0.16); }
+  .card[data-state="down"] .dot { background: var(--down); box-shadow: 0 0 0 4px rgb(244 63 94 / 0.16); }
+  .card[data-state="checking"] .dot { background: var(--primary); animation: pulse 1s ease-in-out infinite; }
+
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+
+  .name { font-weight: 600; font-size: 15.5px; }
+  .name a { color: inherit; text-decoration: none; }
+  .name a:hover, .name a:focus-visible { color: var(--primary); text-decoration: underline; }
+  .what { color: var(--faint); font-size: 12.5px; margin-top: 1px; }
+
+  .state {
+    text-align: right;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .port { color: var(--faint); font-size: 11.5px; }
+
+  .cmd {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--primary);
+    overflow-x: auto;
+    white-space: nowrap;
+    user-select: all;
+  }
+  /* Only worth showing the way to start something that is not running. */
+  .card[data-state="up"] .cmd, .card[data-state="checking"] .cmd { display: none; }
+
+  footer { color: var(--faint); font-size: 12.5px; margin-top: 34px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
+  a { color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Imadeo services</h1>
+    <span class="checked" id="checked">checking…</span>
+  </header>
+  <p class="lede">
+    What is running right now. Re-checked every five seconds; a name links to the
+    thing itself. Anything down shows the command that starts it.
+  </p>
+
+  <h2>Application</h2>
+  <div class="grid" id="app"></div>
+
+  <h2>Mobile</h2>
+  <div class="grid" id="mobile"></div>
+
+  <h2>Containers</h2>
+  <div class="grid" id="infra"></div>
+
+  <footer>
+    Postgres and Redis speak their own protocols, so a browser cannot ask them
+    anything directly. The API pings both and reports them on
+    <code>/api/health</code>, which is where those two rows come from — so if the
+    API is down, they read as unknown rather than as broken.
+  </footer>
+</div>
+
+<script>
+const SERVICES = [
+  {
+    group: 'app', name: 'API server', what: 'NestJS — the whole backend',
+    url: 'http://localhost:3001/api', port: 3001,
+    cmd: 'yarn dev:server',
+  },
+  {
+    group: 'app', name: 'Web app', what: 'React + Vite client',
+    url: 'http://localhost:5173', port: 5173,
+    cmd: 'yarn dev:app',
+  },
+  {
+    group: 'app', name: 'Docs', what: 'Static marketing pages',
+    url: 'http://localhost:4173', port: 4173,
+    cmd: 'npx serve docs -l 4173',
+  },
+  {
+    group: 'mobile', name: 'Metro', what: 'Expo bundler for the phone',
+    url: 'http://localhost:8081/status', port: 8081,
+    cmd: 'yarn workspace @imadeo/mobile expo start',
+  },
+  {
+    group: 'infra', name: 'Machine learning', what: 'Faces and content search',
+    url: 'http://localhost:3003', port: 3003,
+    cmd: 'docker compose up -d machine-learning',
+  },
+  {
+    group: 'infra', name: 'Postgres', what: 'Reported by the API, not probed directly',
+    port: 5433, derived: 'database',
+    cmd: 'yarn infra:up',
+  },
+  {
+    group: 'infra', name: 'Redis', what: 'Job queues — reported by the API, not probed directly',
+    port: 6380, derived: 'redis',
+    cmd: 'yarn infra:up',
+  },
+];
+
+/**
+ * Whether something is listening, without needing it to allow us.
+ *
+ * `no-cors` gives back an opaque response we cannot read, but the distinction
+ * that matters here is only whether the connection was made at all — a reply we
+ * are not allowed to see still proves the service answered. Reading the body
+ * would mean every service had to add CORS headers for a dev dashboard.
+ */
+async function reachable(url) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), 3000);
+  try {
+    await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: stop.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The API's own health report, when CORS lets us read it. */
+async function health() {
+  try {
+    const response = await fetch('http://localhost:3001/api/health', { cache: 'no-store' });
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+function card(service) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.dataset.state = 'checking';
+  el.innerHTML = `
+    <span class="dot"></span>
+    <span>
+      <div class="name">${service.url ? `<a href="${service.url}" target="_blank" rel="noreferrer">${service.name}</a>` : service.name}</div>
+      <div class="what">${service.what}</div>
+    </span>
+    <span class="state"><span class="label">checking</span><br><span class="port">:${service.port}</span></span>
+    <div class="cmd">${service.cmd}</div>`;
+  return el;
+}
+
+const cards = new Map();
+for (const service of SERVICES) {
+  const el = card(service);
+  cards.set(service.name, el);
+  document.getElementById(service.group).append(el);
+}
+
+function paint(service, state, label) {
+  const el = cards.get(service.name);
+  el.dataset.state = state;
+  el.querySelector('.label').textContent = label;
+}
+
+async function check() {
+  const report = await health();
+
+  await Promise.all(SERVICES.map(async (service) => {
+    if (service.opaque) {
+      paint(service, 'unknown', 'not probeable');
+      return;
+    }
+    if (service.derived) {
+      if (!report) paint(service, 'unknown', 'API is down');
+      else paint(service, report[service.derived] === 'ok' ? 'up' : 'down', report[service.derived] ?? 'unknown');
+      return;
+    }
+    const ok = await reachable(service.url);
+    paint(service, ok ? 'up' : 'down', ok ? 'running' : 'not running');
+  }));
+
+  document.getElementById('checked').textContent =
+    'checked ' + new Date().toLocaleTimeString();
+}
+
+check();
+setInterval(check, 5000);
+</script>
+</body>
+</html>

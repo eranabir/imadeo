@@ -28,7 +28,7 @@
     "docker:logs": "docker compose logs -f",
     "lint": "yarn workspaces foreach -A run lint",
     "test": "yarn workspaces foreach -A run test",
-    "dev:mobile": "yarn workspace @imadeo/mobile start --clear"
+    "dev:mobile": "yarn workspace @imadeo/mobile start"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

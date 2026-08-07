@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auth, AuthedUserId } from '../../common/decorators';
+import { JobService } from '../../infra/job/job.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
 import { MailSettingsService } from '../../infra/mail/mail-settings.service';
@@ -16,6 +17,7 @@ export class SystemController {
     private readonly config: ConfigService<AppConfig, true>,
     private readonly storageLocation: StorageLocationService,
     private readonly mailSettings: MailSettingsService,
+    private readonly jobs: JobService,
   ) {}
 
   @Auth({ public: true })
@@ -34,13 +36,16 @@ export class SystemController {
   @Get('health')
   @ApiOperation({ summary: 'Liveness and dependency check' })
   async health() {
-    let database = 'ok';
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-    } catch {
-      database = 'unavailable';
-    }
-    return { status: database === 'ok' ? 'ok' : 'degraded', database, uptime: process.uptime() };
+    // Asked together: one dependency being down should not hide the other.
+    const [database, redis] = await Promise.all([
+      this.prisma
+        .$queryRaw`SELECT 1`.then(() => 'ok')
+        .catch(() => 'unavailable'),
+      this.jobs.isRedisReachable().then((ok) => (ok ? 'ok' : 'unavailable')),
+    ]);
+
+    const ok = database === 'ok' && redis === 'ok';
+    return { status: ok ? 'ok' : 'degraded', database, redis, uptime: process.uptime() };
   }
 
   @Auth({ public: true })

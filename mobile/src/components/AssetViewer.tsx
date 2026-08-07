@@ -12,8 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { duration as formatDuration, type Asset } from '../lib/api';
-import { colors, radius, shadow } from '../theme';
-import { Glass } from './Glass';
+import { colors, radius } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { ConfirmSheet } from './sheets';
 import { Touchable } from './ui';
@@ -175,39 +174,35 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
                     .join(' · ')}
                 </Text>
               </View>
-            </View>
 
-            <View
-              style={{
-                position: 'absolute',
-                left: 12,
-                right: 12,
-                bottom: Math.max(insets.bottom, 12),
-              }}
-            >
-              <Glass radius={radius.xl} style={shadow(3)}>
-                <View style={{ flexDirection: 'row', paddingVertical: 8 }}>
-                  <ViewerAction
-                    // Hollow means "not yet", solid means "already". The label
-                    // carries the action; the glyph carries the state.
-                    icon={favorite ? 'heart-filled' : 'heart'}
-                    label={favorite ? 'Remove from favourites' : 'Favourite'}
-                    tint={favorite ? colors.danger : '#fff'}
-                    disabled={busy}
-                    onPress={() => {
-                      setFavorites((f) => ({ ...f, [asset.id]: !favorite }));
-                      void run(() => actions.favorite(serverUrl, [asset.id], !favorite));
-                    }}
-                  />
-                  <ViewerAction
-                    icon="trash"
-                    label="Move to trash"
-                    tint="#fff"
-                    disabled={busy}
-                    onPress={() => setTrashing(true)}
-                  />
-                </View>
-              </Glass>
+              {/*
+                Favourite and trash live up here beside the close button.
+
+                They used to sit in a bar along the bottom, which is exactly
+                where a video puts its own scrubber and play button — so on
+                every video the two overlapped and the app's controls covered
+                the ones people actually needed. The bottom edge belongs to
+                whatever is being played; this bar owns the asset itself.
+              */}
+              <ViewerAction
+                // Hollow means "not yet", solid means "already". The label
+                // carries the action; the glyph carries the state.
+                icon={favorite ? 'heart-filled' : 'heart'}
+                label={favorite ? 'Remove from favourites' : 'Favourite'}
+                tint={favorite ? colors.danger : '#fff'}
+                disabled={busy}
+                onPress={() => {
+                  setFavorites((f) => ({ ...f, [asset.id]: !favorite }));
+                  void run(() => actions.favorite(serverUrl, [asset.id], !favorite));
+                }}
+              />
+              <ViewerAction
+                icon="trash"
+                label="Move to trash"
+                tint="#fff"
+                disabled={busy}
+                onPress={() => setTrashing(true)}
+              />
             </View>
           </>
         )}
@@ -268,7 +263,9 @@ function VideoPage({
       style={{ width, height }}
       contentFit="contain"
       nativeControls
-      allowsFullscreen
+      // `allowsFullscreen` is deprecated in expo-video 3; the options object
+      // replaces it and the boolean is due to stop working.
+      fullscreenOptions={{ enable: true }}
     />
   );
 }
@@ -287,14 +284,16 @@ function ViewerAction({
   disabled?: boolean;
 }) {
   return (
+    // A fixed square rather than a flexible column: these sit beside a title
+    // that should take whatever width is left, not share it equally.
     <Touchable
       onPress={onPress}
       disabled={disabled}
       radius={radius.pill}
       label={label}
-      style={{ flex: 1 }}
+      style={{ width: 40, height: 40 }}
     >
-      <View style={{ alignItems: 'center', paddingVertical: 9 }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={22} color={tint} />
       </View>
     </Touchable>

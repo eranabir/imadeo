@@ -57,7 +57,15 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
   // null path, which `useResource` treats as "do not ask".
   const timeline = useResource<Paged<Asset>>(
     serverUrl,
-    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=date&order=desc' : null,
+    /**
+     * Newest upload first, not newest photograph first.
+     *
+     * This shelf answers "what is on my server", and the thing worth seeing at
+     * the top is what arrived most recently. Sorting by capture date buried a
+     * fresh backup of an old camera roll somewhere in the middle, so a backup
+     * that had just finished looked as though nothing had happened.
+     */
+    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=added&order=desc' : null,
   );
   const allAlbums = useResource<Album[]>(
     serverUrl,

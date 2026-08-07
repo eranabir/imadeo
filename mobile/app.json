@@ -1,13 +1,20 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Imadeo",
+    "slug": "imadeo",
+    "owner": "eranabir",
     "version": "1.0.0",
+    "extra": {
+      "eas": {
+        "projectId": "ee399e99-7709-4421-bfc7-f773da4e2b2a"
+      }
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.imadeo.mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,15 +30,9 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.ACCESS_MEDIA_LOCATION",
-        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO"
       ],
-      "package": "com.anonymous.mobile"
+      "package": "app.imadeo.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"

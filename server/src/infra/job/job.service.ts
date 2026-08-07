@@ -40,6 +40,31 @@ export class JobService {
   }
 
   /**
+   * Whether Redis is actually answering.
+   *
+   * Asked through a queue's own connection rather than a new client, so this
+   * reports on the connection the jobs really use — a second client could be
+   * healthy while the pooled one is wedged. Redis speaks its own protocol, so
+   * nothing outside the server can check it directly; this is how `/health`
+   * knows, and how the services dashboard knows.
+   */
+  async isRedisReachable(): Promise<boolean> {
+    try {
+      // `waitUntilReady` never gives up on its own — ioredis reconnects
+      // forever — so a health check has to impose its own deadline or it
+      // becomes the slowest thing on the page it is reporting to.
+      await Promise.race([
+        this.queues[QUEUE.METADATA].waitUntilReady(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+      ]);
+      const connection = await this.queues[QUEUE.METADATA].client;
+      return connection.status === 'ready';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Kicks off the whole pipeline for a freshly uploaded asset. Only metadata is
    * queued directly — each stage enqueues the next once it has what it needs,
    * so a thumbnail is never attempted before the file's real orientation and
