@@ -12,7 +12,7 @@ import { ConfirmSheet, MoveSheet, PromptSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
 import { useResource, type Album, type Asset, type FolderContents, type Paged } from '../lib/api';
-import { useNavigation } from '../navigation';
+import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 
 interface Props {
@@ -43,7 +43,7 @@ type Target = { kind: 'folder' | 'album'; id: string; name: string };
  * library from within one folder would be lying about where you are.
  */
 export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props) {
-  const { push } = useNavigation();
+  const router = useRouter();
   const atRoot = folderId === null;
 
   const [shelf, setShelf] = useState<Shelf>('photos');
@@ -211,7 +211,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
               <FolderCard
                 key={folder.id}
                 folder={folder}
-                onPress={() => push({ name: 'folder', id: folder.id, title: folder.name })}
+                onPress={() => router.push({ pathname: '/folder/[id]', params: { id: folder.id, title: folder.name } })}
                 onLongPress={() =>
                   setMenuFor({ kind: 'folder', id: folder.id, name: folder.name })
                 }
@@ -231,7 +231,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
                   serverUrl={serverUrl}
                   album={album}
                   token={token}
-                  onPress={() => push({ name: 'album', id: album.id, title: album.name })}
+                  onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
                   onLongPress={() => setMenuFor({ kind: 'album', id: album.id, name: album.name })}
                 />
               </View>

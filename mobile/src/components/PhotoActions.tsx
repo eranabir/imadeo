@@ -3,11 +3,10 @@ import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { useSelectionBar } from '../selection';
-import { colors, radius, shadow } from '../theme';
+import { BAR_MARGIN, BAR_RADIUS, colors, radius, shadow } from '../theme';
 import { Glass, liquidGlass } from './Glass';
 import { Icon, type IconName } from './Icon';
 import { AssignSheet, ConfirmSheet, MoveSheet } from './sheets';
-import { BAR_MARGIN, BAR_RADIUS } from './Tabs';
 import { Touchable } from './ui';
 
 interface Props {

@@ -58,7 +58,8 @@
       "expo-background-task",
       "@maplibre/maplibre-react-native",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-router"
     ]
   }
 }

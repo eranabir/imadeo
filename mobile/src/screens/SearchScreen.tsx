@@ -8,7 +8,7 @@ import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
 import { useResource, type Asset, type Paged, type Person } from '../lib/api';
-import { useNavigation } from '../navigation';
+import { useRouter } from 'expo-router';
 import { colors, radius } from '../theme';
 
 type Mode = 'smart' | 'people' | 'places' | 'files';
@@ -44,7 +44,7 @@ const SUGGESTIONS = ['beach', 'birthday cake', 'snow', 'dog on a sofa', 'sunset'
  * makes both feel unreliable.
  */
 export function SearchScreen({ serverUrl }: { serverUrl: string }) {
-  const { push } = useNavigation();
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>('smart');
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
@@ -248,7 +248,10 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                       token={subjects.token}
                       size={68}
                       onPress={() =>
-                        push({ name: 'person', id: person.id, kind: person.kind, title: person.name || 'Unnamed' })
+                        router.push({
+                          pathname: '/person/[id]',
+                          params: { id: person.id, kind: person.kind, title: person.name || 'Unnamed' },
+                        })
                       }
                     />
                   ))}
@@ -265,10 +268,12 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                       folder={{ name: [town.city, town.country].filter(Boolean).join(', ') }}
                       detail={`${town.count.toLocaleString()} ${town.count === 1 ? 'photo' : 'photos'}`}
                       onPress={() =>
-                        push({
-                          name: 'place',
-                          city: town.city ?? '',
-                          title: [town.city, town.country].filter(Boolean).join(', '),
+                        router.push({
+                          pathname: '/place/[city]',
+                          params: {
+                            city: town.city ?? '',
+                            title: [town.city, town.country].filter(Boolean).join(', '),
+                          },
                         })
                       }
                     />
@@ -288,7 +293,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                       // to put here. "0 photos" would be a lie about a folder
                       // that matched precisely because of what is in it.
                       detail="Folder"
-                      onPress={() => push({ name: 'folder', id: folder.id, title: folder.name })}
+                      onPress={() => router.push({ pathname: '/folder/[id]', params: { id: folder.id, title: folder.name } })}
                     />
                   ))}
                 </View>
@@ -306,7 +311,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                         serverUrl={serverUrl}
                         album={album}
                         token={token}
-                        onPress={() => push({ name: 'album', id: album.id, title: album.name })}
+                        onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
                       />
                     </View>
                   ))}

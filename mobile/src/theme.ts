@@ -195,3 +195,20 @@ export function shadow(level: 1 | 2 | 3): ViewStyle {
 export const TAB_BAR_CLEARANCE = Platform.OS === 'ios' ? 114 : 104;
 
 export const radius = { sm: 10, md: 14, lg: 20, xl: 26, pill: 999 };
+
+/**
+ * The floating bars' own geometry.
+ *
+ * These lived in the hand-built tab bar, which the platform's own bar has
+ * replaced. The selection bars still float at the bottom of the screen and
+ * still need to know how far in from the edge to sit and how round to be, so
+ * the numbers moved here rather than leaving them in a component that no
+ * longer exists.
+ *
+ * `BAR_HEIGHT` is what the system bar takes, which cannot be measured — it
+ * moves to the side on iPad and changes with the platform — so this is an
+ * estimate used only to keep the server banner clear of it.
+ */
+export const BAR_RADIUS = 28;
+export const BAR_MARGIN = 12;
+export const BAR_HEIGHT = 88;

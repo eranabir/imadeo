@@ -7,7 +7,7 @@ import { useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { Segmented } from '../components/Segmented';
 import { useResource, type Person } from '../lib/api';
-import { useNavigation } from '../navigation';
+import { useRouter } from 'expo-router';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Status {
@@ -29,7 +29,7 @@ const GUTTER = 16;
  * among the family reads as the grouping having failed.
  */
 export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
-  const { push } = useNavigation();
+  const router = useRouter();
   const [kind, setKind] = useState<Kind>('PERSON');
   const { width } = useWindowDimensions();
 
@@ -123,7 +123,10 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
             token={token}
             size={avatar}
             onPress={() =>
-              push({ name: 'person', id: item.id, kind: item.kind, title: item.name || 'Unnamed' })
+              router.push({
+                pathname: '/person/[id]',
+                params: { id: item.id, kind: item.kind, title: item.name || 'Unnamed' },
+              })
             }
           />
         )}

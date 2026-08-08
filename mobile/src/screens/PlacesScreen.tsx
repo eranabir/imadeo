@@ -8,7 +8,7 @@ import { Touchable } from '../components/ui';
 import { thumbnail, useResource } from '../lib/api';
 import { resolvedDark } from '../lib/preferences';
 import { frameOf, mapStyleJson } from '../lib/mapstyle';
-import { useNavigation } from '../navigation';
+import { useRouter } from 'expo-router';
 import { colors, radius, shadow, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Place {
@@ -66,7 +66,7 @@ const nameOf = (place: Place) =>
  * Albums, and it shares their header.
  */
 export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInset: number }) {
-  const { push } = useNavigation();
+  const router = useRouter();
   const { width } = useWindowDimensions();
 
   const places = useResource<Place[]>(serverUrl, '/assets/places');
@@ -150,7 +150,7 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
         <MapOf
           markers={markers}
           frame={frame}
-          onSelect={(marker) => push({ name: 'place', city: marker.city, title: marker.title })}
+          onSelect={(marker) => router.push({ pathname: '/place/[city]', params: { city: marker.city, title: marker.title } })}
         />
       </View>
 
@@ -177,7 +177,10 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
             radius={radius.md}
             label={nameOf(place)}
             onPress={() =>
-              push({ name: 'place', city: place.city ?? '', title: nameOf(place) })
+              router.push({
+                pathname: '/place/[city]',
+                params: { city: place.city ?? '', title: nameOf(place) },
+              })
             }
           >
             <View
