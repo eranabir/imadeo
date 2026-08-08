@@ -62,20 +62,26 @@ export class PersonController {
   @Get('status')
   @ApiOperation({ summary: 'Whether face recognition is available and how far it has got' })
   async status(@AuthedUserId() userId: string) {
-    const [ready, pending] = await Promise.all([
+    // Everything a scan would look at, whether or not it has yet.
+    const eligible = {
+      ownerId: userId,
+      type: 'IMAGE' as const,
+      deletedAt: null,
+      visibility: { not: 'LOCKED' as const },
+    };
+
+    const [ready, pending, total] = await Promise.all([
       this.ml.isReady(),
       this.prisma.asset.count({
-        where: {
-          ownerId: userId,
-          type: 'IMAGE',
-          deletedAt: null,
-          visibility: { not: 'LOCKED' },
-          jobStatus: { facesRecognizedAt: null },
-        },
+        where: { ...eligible, jobStatus: { facesRecognizedAt: null } },
       }),
+      // The denominator. A count of what is left says nothing on its own —
+      // two hundred outstanding is nearly done in one library and barely
+      // started in another.
+      this.prisma.asset.count({ where: eligible }),
     ]);
 
-    return { enabled: this.ml.enabled, ready, pendingAssets: pending };
+    return { enabled: this.ml.enabled, ready, pendingAssets: pending, totalAssets: total };
   }
 
   @Post('scan')

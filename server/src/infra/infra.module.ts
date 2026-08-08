@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { GeocodingService } from './geo/geocoding.service';
 import { MailSettingsService } from './mail/mail-settings.service';
 import { MailService } from './mail/mail.service';
 import { MediaService } from './media/media.service';
@@ -21,6 +22,7 @@ import { VaultCryptoService } from './storage/vault-crypto.service';
     MailService,
     MailSettingsService,
     MachineLearningService,
+    GeocodingService,
   ],
   exports: [
     StorageService,
@@ -30,6 +32,7 @@ import { VaultCryptoService } from './storage/vault-crypto.service';
     MailService,
     MailSettingsService,
     MachineLearningService,
+    GeocodingService,
   ],
 })
 export class InfraModule {}

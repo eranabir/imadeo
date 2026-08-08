@@ -31,6 +31,8 @@ export interface Folder {
 export interface Album {
   id: string;
   name: string;
+  /** The folder it lives in; null means loose, at the root of the tree. */
+  folderId?: string | null;
   assetCount: number;
   coverAssetId: string | null;
   coverAssetIds: string[];
@@ -161,7 +163,16 @@ export async function request<T>(
  * function at all: `expo-image` fetches them itself, so it needs the header
  * value rather than a promise for it.
  */
-export function useResource<T>(serverUrl: string, path: string | null) {
+export function useResource<T>(
+  serverUrl: string,
+  path: string | null,
+  /**
+   * How often to ask again, in milliseconds. Omitted, the answer is fetched
+   * once — which is right for a folder's contents and wrong for anything the
+   * server changes on its own while the screen is open.
+   */
+  every?: number | null,
+) {
   const [data, setData] = useState<T | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -204,6 +215,19 @@ export function useResource<T>(serverUrl: string, path: string | null) {
       if (mine === generation.current) setLoading(false);
     }
   }, [serverUrl, path]);
+
+  /**
+   * Asks again on a timer, for answers that go stale by themselves.
+   *
+   * A face scan started from the web client moves a count this app is already
+   * showing, and nothing tells it — so the screen sat there saying photos were
+   * waiting long after they had been done.
+   */
+  useEffect(() => {
+    if (!every || path === null) return;
+    const timer = setInterval(() => void reload(), every);
+    return () => clearInterval(timer);
+  }, [every, path, reload]);
 
   useEffect(() => {
     void reload();

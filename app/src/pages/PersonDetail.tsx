@@ -26,6 +26,7 @@ interface Person {
   thumbnailPath: string;
   isHidden: boolean;
   faceCount: number;
+  kind: 'PERSON' | 'PET';
 }
 
 /** Carries this person's detections, so a wrong one can be pointed at. */
@@ -53,6 +54,21 @@ export function PersonDetail() {
    */
   const assetsRef = useRef<AssetWithFaces[]>([]);
 
+  const { data: person, isLoading } = useQuery({
+    queryKey: ['people', personId],
+    queryFn: async () => (await api.get<Person>(`/people/${personId}`)).data,
+    enabled: Boolean(personId),
+  });
+
+  /**
+   * Which of the two words to use about this subject.
+   *
+   * "Not this person" on a dog's page is the wrong noun for the thing being
+   * said — the tab is called People & Pets, and half of what it holds is not a
+   * person.
+   */
+  const subject = person?.kind === 'PET' ? 'pet' : 'person';
+
   const actions = useLibraryActions({
     onShowDetails: setViewing,
     selectedIds: [...selected],
@@ -71,7 +87,9 @@ export function PersonDetail() {
       },
       {
         id: 'not-this-person',
-        label: `Not this person${ids.length > 1 ? ` (${ids.length})` : ''}`,
+        label: `${subject === 'pet' ? 'Not this pet' : 'Not this person'}${
+          ids.length > 1 ? ` (${ids.length})` : ''
+        }`,
         icon: <UserRoundX size={15} />,
         hint: 'Keeps the photo, removes the match',
         separated: true,
@@ -83,12 +101,6 @@ export function PersonDetail() {
         },
       },
     ],
-  });
-
-  const { data: person, isLoading } = useQuery({
-    queryKey: ['people', personId],
-    queryFn: async () => (await api.get<Person>(`/people/${personId}`)).data,
-    enabled: Boolean(personId),
   });
 
   const { data: photos } = useQuery({
@@ -170,7 +182,7 @@ export function PersonDetail() {
         <nav className="mb-1 flex items-center gap-1 text-xs text-content-muted">
           <Link to="/people" className="flex items-center gap-1 transition hover:text-content">
             <ArrowLeft size={12} />
-            People
+            People &amp; Pets
           </Link>
         </nav>
 
@@ -285,7 +297,7 @@ export function PersonDetail() {
           description="Faces for this person have not finished processing."
           action={
             <Button variant="primary" onClick={() => navigate('/people')}>
-              Back to People
+              Back to People &amp; Pets
             </Button>
           }
         />
@@ -359,7 +371,7 @@ export function PersonDetail() {
           className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium hover:bg-white/10 disabled:opacity-50"
         >
           <UserRoundX size={16} />
-          Not this person
+          {subject === 'pet' ? 'Not this pet' : 'Not this person'}
         </button>
         </Tooltip>
       </SelectionBar>

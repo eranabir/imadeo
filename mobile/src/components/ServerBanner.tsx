@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ping, useServerReachable } from '../lib/api';
-import { colors, radius, shadow } from '../theme';
+import { BAR_HEIGHT, BAR_MARGIN, colors, radius, shadow } from '../theme';
 import { Icon } from './Icon';
-import { BAR_HEIGHT, BAR_MARGIN } from './Tabs';
 import { Touchable } from './ui';
 
 /**

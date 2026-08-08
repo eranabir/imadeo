@@ -15,6 +15,7 @@ export { Input } from './Input';
 export { GridSkeleton, Loading } from './Loading';
 export { Menu, type MenuItem } from './Menu';
 export { Popover, anchorFromElement, anchorFromPoint, type Anchor } from './Popover';
+export { Progress } from './Progress';
 export { PromptDialog } from './PromptDialog';
 export { Select, type SelectOption } from './Select';
 export { Slider } from './Slider';

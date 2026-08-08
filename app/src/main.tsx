@@ -12,6 +12,7 @@ import { FolderView } from './pages/FolderView';
 import { Duplicates } from './pages/Duplicates';
 import { Locked } from './pages/Locked';
 import { People } from './pages/People';
+import { Places } from './pages/Places';
 import { PersonDetail } from './pages/PersonDetail';
 import { Login } from './pages/Login';
 import { OAuthCallback } from './pages/OAuthCallback';
@@ -113,6 +114,8 @@ function App() {
         <Route path="/albums/:albumId" element={<AlbumDetail />} />
         <Route path="/search" element={<Search />} />
         <Route path="/favorites" element={<Favorites />} />
+        <Route path="/places" element={<Places />} />
+        <Route path="/places/:city" element={<Places />} />
         <Route path="/people" element={<People />} />
         <Route path="/people/:personId" element={<PersonDetail />} />
         <Route path="/locked" element={<Locked />} />

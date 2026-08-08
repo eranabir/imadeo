@@ -1,20 +1,39 @@
 import { Image } from 'expo-image';
-import * as MediaLibrary from 'expo-media-library';
+/*
+ * The legacy entry, deliberately.
+ *
+ * SDK 57 rewrote this module: an `Asset` is now an object of getters
+ * (`getCreationTime`, `getMediaType`) rather than plain fields, and `SortBy`
+ * has gone from the main export. That is a migration of its own — the backup
+ * engine and the device grid both read these fields all over — and it does not
+ * belong in the middle of a navigation migration. `expo-file-system` is
+ * imported the same way here for the same reason.
+ */
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppState,
+  FlatList,
+  Dimensions,
   Linking,
   Modal,
   Pressable,
   RefreshControl,
   SectionList,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Empty } from '../components/AssetGrid';
-import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import { BackupProgressScreen } from './BackupProgressScreen';
+import { HeaderAction, useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
+import { intoDays } from '../lib/day';
 import { Icon } from '../components/Icon';
-import { Button } from '../components/ui';
+import { DeviceActions } from '../components/PhotoActions';
+import { ConfirmSheet } from '../components/sheets';
+import { Button, Touchable } from '../components/ui';
 import { pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
@@ -33,46 +52,9 @@ const COLUMNS = 3;
  * not this one, because "12 March" reads faster than "12 March 2026" and the
  * year is only news when it is a different one.
  */
-function dayLabel(at: number): string {
-  const taken = new Date(at);
-  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const now = new Date();
-  const days = Math.round((midnight(now) - midnight(taken)) / 86_400_000);
-
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-
-  return taken.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'long',
-    ...(taken.getFullYear() === now.getFullYear() ? null : { year: 'numeric' }),
-  });
-}
-
-/**
- * The camera roll cut into days, then into rows.
- *
- * SectionList cannot lay a section out in columns, so each row of three is one
- * item. Grouping first and chunking second keeps a day's last row short rather
- * than letting the next day start halfway across it.
- */
-function byDay(assets: MediaLibrary.Asset[]) {
-  const days: { title: string; data: MediaLibrary.Asset[][] }[] = [];
-
-  for (const asset of assets) {
-    const title = dayLabel(asset.creationTime);
-    let day = days[days.length - 1];
-    if (!day || day.title !== title) {
-      day = { title, data: [] };
-      days.push(day);
-    }
-    const row = day.data[day.data.length - 1];
-    if (!row || row.length === COLUMNS) day.data.push([asset]);
-    else row.push(asset);
-  }
-
-  return days;
-}
+/** Cut into days, with each day already split into rows of `COLUMNS`. */
+const byDay = (assets: MediaLibrary.Asset[]) =>
+  intoDays(assets, (asset) => asset.creationTime, COLUMNS);
 
 /**
  * What is on this phone.
@@ -113,18 +95,17 @@ export function LibraryScreen({ serverUrl }: Props) {
       rather than beside the list, which is below the permission gate's early
       return. */
   const [viewing, setViewing] = useState<MediaLibrary.Asset | null>(null);
+  /** The per-item backup list, opened from the progress bar. */
+  const [showProgress, setShowProgress] = useState(false);
+  /** Set while the "remove from this phone" confirmation is up. */
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Whether a run is in flight. `progress` outlives it, as the last account. */
+  const [running, setRunning] = useState(false);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
 
   const clearance = useHeaderClearance(0);
   const selectionBar = useSelectionBar();
-
-  // The floating tab bar sits where the selection count does.
-  const setBarActive = selectionBar.setActive;
-  useEffect(() => {
-    setBarActive(picked.length > 0);
-    return () => setBarActive(false);
-  }, [picked.length, setBarActive]);
 
   const load = useCallback(async () => {
     // Limited access still reads — of the subset that was shared.
@@ -138,12 +119,14 @@ export function LibraryScreen({ serverUrl }: Props) {
       });
       setAssets(page.assets);
       setTotal(page.totalCount);
-      setPending(await pendingCount());
-      setUploaded(await uploadedIds());
+      // Both go through the server so a fresh install does not report a phone
+      // full of photos as un-backed-up when they are all already there.
+      setPending(await pendingCount(serverUrl));
+      setUploaded(await uploadedIds(serverUrl));
     } finally {
       setLoading(false);
     }
-  }, [permission?.granted, permission?.accessPrivileges]);
+  }, [permission?.granted, permission?.accessPrivileges, serverUrl]);
 
   useEffect(() => {
     void load();
@@ -164,6 +147,149 @@ export function LibraryScreen({ serverUrl }: Props) {
   // A null permission means the check has not settled. It is treated as "not
   // granted" rather than shown as a spinner: on Android it can stay null
   // indefinitely, and an endless spinner is worse than a prompt that works.
+  const backedUp = pending === 0;
+  const host = serverUrl.replace(/^https?:\/\//, '');
+
+  /** Start, or stop what is already running. */
+  const backUp = async () => {
+    if (running) {
+      // Already running: this press is a stop.
+      stop.current = true;
+      return;
+    }
+    const only = picked.length > 0 ? picked : undefined;
+    stop.current = false;
+    setError(null);
+    setRunning(true);
+    setProgress({ done: 0, total: 0, failed: 0, held: 0, queue: [], at: -1, sent: [], failures: [] });
+    try {
+      await runBackup(serverUrl, setProgress, () => stop.current, only);
+      setPending(await pendingCount(serverUrl));
+      setUploaded(await uploadedIds(serverUrl));
+      setPicked([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Backup failed.');
+    } finally {
+      /**
+       * The run stops; its record does not.
+       *
+       * `progress` used to be thrown away here, which meant the moment a backup
+       * finished there was no longer anywhere to see which photos had failed —
+       * exactly when someone wants to look. `running` says whether anything is
+       * in flight; `progress` is the last run's account of itself.
+       */
+      setRunning(false);
+    }
+  };
+
+  const toggle = (id: string) =>
+    setPicked((current) =>
+      current.includes(id) ? current.filter((one) => one !== id) : [...current, id],
+    );
+
+  /**
+   * Frees space on the phone, and only on the phone.
+   *
+   * Kept well away from the backup path: what this deletes is the copy in the
+   * camera roll, and the copy on the server is what makes that safe to do. The
+   * upload log is left alone deliberately — those photos are still backed up,
+   * and forgetting them would only offer to re-upload files that no longer
+   * exist.
+   *
+   * The OS asks its own question on top of ours; on iOS it must, and there is no
+   * way to delete without it.
+   */
+  const removeFromPhone = async () => {
+    setError(null);
+    try {
+      const removed = await MediaLibrary.deleteAssetsAsync(picked);
+      // Declining the system prompt is an answer, not a failure.
+      if (!removed) return;
+      setPicked([]);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
+    }
+  };
+
+  /** Of what is picked, how much is not already on the server. */
+  const pickedPending = picked.filter((id) => !uploaded.has(id)).length;
+
+  const sections = byDay(assets);
+
+  // The bar is the shell's; this only says what goes in it, so a swipe between
+  // tabs never moves it.
+  useHeaderSlot(
+    'library',
+    {
+      title: picked.length > 0 ? `${picked.length} selected` : 'Library',
+      icon: 'phone',
+      subtitle:
+        running && progress
+          ? `${progress.done} of ${progress.total} sent to ${host}`
+          : picked.length > 0
+            ? pickedPending === 0
+              ? 'Already backed up · tap to change'
+              : `${pickedPending.toLocaleString()} to send to ${host}`
+            : total === null
+              ? 'Reading this phone…'
+              : backedUp
+                ? `${total.toLocaleString()} on this phone · all backed up`
+                : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`,
+      /*
+       * Nothing to send means no button. Re-reading the phone is what pulling
+       * the grid down already does, so a control that only did that was
+       * offering a second way to do nothing in particular. A selection has its
+       * verbs in the bar at the bottom instead, near the thumb.
+       */
+      action: running ? (
+        <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
+      ) : picked.length > 0 || backedUp ? undefined : (
+        <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
+      ),
+      below:
+        running && progress && progress.total > 0 ? (
+          /*
+            Inset from the bar's edges rather than run to them.
+
+            It used to sit flush along the bottom, which is exactly where the
+            bar's rounded corners are — so the last few percent at each end was
+            clipped away and the track looked broken before it had started.
+          */
+          <Touchable
+            onPress={() => setShowProgress(true)}
+            label="See what is being backed up"
+            radius={radius.pill}
+            style={{
+              height: 4,
+              marginHorizontal: 16,
+              marginBottom: 12,
+              borderRadius: radius.pill,
+              backgroundColor: colors.border,
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                height: '100%',
+                width: `${Math.round((progress.done / progress.total) * 100)}%`,
+                borderRadius: radius.pill,
+                backgroundColor: colors.primary,
+              }}
+            />
+          </Touchable>
+        ) : undefined,
+    },
+    [picked.length, pickedPending, running, progress, total, pending, backedUp, host],
+  );
+
+  /*
+   * The gate stands here, below every hook.
+   *
+   * It used to come first, which meant `useHeaderSlot` ran only once access had
+   * been granted — a hook called on some renders and not others, which React
+   * ends the render over. Nothing above this line does any work worth skipping.
+   */
   if (!allowed) {
     return (
       <AskForAccess
@@ -174,41 +300,29 @@ export function LibraryScreen({ serverUrl }: Props) {
     );
   }
 
-  const backedUp = pending === 0;
-  const host = serverUrl.replace(/^https?:\/\//, '');
 
-  /** Start, or stop what is already running. */
-  const backUp = async () => {
-    if (progress) {
-      // Already running: this press is a stop.
-      stop.current = true;
-      return;
-    }
-    const only = picked.length > 0 ? picked : undefined;
-    stop.current = false;
-    setError(null);
-    setProgress({ done: 0, total: 0, failed: 0 });
-    try {
-      await runBackup(serverUrl, setProgress, () => stop.current, only);
-      setPending(await pendingCount());
-      setUploaded(await uploadedIds());
-      setPicked([]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Backup failed.');
-    } finally {
-      setProgress(null);
-    }
+  /**
+   * Every photo taken on one day, in one tap.
+   *
+   * A day is the unit people actually think in — "back up yesterday", "clear
+   * the wedding off my phone" — and reaching it by tapping forty tiles is the
+   * kind of thing that makes someone give up halfway. Tapping again lets the
+   * day go, so it is a toggle rather than a one-way door.
+   */
+  const idsOf = (rows: MediaLibrary.Asset[][]) => rows.flat().map((asset) => asset.id);
+
+  const toggleDay = (rows: MediaLibrary.Asset[][]) => {
+    const ids = idsOf(rows);
+    setPicked((current) => {
+      const chosen = new Set(current);
+      const all = ids.every((id) => chosen.has(id));
+      for (const id of ids) {
+        if (all) chosen.delete(id);
+        else chosen.add(id);
+      }
+      return [...chosen];
+    });
   };
-
-  const toggle = (id: string) =>
-    setPicked((current) =>
-      current.includes(id) ? current.filter((one) => one !== id) : [...current, id],
-    );
-
-  /** Of what is picked, how much is not already on the server. */
-  const pickedPending = picked.filter((id) => !uploaded.has(id)).length;
-
-  const sections = byDay(assets);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -218,82 +332,77 @@ export function LibraryScreen({ serverUrl }: Props) {
         left the screen exactly when a run was worth watching, and it cost a
         third of the first screenful before a single photo was visible.
       */}
-      <Header
-        title={picked.length > 0 ? `${picked.length} selected` : 'Library'}
-        icon="phone"
-        subtitle={
-          progress
-            ? `${progress.done} of ${progress.total} sent to ${host}`
-            : picked.length > 0
-              ? pickedPending === 0
-                ? 'Already backed up · tap to change'
-                : `${pickedPending.toLocaleString()} to send to ${host}`
-              : total === null
-                ? 'Reading this phone…'
-                : backedUp
-                  ? `${total.toLocaleString()} on this phone · all backed up`
-                  : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`
-        }
-        /*
-         * Nothing to send means no button. Re-reading the phone is what pulling
-         * the grid down already does, so a control that only did that was
-         * offering a second way to do nothing in particular.
-         */
-        action={
-          progress ? (
-            <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
-          ) : picked.length > 0 ? (
-            pickedPending === 0 ? (
-              <HeaderAction label="Clear" icon="close" onPress={() => setPicked([])} />
-            ) : (
-              <HeaderAction
-                label={`Back up ${pickedPending}`}
-                icon="backup"
-                onPress={() => void backUp()}
-              />
-            )
-          ) : backedUp ? undefined : (
-            <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
-          )
-        }
-      >
-        {progress && progress.total > 0 && (
-          <View style={{ height: 3, backgroundColor: colors.border }}>
-            <View
-              style={{
-                height: '100%',
-                width: `${Math.round((progress.done / progress.total) * 100)}%`,
-                backgroundColor: colors.primary,
-              }}
-            />
-          </View>
-        )}
-      </Header>
-
       <SectionList
         sections={sections}
         keyExtractor={(row) => row[0].id}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE }}
-        renderSectionHeader={({ section }) => (
-          <Text
-            style={{
-              color: colors.text,
-              fontSize: 15,
-              fontWeight: '700',
-              letterSpacing: -0.3,
-              // Flush with the tiles below, which sit at the screen edge with
-              // only their 1px gutter. An inset here left the date floating
-              // away from the photos it belongs to.
-              paddingLeft: 2,
-              paddingRight: 16,
-              paddingTop: 16,
-              paddingBottom: 4,
-            }}
-          >
-            {section.title}
-          </Text>
-        )}
+        renderSectionHeader={({ section }) => {
+          const ids = idsOf(section.data);
+          const allPicked = ids.length > 0 && ids.every((id) => picked.includes(id));
+
+          return (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                // Flush with the tiles below, which sit at the screen edge with
+                // only their 1px gutter. An inset here left the date floating
+                // away from the photos it belongs to.
+                paddingLeft: 2,
+                paddingRight: 2,
+                paddingTop: 16,
+                paddingBottom: 4,
+              }}
+            >
+              <Text
+                style={{
+                  flex: 1,
+                  color: colors.text,
+                  fontSize: 15,
+                  fontWeight: '700',
+                  letterSpacing: -0.3,
+                }}
+              >
+                {section.title}
+              </Text>
+
+              <Touchable
+                onPress={() => toggleDay(section.data)}
+                radius={radius.pill}
+                label={allPicked ? `Deselect ${section.title}` : `Select all of ${section.title}`}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 5,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: radius.pill,
+                    backgroundColor: allPicked ? colors.primary : 'transparent',
+                  }}
+                >
+                  <Icon
+                    name={allPicked ? 'check' : 'done'}
+                    size={13}
+                    color={allPicked ? colors.bg : colors.muted}
+                    strong
+                  />
+                  <Text
+                    style={{
+                      color: allPicked ? colors.bg : colors.muted,
+                      fontSize: 12.5,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {allPicked ? 'Selected' : 'Select all'}
+                  </Text>
+                </View>
+              </Touchable>
+            </View>
+          );
+        }}
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -309,10 +418,26 @@ export function LibraryScreen({ serverUrl }: Props) {
             <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 8 }}>
               {error && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error}</Text>}
 
+              {/*
+                The way back into the run's account once it has finished.
+
+                The progress bar is the other way in, and it is only on screen
+                while something is uploading — which is the one time nobody
+                needs to go looking for what went wrong.
+              */}
               {progress && progress.failed > 0 && (
-                <Text style={{ color: colors.faint, fontSize: 12.5 }}>
-                  {progress.failed} could not be sent. They stay queued for next time.
-                </Text>
+                <Touchable
+                  onPress={() => setShowProgress(true)}
+                  radius={radius.sm}
+                  label="See which photos failed"
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: colors.faint, fontSize: 12.5, flex: 1 }}>
+                      {progress.failed} could not be sent. They stay queued for next time.
+                    </Text>
+                    <Icon name="forward" size={13} color={colors.faint} />
+                  </View>
+                </Touchable>
               )}
 
               {/* Both platforms allow granting a hand-picked subset. Someone in
@@ -368,28 +493,161 @@ export function LibraryScreen({ serverUrl }: Props) {
       */}
       <Modal
         visible={viewing !== null}
-        transparent
         animationType="fade"
         onRequestClose={() => setViewing(null)}
-        // Otherwise the status bar stays dark-on-dark over the black backdrop.
+        // Opaque, not transparent: the viewer fills the screen with black
+        // anyway, and a transparent window let the tab bar underneath composite
+        // faintly over the photograph.
         statusBarTranslucent
       >
-        <Pressable
-          onPress={() => setViewing(null)}
-          accessibilityRole="button"
-          accessibilityLabel="Close photo"
-          style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center' }}
-        >
-          {viewing && (
+        {viewing && (
+          <DeviceViewer
+            assets={assets}
+            start={assets.findIndex((asset) => asset.id === viewing.id)}
+            onClose={() => setViewing(null)}
+          />
+        )}
+      </Modal>
+
+      {/*
+        The per-item account of the run.
+
+        A modal rather than a pushed screen because it belongs to this tab's
+        state — the run is owned here, and routing it through the navigation
+        stack would mean lifting the whole backup into a context so a sibling
+        screen could read it.
+      */}
+      <Modal
+        visible={showProgress}
+        animationType="slide"
+        onRequestClose={() => setShowProgress(false)}
+        statusBarTranslucent
+      >
+        <BackupProgressScreen progress={progress} onBack={() => setShowProgress(false)} />
+      </Modal>
+
+      {/* Selecting swaps the tabs for what can be done with what is picked,
+          which is the one moment the tabs are not what the next tap is for. */}
+      <DeviceActions
+        ids={picked}
+        pending={pickedPending}
+        busy={running}
+        onClear={() => setPicked([])}
+        onBackUp={() => void backUp()}
+        onRemove={() => setConfirmDelete(true)}
+      />
+
+      {/* Says plainly which copy goes. The whole point of backing up is that the
+          phone is not the only place these live, and someone clearing space
+          needs to be sure that is what they are doing. */}
+      <ConfirmSheet
+        open={confirmDelete}
+        title={`Remove ${picked.length} ${picked.length === 1 ? 'item' : 'items'} from this phone?`}
+        description={
+          pickedPending > 0
+            ? `${pickedPending} of these have not been backed up yet — those copies would be gone for good. Everything already sent stays on ${host}; only the copy in this phone's gallery is removed.`
+            : `They stay on ${host}. Only the copy in this phone's gallery is removed, and you can still see them in Browse.`
+        }
+        confirmLabel="Remove from phone"
+        onConfirm={() => void removeFromPhone()}
+        onClose={() => setConfirmDelete(false)}
+      />
+    </View>
+  );
+}
+
+/**
+ * The device library, full screen, one photo per page.
+ *
+ * A `FlatList` rather than a single image, because a photo viewer that cannot
+ * be swiped is not a viewer — it is a preview you have to back out of to see
+ * the next thing. Paged horizontally, opening on whichever tile was tapped.
+ *
+ * Only the pages either side are rendered: a phone with ten thousand photos
+ * would otherwise mount ten thousand images the moment one is opened.
+ */
+function DeviceViewer({
+  assets,
+  start,
+  onClose,
+}: {
+  assets: MediaLibrary.Asset[];
+  start: number;
+  onClose: () => void;
+}) {
+  /*
+   * Measured straight from the window, not through the hook.
+   *
+   * `useWindowDimensions` inside this modal came back before the modal's own
+   * window had been laid out, so the pages were sized zero: nothing painted
+   * except the counter, which is absolutely positioned and escaped the
+   * collapse, and the tab underneath showed through where the photograph
+   * should have been.
+   */
+  const { width, height } = Dimensions.get('window');
+  const insets = useSafeAreaInsets();
+  const [at, setAt] = useState(Math.max(0, start));
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer }]}>
+      <FlatList
+        data={assets}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(asset) => asset.id}
+        initialScrollIndex={Math.max(0, start)}
+        // Every page is exactly the screen's width, so the list never has to
+        // measure anything to know where a given photo starts.
+        getItemLayout={(_data, index) => ({ length: width, offset: width * index, index })}
+        onMomentumScrollEnd={(event) =>
+          setAt(Math.round(event.nativeEvent.contentOffset.x / width))
+        }
+        windowSize={3}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo"
+            style={{ width, height, justifyContent: 'center' }}
+          >
             <Image
-              source={viewing.uri}
-              style={{ width: '100%', height: '100%' }}
+              source={item.uri}
+              style={{ width, height }}
               contentFit="contain"
+              recyclingKey={item.id}
               transition={140}
             />
-          )}
-        </Pressable>
-      </Modal>
+          </Pressable>
+        )}
+      />
+
+      {/* Where you are in the roll, which a paged viewer otherwise never says. */}
+      <View
+        style={{
+          position: 'absolute',
+          top: insets.top + 8,
+          left: 0,
+          right: 0,
+          alignItems: 'center',
+        }}
+        pointerEvents="none"
+      >
+        <Text
+          style={{
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: '700',
+            paddingHorizontal: 12,
+            paddingVertical: 5,
+            borderRadius: radius.pill,
+            backgroundColor: colors.overlay,
+            overflow: 'hidden',
+          }}
+        >
+          {at + 1} of {assets.length}
+        </Text>
+      </View>
     </View>
   );
 }

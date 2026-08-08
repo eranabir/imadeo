@@ -17,6 +17,19 @@
       "port": 4173
     },
     {
+      "name": "mobile",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": [
+        "workspace",
+        "@imadeo/mobile",
+        "expo",
+        "start",
+        "--port",
+        "8081"
+      ],
+      "port": 8081
+    },
+    {
       "name": "mobile-web",
       "runtimeExecutable": "yarn",
       "runtimeArgs": [

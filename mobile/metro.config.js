@@ -17,8 +17,14 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// Without this Metro walks up the tree on its own and can pick a second copy
-// of react or react-native, which fails at runtime rather than at build time.
-config.resolver.disableHierarchicalLookup = true;
+/*
+ * Hierarchical lookup stays on.
+ *
+ * It was disabled here to stop Metro walking up the tree and picking a second
+ * copy of react or react-native. With `main` pointing at `expo-router/entry`,
+ * turning it off instead stopped Metro finding the entry at all: the router is
+ * hoisted to the workspace root, and the explicit `nodeModulesPaths` above are
+ * what keep a duplicate react from being picked up anyway.
+ */
 
 module.exports = config;

@@ -8,6 +8,7 @@ import {
   Images,
   LayoutGrid,
   Lock,
+  MapPin,
   ScanFace,
   Settings as SettingsIcon,
   Trash2,
@@ -40,6 +41,11 @@ const NAV = [
   // ScanFace rather than a group-of-people glyph: the section is about
   // recognition, and any icon showing people would quietly imply pets are a
   // lesser guest there.
+  // `text-secondary` rather than another hand-picked hue: the row sits next to
+  // People and Favorites, and the palette already holds a second cyan for
+  // exactly this — somewhere that needs to read as ours without being the
+  // primary.
+  { to: '/places', label: 'Places', icon: MapPin, tint: 'text-secondary', end: false },
   { to: '/people', label: 'People & Pets', icon: ScanFace, tint: 'text-sky-500', end: false },
   { to: '/favorites', label: 'Favorites', icon: Heart, tint: 'text-rose-500', end: false },
   { to: '/locked', label: 'Locked', icon: Lock, tint: 'text-indigo-400', end: false },

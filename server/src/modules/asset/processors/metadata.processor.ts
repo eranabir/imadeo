@@ -6,6 +6,7 @@ import { DateTime } from 'luxon';
 import type { AppConfig } from '../../../config/configuration';
 import { AssetType } from '../../../db';
 import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import { GeocodingService } from '../../../infra/geo/geocoding.service';
 import { JobService } from '../../../infra/job/job.service';
 import { MediaService } from '../../../infra/media/media.service';
 import { MetadataService } from '../../../infra/metadata/metadata.service';
@@ -24,12 +25,18 @@ export class MetadataProcessor extends WorkerHost {
     private readonly metadata: MetadataService,
     private readonly media: MediaService,
     private readonly jobs: JobService,
+    private readonly geocoding: GeocodingService,
     private readonly config: ConfigService<AppConfig, true>,
   ) {
     super();
   }
 
   async process(job: Job<AssetJobData>) {
+    // Naming a place needs no file read at all — the coordinates are already in
+    // the database. Sharing the queue keeps it behind the same concurrency
+    // limit as everything else touching EXIF.
+    if (job.name === JOB.REVERSE_GEOCODE) return this.reverseGeocode(job.data.assetId);
+
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
 
@@ -63,6 +70,23 @@ export class MetadataProcessor extends WorkerHost {
     const captured = tags.dateTimeOriginal ?? asset.fileCreatedAt;
     const localDateTime = this.toLocalDateTime(captured, tags.timeZone);
 
+    /**
+     * The name of the place the coordinates point at.
+     *
+     * Done here rather than in its own job because it is the only thing that
+     * turns a photo into one you can find by asking for a city, and it has to
+     * be written in the same upsert as the coordinates it came from — two
+     * writes would leave a window where a photo has a location and no name.
+     *
+     * The lookup is rate-limited inside the service and never throws, so the
+     * worst case is a photo with coordinates and no place, which is exactly
+     * what every photo had before this existed.
+     */
+    const place =
+      tags.latitude !== null && tags.longitude !== null
+        ? await this.geocoding.lookup(tags.latitude, tags.longitude)
+        : null;
+
     await this.prisma.$transaction([
       this.prisma.assetExif.upsert({
         where: { assetId: asset.id },
@@ -83,6 +107,9 @@ export class MetadataProcessor extends WorkerHost {
           exposureTime: tags.exposureTime,
           latitude: tags.latitude,
           longitude: tags.longitude,
+          city: place?.city ?? null,
+          state: place?.state ?? null,
+          country: place?.country ?? null,
           description: tags.description,
           rating: tags.rating,
           fps,
@@ -107,6 +134,9 @@ export class MetadataProcessor extends WorkerHost {
           exposureTime: tags.exposureTime,
           latitude: tags.latitude,
           longitude: tags.longitude,
+          city: place?.city ?? null,
+          state: place?.state ?? null,
+          country: place?.country ?? null,
           rating: tags.rating,
           fps,
         },
@@ -134,6 +164,35 @@ export class MetadataProcessor extends WorkerHost {
     await this.jobs.enqueue(QUEUE.THUMBNAIL, JOB.GENERATE_THUMBNAILS, { assetId: asset.id });
 
     return { width, height, capturedAt: localDateTime.toISOString() };
+  }
+
+  /**
+   * Names the place of one photo that already has coordinates.
+   *
+   * For everything uploaded before geocoding existed. Reads no file and touches
+   * no other column, so running it over a whole library changes nothing except
+   * the three fields it is there to fill.
+   */
+  private async reverseGeocode(assetId: string) {
+    const exif = await this.prisma.assetExif.findUnique({
+      where: { assetId },
+      select: { latitude: true, longitude: true, city: true },
+    });
+
+    if (!exif?.latitude || !exif.longitude) return { skipped: 'no coordinates' };
+    // Another run may have got here first; a second lookup would spend a second
+    // of the rate limit to write what is already there.
+    if (exif.city) return { skipped: 'already named' };
+
+    const place = await this.geocoding.lookup(exif.latitude, exif.longitude);
+    if (!place) return { skipped: 'no place found' };
+
+    await this.prisma.assetExif.update({
+      where: { assetId },
+      data: { city: place.city, state: place.state, country: place.country },
+    });
+
+    return { city: place.city, country: place.country };
   }
 
   /**

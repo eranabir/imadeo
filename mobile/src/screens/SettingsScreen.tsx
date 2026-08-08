@@ -1,10 +1,62 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Glass, liquidGlass } from '../components/Glass';
-import { Header, useHeaderClearance } from '../components/Header';
+import { Glass } from '../components/Glass';
+import { useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { Icon, type IconName } from '../components/Icon';
+import { Toggle, Touchable } from '../components/ui';
 import { useResource } from '../lib/api';
-import { colors, TAB_BAR_CLEARANCE } from '../theme';
+import {
+  setAppearance,
+  setAutoplayVideos,
+  setCellularAllowed,
+  useAppearance,
+  useAutoplayVideos,
+  useCellularAllowed,
+} from '../lib/preferences';
+import { isAvailable, isEnabled, setEnabled } from '../lib/autobackup';
+import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+
+/**
+ * The background-backup setting, and whether the phone will honour it.
+ *
+ * Availability is asked for separately because it is not the same question as
+ * whether it is switched on: someone can turn it on and have the system refuse
+ * anyway, and a row that only said "On" would be lying to them.
+ */
+function useAutoBackup() {
+  const [on, setOn] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [enabled, allowed] = await Promise.all([isEnabled(), isAvailable()]);
+    setOn(enabled);
+    setAvailable(allowed);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const toggle = useCallback(
+    async (next: boolean) => {
+      setBusy(true);
+      // Moved before the await so the switch answers the finger rather than the
+      // system; `refresh` puts it back if the registration is refused.
+      setOn(next);
+      try {
+        await setEnabled(next);
+      } finally {
+        await refresh();
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  return { on, available, busy, toggle };
+}
 
 interface Props {
   serverUrl: string;
@@ -22,15 +74,53 @@ interface Statistics {
    * silently gives NaN on any library past a few gigabytes.
    */
   usageInBytes: string;
+  /**
+   * Real numbers for the volume the library sits on.
+   *
+   * From `/users/me/statistics` rather than `/assets/statistics`, which counts
+   * assets but knows nothing about the disk — the same endpoint the web
+   * client's storage card reads, so the two agree.
+   */
+  disk?: {
+    totalBytes: number | null;
+    availableBytes: number | null;
+    usedBytes: number | null;
+  };
+}
+
+interface Me {
+  /** A cap set for this account, if any. Null means the disk is the limit. */
+  quotaSizeInBytes?: string | number | null;
 }
 
 export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) {
-  const { data } = useResource<Statistics>(serverUrl, '/assets/statistics');
+  const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
+  const me = useResource<Me>(serverUrl, '/users/me');
+  const auto = useAutoBackup();
+  const autoplay = useAutoplayVideos();
+  const cellular = useCellularAllowed();
+  const appearance = useAppearance();
+
+  /**
+   * Room this library has, not the size of the disk.
+   *
+   * A quota if the account has one, otherwise what is used plus what is still
+   * free on the volume. Measuring against the disk's total would report a
+   * nearly full bar for an empty library sharing a disk with everything else,
+   * which is the mistake the web client's card documents.
+   */
+  const quota = me.data?.quotaSizeInBytes ? Number(me.data.quotaSizeInBytes) : null;
+  const free = data?.disk?.availableBytes ?? null;
+  const capacity =
+    quota ?? (data && free !== null ? Number(data.usageInBytes) + free : null);
   const clearance = useHeaderClearance();
+
+  // Like every other tab: the bar is the shell's, so it stays put while this
+  // page slides in and out from under it.
+  useHeaderSlot('settings', { title: 'Settings', icon: 'settings' }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header title="Settings" icon="settings" />
 
       <ScrollView
         contentContainerStyle={{
@@ -40,61 +130,260 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
         }}
       >
         <Group>
-          <Row icon="backup" label="Server" value={serverUrl.replace(/^https?:\/\//, '')} />
+          <Row
+            icon="backup"
+            label="Server"
+            value={serverUrl.replace(/^https?:\/\//, '')}
+            // A green dot only when the server has actually answered — the
+            // statistics request is the proof, so nothing else has to be asked.
+            dot={data ? colors.online : me.error ? colors.danger : undefined}
+          />
           <Row icon="library" label="Photos" value={data ? data.images.toLocaleString() : '—'} />
           <Row icon="play" label="Videos" value={data ? data.videos.toLocaleString() : '—'} />
-          <Row
-            icon="photo"
-            label="Storage used"
-            value={data ? bytes(data.usageInBytes) : '—'}
-            last
+          <StorageRow
+            used={data ? Number(data.usageInBytes) : null}
+            capacity={capacity}
+          />
+        </Group>
+
+        <Group title="Backup">
+          <SwitchRow
+            icon="backup"
+            label="Back up in the background"
+            hint={
+              auto.available === false
+                ? 'Your phone has background activity switched off for Imadeo.'
+                : 'Keep sending while Imadeo is closed'
+            }
+            on={auto.on}
+            disabled={auto.available === false || auto.busy}
+            onChange={auto.toggle}
+          />
+
+          {/* Photos and videos apart, because their sizes are not comparable: a
+              day of pictures is tens of megabytes and one video can be more
+              than all of them. Both start off, so mobile data is never spent by
+              a run nobody asked for.
+
+              Every hint here says what its switch does and does not change with
+              it. A hint that flips between two readings makes you toggle the
+              thing to find out which way round it is, and one that grows a line
+              when you turn it on moves everything under it. */}
+          <SwitchRow
+            icon="library"
+            label="Photos"
+            hint="Use mobile data to back up photos"
+            on={cellular.photos}
+            onChange={(next) => void setCellularAllowed({ ...cellular, photos: next })}
+          />
+          <SwitchRow
+            icon="play"
+            label="Videos"
+            hint="Use mobile data to back up videos"
+            on={cellular.videos}
+            onChange={(next) => void setCellularAllowed({ ...cellular, videos: next })}
           />
         </Group>
 
         <Group>
-          <Row icon="backup" label="Backup" value="While the app is open" />
-          <Row
-            icon="sparkle"
-            label="Appearance"
-            value={liquidGlass ? 'Liquid glass' : 'Dark'}
-            last
+          <SwitchRow
+            icon="play"
+            label="Play videos automatically"
+            hint={
+              autoplay
+                ? 'A video starts as soon as you open it.'
+                : 'Videos wait for you to press play.'
+            }
+            on={autoplay}
+            onChange={(next) => void setAutoplayVideos(next)}
           />
+
+          {/* Three plain words. What the app is made of — glass, blur, whatever
+              the platform gives it — is not the user's business; whether it is
+              light or dark is. */}
+          <View style={{ paddingVertical: 14, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Icon name="sparkle" size={19} color={colors.primary} />
+              <Text style={{ flex: 1, color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+                Appearance
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['system', 'dark', 'light'] as const).map((mode) => (
+                <Choice
+                  key={mode}
+                  label={mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'}
+                  active={appearance === mode}
+                  onPress={() => void setAppearance(mode)}
+                />
+              ))}
+            </View>
+          </View>
         </Group>
 
         <Action label="Connect to a different server" onPress={onChangeServer} />
         <Action label="Sign out" onPress={onSignOut} danger />
-
-        <Text
-          style={{
-            color: colors.faint,
-            fontSize: 12.5,
-            lineHeight: 19,
-            textAlign: 'center',
-            marginTop: 26,
-          }}
-        >
-          {/* Written as an iOS limitation, which it is not — Imadeo does no
-              background work on either platform. Naming the wrong operating
-              system to an Android user is worse than saying nothing. */}
-          Backup runs while Imadeo is open. A run picks up from where it
-          stopped the next time you open the app.
-        </Text>
       </ScrollView>
     </View>
   );
 }
 
-function Group({ children }: { children: ReactNode }) {
+/**
+ * How much room is left, as a figure and a bar.
+ *
+ * A number on its own says nothing — five gigabytes is either nothing or
+ * everything depending on what it is out of.
+ */
+function StorageRow({ used, capacity }: { used: number | null; capacity: number | null }) {
+  const percent =
+    used !== null && capacity !== null && capacity > 0
+      ? Math.min(100, (used / capacity) * 100)
+      : null;
+
+  return (
+    <View style={{ paddingVertical: 14, gap: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Icon name="storage" size={19} color={colors.primary} />
+        <Text style={{ flex: 1, color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+          Storage used
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 14.5, fontWeight: '600' }}>
+          {used === null ? '—' : percent === null ? bytes(used) : `${Math.round(percent)}%`}
+        </Text>
+      </View>
+
+      <View
+        style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}
+      >
+        <View
+          style={{
+            height: '100%',
+            // A hair of bar even at nothing used, so the control reads as a
+            // gauge rather than as an empty box.
+            width: `${percent === null ? 4 : Math.max(percent, 1.5)}%`,
+            borderRadius: 3,
+            backgroundColor: colors.primary,
+          }}
+        />
+      </View>
+
+      <Text style={{ color: colors.faint, fontSize: 12.5 }}>
+        {used === null
+          ? 'Reading your server…'
+          : capacity === null
+            ? `${bytes(used)} used`
+            : `${bytes(used)} of ${bytes(capacity)} used · ${bytes(capacity - used)} free`}
+      </Text>
+    </View>
+  );
+}
+
+/** One of a small set of mutually exclusive answers. */
+function Choice({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Touchable onPress={onPress} radius={radius.pill} label={label} style={{ flex: 1 }}>
+      <View
+        style={{
+          alignItems: 'center',
+          paddingVertical: 9,
+          borderRadius: radius.pill,
+          backgroundColor: active ? colors.primary : colors.bg,
+          borderWidth: 1,
+          borderColor: active ? colors.primary : colors.border,
+        }}
+      >
+        <Text
+          style={{
+            color: active ? colors.onPrimary : colors.muted,
+            fontSize: 14,
+            fontWeight: '700',
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    </Touchable>
+  );
+}
+
+function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      {/* Above the card rather than inside it, the way both platforms head a
+          list of settings — the heading names the group, it is not a row in
+          it. */}
+      {title && (
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 12.5,
+            fontWeight: '700',
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+          }}
+        >
+          {title}
+        </Text>
+      )}
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 18,
+          paddingHorizontal: 14,
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
+/** A row whose value is a switch rather than a reading. */
+function SwitchRow({
+  icon,
+  label,
+  hint,
+  on,
+  onChange,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  hint: string;
+  on: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <View
       style={{
-        backgroundColor: colors.surface,
-        borderRadius: 18,
-        paddingHorizontal: 14,
-        marginBottom: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
       }}
     >
-      {children}
+      <Icon name={icon} size={18} color={colors.faint} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>
+          {hint}
+        </Text>
+      </View>
+      <Toggle on={on} onChange={onChange} label={label} disabled={disabled} />
     </View>
   );
 }
@@ -104,11 +393,14 @@ function Row({
   label,
   value,
   last = false,
+  dot,
 }: {
   icon: IconName;
   label: string;
   value: string;
   last?: boolean;
+  /** A status pip beside the value, when there is a status worth showing. */
+  dot?: string;
 }) {
   return (
     <View
@@ -123,6 +415,7 @@ function Row({
     >
       <Icon name={icon} size={18} color={colors.faint} />
       <Text style={{ color: colors.muted, fontSize: 15, flex: 1 }}>{label}</Text>
+      {dot && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />}
       <Text
         numberOfLines={1}
         style={{ color: colors.text, fontSize: 15, fontWeight: '600', maxWidth: '55%' }}

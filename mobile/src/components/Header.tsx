@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, shadow, wash } from '../theme';
+import { colors, radius, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { Touchable } from './ui';
 
@@ -47,44 +47,26 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
 
   return (
     /**
-     * The shadow lives out here, on a view that clips nothing.
+     * A surface of its own, rounded where it meets the page.
      *
-     * A shadow and `overflow: hidden` cannot share a node on iOS — the clip
-     * takes the shadow with it — and the bar has to clip, or its surface
-     * spills past the rounded bottom corners. So the two jobs are split: this
-     * view casts, the one inside it clips.
+     * Square across the top — the bar runs under the status bar, and rounding
+     * those corners would cut two notches out of the display edge — and rounded
+     * along the bottom, which is the only edge it actually has. No shadow and
+     * no border: the change of colour is the edge.
      */
     <View
-      style={[
-        { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
-        shadow(2),
-      ]}
-    >
-      {/**
-       * The corners are cut here, by an ordinary view.
-       *
-       * Square across the top and rounded along the bottom: the bar runs under
-       * the status bar, so rounding those corners cuts two notches out of the
-       * display edge.
-       *
-       * Asking the material to do it does not work. iOS 26's glass shapes
-       * itself from `borderRadius` alone — the four individual corner props
-       * never reach the native layer — so the bar came out square on iOS while
-       * looking correct on Android. A plain parent that clips gives every
-       * platform the same silhouette whatever is rendered inside it.
-       */}
-      <View
-        style={{
-          borderBottomLeftRadius: radius.xl,
-          borderBottomRightRadius: radius.xl,
-          overflow: 'hidden',
-        }}
-      >
-    <View
-      // No bottom border: the bar is opaque and already casts a shadow, and a
-      // hairline inside the rounded clip read as a seam across the corners
-      // rather than as an edge.
-      style={{ backgroundColor: colors.surface, paddingTop: insets.top }}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
+        backgroundColor: colors.surface,
+        borderBottomLeftRadius: radius.xl,
+        borderBottomRightRadius: radius.xl,
+        overflow: 'hidden',
+        paddingTop: insets.top,
+      }}
     >
       <View
         style={{
@@ -146,9 +128,12 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
         {action}
       </View>
 
+      {/* A row of air under the title before the bar's rounded edge. Without it
+          the text sits on the curve, and it read as cramped everywhere the bar
+          carried nothing else — a person, an album, a place, the library. */}
+      <View style={{ height: 10 }} />
+
       {children}
-    </View>
-      </View>
     </View>
   );
 }
@@ -161,8 +146,14 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
  */
 export function useHeaderClearance(extra = 0) {
   const insets = useSafeAreaInsets();
-  return insets.top + HEADER_HEIGHT + extra + 8;
+  // `HEADER_GAP` covers both the row added inside the bar and the space between
+  // the bar and the content, which used to be 8pt — close enough that a title
+  // and the first row of thumbnails read as one block.
+  return insets.top + HEADER_HEIGHT + extra + HEADER_GAP;
 }
+
+/** The bar's own bottom row, and the same distance again below it. */
+const HEADER_GAP = 26;
 
 /**
  * The pill-shaped control that sits at the right of a header.
@@ -174,10 +165,19 @@ export function HeaderAction({
   label,
   icon,
   onPress,
+  compact = false,
 }: {
   label: string;
   icon?: IconName;
   onPress: () => void;
+  /**
+   * Draws the icon alone, with the label left to screen readers.
+   *
+   * For the secondary of two actions. A bar wide enough for one labelled pill
+   * is not wide enough for two, and the title is what gets squeezed out — it
+   * collapsed to a single character before this existed.
+   */
+  compact?: boolean;
 }) {
   return (
     <Touchable onPress={onPress} radius={radius.pill} label={label}>
@@ -185,15 +185,20 @@ export function HeaderAction({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: 5,
-          paddingHorizontal: 13,
-          paddingVertical: 8,
+          paddingHorizontal: compact ? 0 : 13,
+          paddingVertical: compact ? 0 : 8,
+          width: compact ? 38 : undefined,
+          height: compact ? 38 : undefined,
           borderRadius: radius.pill,
           backgroundColor: wash(colors.primary),
         }}
       >
-        {icon && <Icon name={icon} size={15} color={colors.primary} strong />}
-        <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+        {icon && <Icon name={icon} size={compact ? 17 : 15} color={colors.primary} strong />}
+        {!compact && (
+          <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+        )}
       </View>
     </Touchable>
   );

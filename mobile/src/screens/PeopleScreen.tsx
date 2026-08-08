@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FlatList, Text, useWindowDimensions, View } from 'react-native';
 import { Empty } from '../components/AssetGrid';
 import { Loading } from '../components/Loading';
 import { PersonCard } from '../components/Cards';
-import { Header, useHeaderClearance } from '../components/Header';
+import { useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { Segmented } from '../components/Segmented';
 import { useResource, type Person } from '../lib/api';
-import { useNavigation } from '../navigation';
+import { useRouter } from 'expo-router';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Status {
@@ -28,7 +29,7 @@ const GUTTER = 16;
  * among the family reads as the grouping having failed.
  */
 export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
-  const { push } = useNavigation();
+  const router = useRouter();
   const [kind, setKind] = useState<Kind>('PERSON');
   const { width } = useWindowDimensions();
 
@@ -45,20 +46,36 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
     serverUrl,
     `/people?kind=${kind}&minFaces=1&size=300`,
   );
-  const status = useResource<Status>(serverUrl, '/people/status');
+  /*
+   * Polled only while there is something to watch.
+   *
+   * The count only moves while a scan is running, and a scan can be started
+   * from anywhere — the web client, another phone — so this screen has to ask
+   * rather than wait to be told. Once nothing is outstanding the timer stops
+   * and the screen goes quiet again.
+   */
+  const [watching, setWatching] = useState(false);
+  const status = useResource<Status>(serverUrl, '/people/status', watching ? 4000 : null);
+
+  useEffect(() => {
+    const outstanding = (status.data?.pendingAssets ?? 0) > 0;
+    setWatching((was) => {
+      // The moment the last photo is scanned is the moment there are new faces
+      // to show, and nobody is going to pull the grid down to find out.
+      if (was && !outstanding) void reload();
+      return outstanding;
+    });
+  }, [status.data, reload]);
 
   const clearance = useHeaderClearance(54);
 
-  // Four across, with the gutters taken out before the split rather than after,
-  // so the last column ends the same distance from the edge as the first begins.
-  const avatar = Math.floor((width - GUTTER * 2 - GUTTER * (COLUMNS - 1)) / COLUMNS);
-
-  const people = data ?? [];
-  const noun = kind === 'PET' ? 'pets' : 'people';
-
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header title="People & Pets" icon="people">
+  // The bar itself belongs to the shell; this only says what goes in it.
+  useHeaderSlot(
+    'people',
+    {
+      title: 'People & Pets',
+      icon: 'people',
+      below: (
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
           <Segmented
             segments={[
@@ -69,8 +86,20 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
             onChange={setKind}
           />
         </View>
-      </Header>
+      ),
+    },
+    [kind],
+  );
 
+  // Four across, with the gutters taken out before the split rather than after,
+  // so the last column ends the same distance from the edge as the first begins.
+  const avatar = Math.floor((width - GUTTER * 2 - GUTTER * (COLUMNS - 1)) / COLUMNS);
+
+  const people = data ?? [];
+  const noun = kind === 'PET' ? 'pets' : 'people';
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
         data={people}
         keyExtractor={(person) => person.id}
@@ -94,7 +123,10 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
             token={token}
             size={avatar}
             onPress={() =>
-              push({ name: 'person', id: item.id, title: item.name || 'Unnamed' })
+              router.push({
+                pathname: '/person/[id]',
+                params: { id: item.id, kind: item.kind, title: item.name || 'Unnamed' },
+              })
             }
           />
         )}

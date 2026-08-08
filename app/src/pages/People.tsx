@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Check, Eye, EyeOff, Merge, PawPrint, Pencil, ScanFace, Star, Trash2, UserRound } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
-import { Button, Chip, ConfirmDialog, EmptyState, Input, Menu, Tooltip } from '../ui';
+import { Button, Chip, ConfirmDialog, EmptyState, Input, Menu, Progress, Tooltip } from '../ui';
 
 interface Person {
   id: string;
@@ -23,6 +23,8 @@ interface FaceStatus {
   enabled: boolean;
   ready: boolean;
   pendingAssets: number;
+  /** Every photo a scan would look at, so the outstanding count means something. */
+  totalAssets: number;
 }
 
 export function People() {
@@ -52,6 +54,22 @@ export function People() {
     // While a scan is running the pending count is what changes.
     refetchInterval: (query) => (query.state.data?.pendingAssets ? 4000 : false),
   });
+
+  /**
+   * Whether a scan is under way, as opposed to merely outstanding.
+   *
+   * Latched on the press rather than read from the queue: the server has no
+   * "scanning" flag, only a count of what is left, and that count is just as
+   * high the moment before the button is pressed as the moment after. Cleared
+   * when the count reaches zero, or when the page is left.
+   */
+  const [scanning, setScanning] = useState(false);
+
+  useEffect(() => {
+    if (scanning && status && status.pendingAssets === 0) setScanning(false);
+  }, [scanning, status]);
+
+  const scanned = status ? status.totalAssets - status.pendingAssets : 0;
 
   const { data: people = [], isLoading } = useQuery({
     queryKey: ['people', showHidden, kind],
@@ -84,6 +102,21 @@ export function People() {
     onError,
   });
 
+  /**
+   * Moves a subject between People and Pets.
+   *
+   * Detection decides which of the two something is, and it gets it wrong — a
+   * dog photographed face-on lands among the people often enough that there had
+   * to be a way to say so. Nothing else changes; the faces, the name and the
+   * cover all go with it.
+   */
+  const reclassify = useMutation({
+    mutationFn: async ({ id, kind: next }: { id: string; kind: 'PERSON' | 'PET' }) =>
+      (await api.put(`/people/${id}`, { kind: next })).data,
+    onSuccess: invalidate,
+    onError,
+  });
+
   const merge = useMutation({
     mutationFn: async ({ targetId, sourceIds }: { targetId: string; sourceIds: string[] }) =>
       (await api.post(`/people/${targetId}/merge`, { sourceIds })).data,
@@ -96,6 +129,7 @@ export function People() {
   });
 
   const scan = useMutation({
+    onMutate: () => setScanning(true),
     mutationFn: async () => (await api.post('/people/scan')).data,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['people'] }),
     onError,
@@ -266,19 +300,41 @@ export function People() {
       )}
 
       {status?.ready && status.pendingAssets > 0 && (
-        <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control bg-primary-soft px-3.5 py-2.5">
-          <p className="text-sm text-primary">
-            {status.pendingAssets.toLocaleString()} photos have not been scanned for faces yet.
-          </p>
-          <Button
-            size="sm"
-            variant="primary"
-            icon={<ScanFace size={14} />}
-            disabled={scan.isPending}
-            onClick={() => scan.mutate()}
-          >
-            {scan.isPending ? 'Queuing…' : 'Scan now'}
-          </Button>
+        <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-primary">
+              {scanning
+                ? `Scanning — ${scanned.toLocaleString()} of ${status.totalAssets.toLocaleString()} photos done.`
+                : `${status.pendingAssets.toLocaleString()} photos have not been scanned for faces yet.`}
+            </p>
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<ScanFace size={14} />}
+              disabled={scanning}
+              onClick={() => scan.mutate()}
+            >
+              {scanning ? 'Scanning…' : 'Scan now'}
+            </Button>
+          </div>
+
+          {/*
+            Only while a scan is actually moving.
+            
+            Standing outstanding work is not progress — a bar sitting at the
+            same fraction for a week says the app is stuck when nothing has been
+            asked of it. It appears when the scan is queued and stays until the
+            count reaches zero.
+          */}
+          {scanning && (
+            <Progress
+              // Indeterminate until the first count comes back, because the
+              // queue is still filling and the fraction would jump backwards.
+              value={scan.isPending ? undefined : scanned / Math.max(1, status.totalAssets)}
+              label="Scanning photos for faces"
+              className="mt-2.5"
+            />
+          )}
         </div>
       )}
 
@@ -296,9 +352,10 @@ export function People() {
               <Button
                 variant="primary"
                 icon={<ScanFace size={15} />}
+                disabled={scanning}
                 onClick={() => scan.mutate()}
               >
-                Scan for faces
+                {scanning ? 'Scanning…' : 'Scan for faces'}
               </Button>
             ) : undefined
           }
@@ -472,6 +529,18 @@ export function People() {
                 setFavorite.mutate({
                   id: menu.person.id,
                   isFavorite: !menu.person.isFavorite,
+                }),
+            },
+            {
+              id: 'kind',
+              label: menu.person.kind === 'PET' ? 'This is a person' : 'This is a pet',
+              icon:
+                menu.person.kind === 'PET' ? <UserRound size={15} /> : <PawPrint size={15} />,
+              hint: menu.person.kind === 'PET' ? 'Move to People' : 'Move to Pets',
+              onSelect: () =>
+                reclassify.mutate({
+                  id: menu.person.id,
+                  kind: menu.person.kind === 'PET' ? 'PERSON' : 'PET',
                 }),
             },
             {

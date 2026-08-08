@@ -1,9 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { SubjectKind } from '../../generated/prisma/enums';
 import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -93,6 +95,19 @@ export class UpdatePersonDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  /**
+   * Moves a subject between People and Pets.
+   *
+   * Detection decides this and detection gets it wrong — a dog photographed
+   * face-on is grouped with the people often enough to be worth a correction.
+   * Nothing else about the subject changes; the faces, the name and the cover
+   * all move with it.
+   */
+  @ApiPropertyOptional({ enum: SubjectKind })
+  @IsOptional()
+  @IsEnum(SubjectKind)
+  kind?: SubjectKind;
 }
 
 export class MergePeopleDto {
