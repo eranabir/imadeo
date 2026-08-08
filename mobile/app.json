@@ -55,7 +55,8 @@
         }
       ],
       "expo-video",
-      "expo-background-task"
+      "expo-background-task",
+      "@maplibre/maplibre-react-native"
     ]
   }
 }

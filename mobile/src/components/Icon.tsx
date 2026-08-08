@@ -27,7 +27,9 @@ export type IconName =
   | 'edit'
   | 'phone'
   | 'done'
-  | 'cloud-done';
+  | 'pin'
+  | 'cloud-done'
+  | 'storage';
 
 interface Props {
   name: IconName;
@@ -271,6 +273,17 @@ function shapes(name: IconName, color: string) {
         </>
       );
 
+    case 'storage':
+      // Stacked platters — the drive shape everything from a file manager to a
+      // cloud console uses for "how much room is left".
+      return (
+        <>
+          <Ellipse cx="12" cy="6" rx="7.5" ry="3" />
+          <Path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
+          <Path d="M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3" />
+        </>
+      );
+
     case 'check':
       return <Path d="M4.8 12.6l4.6 4.6L19.2 7.4" />;
 
@@ -319,6 +332,15 @@ function shapes(name: IconName, color: string) {
         <>
           <Path d="M6.9 17.3a3.9 3.9 0 0 1-.6-7.7 5.4 5.4 0 0 1 10.3-.5 3.8 3.8 0 0 1 .8 7.5" />
           <Path d="M9.2 14.4l2.1 2.1 4-4.2" />
+        </>
+      );
+
+    // lucide's `MapPin`.
+    case 'pin':
+      return (
+        <>
+          <Path d="M20 10.5c0 5.4-6.4 10.7-7.5 11.6a0.8 0.8 0 0 1-1 0C10.4 21.2 4 15.9 4 10.5a8 8 0 0 1 16 0Z" />
+          <Circle cx="12" cy="10.2" r="2.9" />
         </>
       );
   }

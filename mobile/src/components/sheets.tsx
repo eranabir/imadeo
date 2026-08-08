@@ -179,90 +179,186 @@ export function MoveSheet({
   onAlbum: (albumId: string) => void;
   onClose: () => void;
 }) {
-  const [where, setWhere] = useState<'folder' | 'album'>('folder');
+  const [needle, setNeedle] = useState('');
+  /**
+   * Folders the pointer has closed.
+   *
+   * Closed rather than open, so the tree arrives expanded — a move sheet that
+   * needs three taps to reach a folder you already know the name of is worse
+   * than a long list, and this is the escape hatch for when the list is the
+   * long one.
+   */
+  const [closed, setClosed] = useState<Set<string>>(new Set());
   const tree = useResource<FolderRow[]>(serverUrl, open ? '/folders/tree' : null);
   const albums = useResource<Album[]>(serverUrl, open && allowAlbums ? '/albums' : null);
 
+  // A sheet that stays open remembers what was typed into it last time, which is
+  // never what is wanted the next time it is opened.
   useEffect(() => {
-    if (!allowAlbums) setWhere('folder');
-  }, [allowAlbums]);
+    if (!open) {
+      setNeedle('');
+      setClosed(new Set());
+    }
+  }, [open]);
 
-  const flatten = (nodes: FolderRow[], depth = 0): { row: FolderRow; depth: number }[] =>
-    nodes.flatMap((node) =>
-      node.id === excludeFolderId
-        ? []
-        : [{ row: node, depth }, ...flatten(node.children ?? [], depth + 1)],
-    );
+  const toggleFolder = (id: string) =>
+    setClosed((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
-  const folders = flatten(tree.data ?? []);
+  const query = needle.trim().toLowerCase();
+  const hit = (name: string) => !query || name.toLowerCase().includes(query);
+
+  /**
+   * One tree, with the albums standing where they actually live.
+   *
+   * An album belongs to a folder — that is what `folderId` is — so listing the
+   * two apart described a structure the library does not have, and left you
+   * scrolling a flat list of forty albums to find the one you had just been
+   * looking at inside a folder. Here a folder is followed by its own albums and
+   * then by its subfolders, which is the order they appear in Browse.
+   */
+  const inFolder = (folderId: string | null) =>
+    (albums.data ?? []).filter((album) => (album.folderId ?? null) === folderId);
+
+  type Row =
+    | { kind: 'folder'; depth: number; folder: FolderRow; holds: boolean; trail: string }
+    | { kind: 'album'; depth: number; album: Album; trail: string };
+
+  /**
+   * Where a row sits, written out in names.
+   *
+   * The folder's own `path` field is a chain of uuids — fine for the server,
+   * meaningless to read — so the ancestors' names are carried down the walk
+   * instead. It only shows while searching, when the indentation that would
+   * otherwise say this has been flattened away.
+   */
+  const walk = (nodes: FolderRow[], depth = 0, trail: string[] = []): Row[] =>
+    nodes.flatMap((node) => {
+      if (node.id === excludeFolderId) return [];
+
+      const albumsHere = inFolder(node.id);
+      const children = node.children ?? [];
+      const holds = albumsHere.length > 0 || children.length > 0;
+      const under = [...trail, node.name];
+
+      return [
+        { kind: 'folder' as const, depth, folder: node, holds, trail: trail.join(' / ') },
+        ...(closed.has(node.id)
+          ? []
+          : [
+              ...albumsHere.map((album) => ({
+                kind: 'album' as const,
+                depth: depth + 1,
+                album,
+                trail: under.join(' / '),
+              })),
+              ...walk(children, depth + 1, under),
+            ]),
+      ];
+    });
+
+  /**
+   * A search narrows the tree, so nesting stops meaning anything.
+   *
+   * Indentation says "inside the row above"; once that row has been filtered
+   * out, the same indentation says something untrue. Matches are shown flat,
+   * with the folder's path as the hint so two same-named folders still read
+   * apart.
+   */
+  const all: Row[] = [
+    ...walk(tree.data ?? []),
+    // Albums filed nowhere sit at the root, beside the top-level folders.
+    ...inFolder(null).map((album) => ({ kind: 'album' as const, depth: 0, album, trail: '' })),
+  ];
+
+  const rows = query
+    ? all
+        .filter((row) => hit(row.kind === 'folder' ? row.folder.name : row.album.name))
+        .map((row) => ({ ...row, depth: 0 }))
+    : all;
+
   const subject = count === 1 ? 'this item' : `these ${count} items`;
+  const loading = tree.loading || albums.loading;
 
   return (
     <Sheet
       open={open}
       title="Move to…"
       description={`Where ${subject} should go.`}
+      tall
       onClose={onClose}
       footer={<Button label="Cancel" variant="secondary" onPress={onClose} />}
     >
-      {allowAlbums && (
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-          <Chip
-            label="A folder"
-            icon="folder"
-            active={where === 'folder'}
-            onPress={() => setWhere('folder')}
-          />
-          <Chip
-            label="An album"
-            icon="album"
-            active={where === 'album'}
-            onPress={() => setWhere('album')}
-          />
-        </View>
+      {/* Typing narrows folders and albums together — picking a destination
+          means knowing its name, rarely which of the two kinds it is. */}
+      {/* The list is what this sheet is for; the field is there for when it is
+          long. Opening straight into a keyboard would cover most of it. */}
+      <Field
+        value={needle}
+        onChange={setNeedle}
+        autoFocus={false}
+        placeholder={allowAlbums ? 'Find a folder or album' : 'Find a folder'}
+      />
+
+      <View style={{ height: 12 }} />
+
+      {!query && (
+        <Destination
+          icon="library"
+          label="Top level"
+          hint="Not filed in any folder"
+          onPress={() => {
+            onFolder(null);
+            onClose();
+          }}
+        />
       )}
 
-      {where === 'folder' ? (
-        <View style={{ gap: 2 }}>
-          <Destination
-            icon="library"
-            label="Top level"
-            hint="Not filed in any folder"
-            onPress={() => {
-              onFolder(null);
-              onClose();
-            }}
-          />
-          {folders.map(({ row, depth }) => (
+      <View style={{ gap: 2 }}>
+        {rows.map((row) =>
+          row.kind === 'folder' ? (
             <Destination
-              key={row.id}
+              key={`folder-${row.folder.id}`}
               icon="folder"
-              label={row.name}
-              indent={depth}
+              label={row.folder.name}
+              hint={query ? row.trail || undefined : undefined}
+              indent={row.depth}
+              // Searching flattens the tree, so there is nothing left to fold.
+              folded={query || !row.holds ? undefined : closed.has(row.folder.id)}
+              onToggle={() => toggleFolder(row.folder.id)}
               onPress={() => {
-                onFolder(row.id);
+                onFolder(row.folder.id);
                 onClose();
               }}
             />
-          ))}
-          {tree.loading && <Text style={{ color: colors.faint, padding: 12 }}>Loading…</Text>}
-        </View>
-      ) : (
-        <View style={{ gap: 2 }}>
-          {(albums.data ?? []).map((album) => (
+          ) : (
             <Destination
-              key={album.id}
+              key={`album-${row.album.id}`}
               icon="album"
-              label={album.name}
-              hint={`${album.assetCount.toLocaleString()} photos`}
+              label={row.album.name}
+              hint={
+                query && row.trail
+                  ? `${row.trail} · ${row.album.assetCount.toLocaleString()} photos`
+                  : `${row.album.assetCount.toLocaleString()} photos`
+              }
+              indent={row.depth}
               onPress={() => {
-                onAlbum(album.id);
+                onAlbum(row.album.id);
                 onClose();
               }}
             />
-          ))}
-          {albums.loading && <Text style={{ color: colors.faint, padding: 12 }}>Loading…</Text>}
-        </View>
+          ),
+        )}
+      </View>
+
+      {loading && <Text style={{ color: colors.faint, padding: 12 }}>Loading…</Text>}
+      {!loading && rows.length === 0 && query && (
+        <Text style={{ color: colors.faint, padding: 12 }}>
+          Nothing here is called “{needle.trim()}”.
+        </Text>
       )}
     </Sheet>
   );
@@ -273,37 +369,73 @@ function Destination({
   label,
   hint,
   indent = 0,
+  folded,
+  onToggle,
   onPress,
 }: {
   icon: 'folder' | 'album' | 'library';
   label: string;
   hint?: string;
   indent?: number;
+  /** Whether what is inside is hidden. Undefined means nothing folds here. */
+  folded?: boolean;
+  onToggle?: () => void;
   onPress: () => void;
 }) {
   return (
-    <Touchable onPress={onPress} radius={radius.md} label={label}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 11,
-          paddingVertical: 12,
-          paddingHorizontal: 12,
-          // Nesting is the only thing that tells two folders of the same name
-          // in different places apart.
-          paddingLeft: 12 + indent * 16,
-        }}
-      >
-        <Icon name={icon} size={18} color={colors.primary} />
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
-            {label}
-          </Text>
-          {hint && <Text style={{ color: colors.faint, fontSize: 12 }}>{hint}</Text>}
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        // Nesting is the only thing that tells two folders of the same name
+        // in different places apart.
+        paddingLeft: indent * 16,
+      }}
+    >
+      {/*
+        Its own target, beside the row rather than inside it.
+
+        Opening a folder and choosing it are different intentions, and a chevron
+        that also picked the folder would file the photos in whichever folder you
+        were trying to look inside.
+      */}
+      {folded === undefined ? (
+        <View style={{ width: 28 }} />
+      ) : (
+        <Touchable
+          onPress={onToggle}
+          radius={radius.pill}
+          label={folded ? `Open ${label}` : `Close ${label}`}
+        >
+          <View style={{ width: 28, height: 34, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ transform: [{ rotate: folded ? '0deg' : '90deg' }] }}>
+              <Icon name="forward" size={15} color={colors.muted} strong />
+            </View>
+          </View>
+        </Touchable>
+      )}
+
+      <Touchable onPress={onPress} radius={radius.md} label={label} style={{ flex: 1 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 11,
+            paddingVertical: 12,
+            paddingRight: 12,
+            paddingLeft: 4,
+          }}
+        >
+          <Icon name={icon} size={18} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+              {label}
+            </Text>
+            {hint && <Text style={{ color: colors.faint, fontSize: 12 }}>{hint}</Text>}
+          </View>
         </View>
-      </View>
-    </Touchable>
+      </Touchable>
+    </View>
   );
 }
 

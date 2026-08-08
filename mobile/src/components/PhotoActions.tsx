@@ -181,6 +181,108 @@ export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onD
   );
 }
 
+/**
+ * The same bar, for photos that are still only on the phone.
+ *
+ * Kept beside its server-side twin so the two stay one thing: a selection puts
+ * the tab bar away and offers what can be done with what is picked. The verbs
+ * differ because the nouns do — a photo in the camera roll cannot be moved to a
+ * folder or given a face, and the two that matter are getting it onto the
+ * server and getting it off the phone.
+ */
+export function DeviceActions({
+  ids,
+  pending,
+  busy = false,
+  onClear,
+  onBackUp,
+  onRemove,
+}: {
+  ids: string[];
+  /** How many of the picked are not on the server yet. */
+  pending: number;
+  busy?: boolean;
+  onClear: () => void;
+  onBackUp: () => void;
+  onRemove: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+
+  const { setActive } = useSelectionBar();
+  const showing = ids.length > 0;
+  useEffect(() => {
+    setActive(showing);
+    return () => setActive(false);
+  }, [showing, setActive]);
+
+  if (!showing) return null;
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        paddingBottom: Math.max(insets.bottom, BAR_MARGIN),
+        paddingHorizontal: BAR_MARGIN,
+        zIndex: 30,
+        pointerEvents: 'box-none',
+      }}
+    >
+      <Glass radius={BAR_RADIUS} style={shadow(3)}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 8,
+            paddingHorizontal: 4,
+            ...(liquidGlass
+              ? null
+              : {
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.07)',
+                  borderRadius: BAR_RADIUS,
+                }),
+          }}
+        >
+          <Action icon="close" label="Clear" onPress={onClear} />
+
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: 13,
+              fontWeight: '700',
+              paddingHorizontal: 4,
+              minWidth: 62,
+              textAlign: 'center',
+            }}
+          >
+            {ids.length} picked
+          </Text>
+
+          {/* Nothing left to send is worth saying rather than hiding: the tick
+              is why removing them from the phone is safe. */}
+          <Action
+            icon={pending === 0 ? 'cloud-done' : 'backup'}
+            label={pending === 0 ? 'Already backed up' : `Back up ${pending}`}
+            tint={pending === 0 ? colors.primary : undefined}
+            disabled={busy || pending === 0}
+            onPress={onBackUp}
+          />
+          <Action
+            icon="trash"
+            label="Remove from this phone"
+            danger
+            disabled={busy}
+            onPress={onRemove}
+          />
+        </View>
+      </Glass>
+    </View>
+  );
+}
+
 function Action({
   icon,
   label,

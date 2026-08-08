@@ -2,6 +2,7 @@ import { BlurView } from 'expo-blur';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import type { ReactNode } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
+import { resolvedDark } from '../lib/preferences';
 import { colors } from '../theme';
 
 /**
@@ -50,9 +51,10 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
     return (
       <GlassView
         glassEffectStyle="regular"
-        // The app is dark whatever the phone is set to, so the glass must not
-        // follow the system and turn milky white over a dark grid.
-        colorScheme="dark"
+        // Follows the app's own setting, not the phone's: the two can disagree,
+        // and glass that turned milky white over a dark grid was exactly that
+        // disagreement showing.
+        colorScheme={resolvedDark() ? 'dark' : 'light'}
         // Liquid glass is nearly clear over a bright photograph, and a title
         // laid on nothing is a title nobody can read. The tint gives it a body
         // to sit on without taking the refraction away.
@@ -66,6 +68,9 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
   }
 
   const android = Platform.OS === 'android';
+  // Read from the palette rather than the OS: the app's own setting decides
+  // this, and it can disagree with the system.
+  const light = !resolvedDark();
 
   return (
     <BlurView
@@ -78,8 +83,21 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
        * slab of the background. `systemChromeMaterialDark` is what iOS puts
        * behind its own navigation and tab bars: lighter, and it picks up the
        * colour of the photographs passing underneath.
+       *
+       * Which of the pair depends on the palette. It used to be dark whatever
+       * the theme was, so in light mode the bar came out a grey slab while the
+       * header beside it stayed white — the two read as different materials
+       * when they are meant to be the same one.
        */
-      tint={Platform.OS === 'ios' ? 'systemChromeMaterialDark' : 'dark'}
+      tint={
+        light
+          ? Platform.OS === 'ios'
+            ? 'systemChromeMaterialLight'
+            : 'light'
+          : Platform.OS === 'ios'
+            ? 'systemChromeMaterialDark'
+            : 'dark'
+      }
       /**
        * Android does not blur at all unless asked.
        *

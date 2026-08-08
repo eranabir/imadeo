@@ -1,10 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -184,6 +185,7 @@ export function Sheet({
   onClose,
   children,
   footer,
+  tall = false,
 }: {
   open: boolean;
   title: string;
@@ -191,23 +193,144 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /**
+   * Holds the panel at a fixed height instead of letting it fit its content.
+   *
+   * For sheets whose body is a list that changes length — folding a folder or
+   * typing a search made the whole panel jump up and down under the finger,
+   * and the row being aimed at moved with it.
+   */
+  tall?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  if (!open) return null;
+
+  /**
+   * The panel rises; the backdrop fades. Two things, not one.
+   *
+   * `Modal`'s own `animationType="slide"` moves everything it contains,
+   * backdrop included, so the dimming swept up from the bottom edge like a page
+   * being pushed on — which is what it looked like, rather than a panel coming
+   * up over the screen you are still on. Animating both here keeps the modal
+   * itself still and lets each part do the one thing it should.
+   *
+   * `shown` lags `open` so there is something left on screen to animate out.
+   */
+  const [shown, setShown] = useState(open);
+  const enter = useRef(new Animated.Value(0)).current;
+
+  /**
+   * Everything moving this panel runs on the JS driver.
+   *
+   * The finger's position arrives as `setValue` on `drag`, and `drag` is added
+   * to `enter` to make one translation — so if `enter` were native, the sum
+   * would be a native node and the JS writes to `drag` would never reach the
+   * view. It looked exactly like a dead gesture. A single sheet's opacity and
+   * translation are cheap enough to animate from JS.
+   */
+  const NATIVE = false;
+
+  /**
+   * Dragged down to dismiss.
+   *
+   * A sheet that rises from the bottom edge invites being pushed back to it,
+   * and on both platforms that is the gesture people try first — the grabber is
+   * a promise the panel was not keeping. Only the head is draggable: the body
+   * scrolls, and a list that dismissed the sheet every time it was flicked
+   * downwards would be unusable.
+   */
+  const drag = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (open) {
+      drag.setValue(0);
+      setShown(true);
+      Animated.timing(enter, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: NATIVE,
+      }).start();
+      return;
+    }
+
+    Animated.timing(enter, {
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: NATIVE,
+    }).start(({ finished }) => {
+      if (finished) setShown(false);
+    });
+  }, [open, drag, enter]);
+
+  const grip = useRef(
+    PanResponder.create({
+      /*
+       * Claimed the moment a finger lands on the head.
+       *
+       * Negotiating on move — the tidier-looking option — never fired: by the
+       * time the gesture was worth claiming the touch had already been settled
+       * elsewhere, on both platforms. There is nothing in the head to press
+       * anyway: a grabber, a title and a line of description, no controls. The
+       * list below keeps its own touches, which is what matters.
+       */
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      // Nothing may take the drag away once it has started.
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_event, gesture) => {
+        // Downwards only. Dragging up would lift the panel off the bottom edge
+        // and show the backdrop beneath it.
+        if (gesture.dy > 0) drag.setValue(gesture.dy);
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        // Either far enough or fast enough: a short flick means the same thing
+        // as a long push, and demanding both feels stuck.
+        if (gesture.dy > 110 || gesture.vy > 0.9) {
+          Animated.timing(drag, {
+            toValue: TRAVEL,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: NATIVE,
+          }).start(onClose);
+        } else {
+          Animated.spring(drag, { toValue: 0, useNativeDriver: NATIVE, bounciness: 2 }).start();
+        }
+      },
+    }),
+  ).current;
+
+  if (!shown) return null;
+
+  // Further than any sheet is tall, so one constant covers every panel: it only
+  // has to be off the bottom of the screen.
+  const lift = Animated.add(
+    enter.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, 0] }),
+    drag,
+  );
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         {/* Tapping the dimmed area is how a sheet is dismissed on both
             platforms, and it has to be a sibling of the panel — a panel nested
             inside the backdrop would swallow every press meant for it. */}
-        <Pressable
-          onPress={onClose}
-          accessibilityLabel="Close"
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.backdrop }}
-        />
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: colors.backdrop,
+            opacity: enter,
+          }}
+        >
+          <Pressable onPress={onClose} accessibilityLabel="Close" style={{ flex: 1 }} />
+        </Animated.View>
 
-        <View
+        <Animated.View
           style={[
             {
               backgroundColor: colors.raised,
@@ -215,36 +338,43 @@ export function Sheet({
               borderTopRightRadius: radius.xl,
               paddingTop: 10,
               paddingBottom: Math.max(insets.bottom, 16),
-              maxHeight: '85%',
+              ...(tall ? { height: '85%' } : { maxHeight: '85%' }),
+              transform: [{ translateY: lift }],
             },
             shadow(3),
           ]}
         >
-          {/* The grabber says the panel is dismissable before anyone tries. */}
-          <View
-            style={{
-              alignSelf: 'center',
-              width: 38,
-              height: 4,
-              borderRadius: radius.pill,
-              backgroundColor: colors.border,
-              marginBottom: 14,
-            }}
-          />
+          {/* The head is the handle: grabber, title and description together,
+              so there is a comfortable band to pull rather than a 4pt bar. */}
+          <View {...grip.panHandlers}>
+            {/* The grabber says the panel is dismissable before anyone tries. */}
+            <View
+              style={{
+                alignSelf: 'center',
+                width: 38,
+                height: 4,
+                borderRadius: radius.pill,
+                backgroundColor: colors.border,
+                marginBottom: 14,
+              }}
+            />
 
-          <View style={{ paddingHorizontal: 20, marginBottom: description ? 14 : 12 }}>
-            <Text style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}>
-              {title}
-            </Text>
-            {description && (
-              <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
-                {description}
+            <View style={{ paddingHorizontal: 20, marginBottom: description ? 14 : 12 }}>
+              <Text
+                style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}
+              >
+                {title}
               </Text>
-            )}
+              {description && (
+                <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
+                  {description}
+                </Text>
+              )}
+            </View>
           </View>
 
           <ScrollView
-            style={{ flexGrow: 0 }}
+            style={tall ? { flex: 1 } : { flexGrow: 0 }}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
             keyboardShouldPersistTaps="handled"
           >
@@ -252,11 +382,14 @@ export function Sheet({
           </ScrollView>
 
           {footer && <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>{footer}</View>}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 }
+
+/** How far a sheet travels on its way in and out — past the bottom of any phone. */
+const TRAVEL = 900;
 
 /** One choice in a sheet: an icon, a label, and something it does. */
 export function SheetRow({

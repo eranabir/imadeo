@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { autoplayVideos } from '../lib/preferences';
 import { useEffect, useRef, useState } from 'react';
 import {
   FlatList,
@@ -253,7 +254,9 @@ function VideoPage({
   );
 
   useEffect(() => {
-    if (active) player.play();
+    // Read at the moment the page becomes active rather than subscribed to:
+    // changing the setting mid-video should not start or stop what is playing.
+    if (active && autoplayVideos()) player.play();
     else player.pause();
   }, [active, player]);
 
