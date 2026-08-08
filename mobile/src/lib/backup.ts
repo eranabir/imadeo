@@ -67,8 +67,45 @@ async function saveDone(done: Set<string>) {
  * The grid marks these, so "is this one safe yet" is answerable per photo
  * rather than only as a count in the header.
  */
-export async function uploadedIds(): Promise<Set<string>> {
-  return loadDone();
+export async function uploadedIds(baseUrl?: string): Promise<Set<string>> {
+  const done = await loadDone();
+  if (!baseUrl) return done;
+  return (await syncDone(baseUrl, done)) ?? done;
+}
+
+/**
+ * Reconciles the local upload log against what the server actually holds.
+ *
+ * The log alone is a per-install file: reinstall the app, or run a second build
+ * beside the first, and it starts empty on a phone whose pictures are all
+ * already backed up — so everything is offered for upload again. The server
+ * knows better, and the photo ids it stores come from the OS rather than from
+ * any one install, so they still line up.
+ *
+ * Merged rather than replaced: the local log may legitimately be ahead, holding
+ * an upload that finished moments ago. A failure here is silent — the log is an
+ * optimisation, and a backup run that cannot reach the server has bigger
+ * problems to report than this.
+ */
+async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string> | null> {
+  try {
+    const token = await storedToken();
+    if (!token) return null;
+
+    const response = await fetch(`${baseUrl}/api/assets/backed-up`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+
+    const ids = (await response.json()) as string[];
+    const before = done.size;
+    for (const id of ids) done.add(id);
+    if (done.size !== before) await saveDone(done);
+
+    return done;
+  } catch {
+    return null;
+  }
 }
 
 /** Identifies this phone to the server, so several devices stay distinguishable. */
@@ -165,7 +202,9 @@ export async function runBackup(
   if (!token) throw new Error('Not signed in.');
 
   const id = await deviceId();
-  const done = await loadDone();
+  // Reconciled first, so a run started on a fresh install does not re-send the
+  // whole camera roll before it works out that the server already has it.
+  const done = await uploadedIds(baseUrl);
 
   const page = await MediaLibrary.getAssetsAsync({
     first: 10000,
@@ -300,8 +339,8 @@ export async function runBackup(
 }
 
 /** How many device items have not been sent from this phone yet. */
-export async function pendingCount(): Promise<number> {
-  const done = await loadDone();
+export async function pendingCount(baseUrl?: string): Promise<number> {
+  const done = await uploadedIds(baseUrl);
   const page = await MediaLibrary.getAssetsAsync({ first: 10000, mediaType: ['photo', 'video'] });
   return page.assets.filter((a) => !done.has(a.id)).length;
 }

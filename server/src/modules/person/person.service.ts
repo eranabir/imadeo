@@ -136,6 +136,7 @@ export class PersonService {
         isHidden: dto.isHidden,
         isFavorite: dto.isFavorite,
         color: dto.color,
+        kind: dto.kind,
       },
     });
   }
