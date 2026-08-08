@@ -90,7 +90,8 @@ export function BackupProgressScreen({ progress, onBack }: Props) {
   const running = progress !== null && progress.at >= 0;
   const subtitle = progress
     ? `${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} sent` +
-      (progress.failed > 0 ? ` · ${progress.failed} failed` : '')
+      (progress.failed > 0 ? ` · ${progress.failed} failed` : '') +
+      (progress.held > 0 ? ` · ${progress.held} waiting for Wi-Fi` : '')
     : undefined;
 
   return (
@@ -192,6 +193,8 @@ export function BackupProgressScreen({ progress, onBack }: Props) {
             {progress.failed > 0
               ? `This run finished with ${progress.failed} still to send. They stay queued and go again next time.`
               : 'This run has finished.'}
+            {progress.held > 0 &&
+              ` ${progress.held.toLocaleString()} more are set to wait for Wi-Fi, and go as soon as you are on one.`}
           </Text>
         </View>
       )}

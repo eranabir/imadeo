@@ -2262,6 +2262,7 @@ __metadata:
     expo-linear-gradient: "npm:~57.0.1"
     expo-linking: "npm:~57.0.5"
     expo-media-library: "npm:~57.0.3"
+    expo-network: "npm:~57.0.1"
     expo-router: "npm:~57.0.11"
     expo-secure-store: "npm:~57.0.1"
     expo-status-bar: "npm:~57.0.1"
@@ -8747,6 +8748,16 @@ __metadata:
   peerDependencies:
     react-native: "*"
   checksum: 10c0/6d64592976c97b8a831d30baeca9748ba88acb66d755e108be6a569bb7bf19e7369d65305eb2e62bfbf9fd187a5b39c4ccd91bf633857999f4a24da1e0f4c0d4
+  languageName: node
+  linkType: hard
+
+"expo-network@npm:~57.0.1":
+  version: 57.0.1
+  resolution: "expo-network@npm:57.0.1"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+  checksum: 10c0/15e2b59a88a500fc803b296fa80988e39659ed618959fa02b370c8b9a70db968e21a62de350a1998ece06819b83c49e8c59ea32fe5d132b325640c98a544a85f
   languageName: node
   linkType: hard
 

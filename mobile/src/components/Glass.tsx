@@ -47,6 +47,25 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
     overflow: 'hidden',
   };
 
+  /*
+   * The wash the bar's own content sits on.
+   *
+   * Both materials need it and for the same reason: Expo's own note on
+   * `GlassView` is that the effect "may appear nearly invisible" over dark
+   * content, and a selection bar laid on nothing is a row of glyphs floating on
+   * a photograph. It goes under the children rather than into `tintColor`,
+   * because that prop tints the material and does not give it a body.
+   *
+   * The two materials need different weights. `film` is a translucent wash and
+   * it works over a blur, which has already lifted what is behind it; liquid
+   * glass lifts nothing over a dark grid, so there the bar takes `surface` —
+   * the same opaque card the bar at the top of the screen is drawn on, which is
+   * the surface this one is a twin of anyway.
+   */
+  const film = (colour: string) => (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colour }]} pointerEvents="none" />
+  );
+
   if (liquidGlass) {
     return (
       <GlassView
@@ -55,13 +74,10 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
         // and glass that turned milky white over a dark grid was exactly that
         // disagreement showing.
         colorScheme={resolvedDark() ? 'dark' : 'light'}
-        // Liquid glass is nearly clear over a bright photograph, and a title
-        // laid on nothing is a title nobody can read. The tint gives it a body
-        // to sit on without taking the refraction away.
-        tintColor={tint ?? colors.film}
         isInteractive={interactive}
         style={[shape, style]}
       >
+        {film(tint ?? colors.surface)}
         {children}
       </GlassView>
     );
@@ -113,14 +129,12 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
       style={[shape, style]}
     >
       {/*
-        The wash the bar's own content sits on.
-
-        It has to be a layer rather than a `backgroundColor` on the blur itself:
-        every platform's `BlurView` paints its own tint onto that node, so a
-        colour passed in the style is simply overwritten and the bar keeps
-        whatever the material gave it.
+        A layer rather than a `backgroundColor` on the blur itself: every
+        platform's `BlurView` paints its own tint onto that node, so a colour
+        passed in the style is simply overwritten and the bar keeps whatever the
+        material gave it.
       */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.film }]} pointerEvents="none" />
+      {film(tint ?? colors.film)}
       {children}
     </BlurView>
   );

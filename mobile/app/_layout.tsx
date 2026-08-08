@@ -1,6 +1,7 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Stack, usePathname, useSegments } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Header } from '../src/components/Header';
 import { HeaderSlots, useHeaderSlots } from '../src/header';
@@ -8,7 +9,7 @@ import { Loading } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
-import { SelectionProvider } from '../src/selection';
+import { SelectionProvider, useSelectionBar } from '../src/selection';
 import { SessionProvider, useSession } from '../src/session';
 import { colors } from '../src/theme';
 
@@ -21,17 +22,24 @@ import { colors } from '../src/theme';
  */
 export default function RootLayout() {
   /*
-   * Keyed on the appearance so a change repaints everything.
+   * Subscribed to the appearance, not keyed on it.
    *
    * The palette is a module object every screen imports rather than a context
-   * they subscribe to — swapping its values is invisible to React, so the tree
-   * is thrown away and rebuilt instead. It happens once, on a deliberate press
-   * in Settings; nothing about it needs to be cheap.
+   * they subscribe to, and `applyPalette` swaps its values in place. Every
+   * screen reads `colors.x` while it renders and nothing here is memoised, so
+   * one state change at the root is enough to repaint all of them — which is
+   * what Expo's own guidance for themed native UI says to do.
+   *
+   * This used to key the tree on the value instead, throwing it away and
+   * rebuilding it. A rebuilt `NativeTabs` came back without the background it
+   * was given, so the bar went clear and its labels ended up on top of a
+   * photograph; it also reset which tab was showing, so changing the setting
+   * threw you out of Settings.
    */
-  const appearance = useAppearance();
+  useAppearance();
 
   return (
-    <SafeAreaProvider key={appearance}>
+    <SafeAreaProvider>
       <SessionProvider>
         <SelectionProvider>
           <Gate />
@@ -96,10 +104,76 @@ function Gate() {
           }}
         />
         <Bar />
+        <Dock />
       </View>
     </HeaderSlots>
   );
 }
+
+/**
+ * The selection toolbar, over everything including the tab bar.
+ *
+ * Drawn here rather than by the screen that owns the selection, because the tab
+ * bar is a sibling of that screen and composited above it — a panel rendered
+ * down there comes out underneath the tabs however it is stacked. Up here it is
+ * outside the tabs altogether.
+ *
+ * It slides in from the bottom edge as the tab bar slides out, so the two read
+ * as one bar being exchanged for another rather than a panel appearing on top
+ * of a gap. `shown` lags the published node so there is still something on
+ * screen to animate away once the selection has gone.
+ */
+function Dock() {
+  const { dock } = useSelectionBar();
+  const [shown, setShown] = useState<ReactNode>(dock);
+  const enter = useRef(new Animated.Value(dock ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (dock) setShown(dock);
+
+    const animation = Animated.timing(enter, {
+      toValue: dock ? 1 : 0,
+      // Out faster than in: the toolbar leaving is the end of something the tap
+      // already confirmed, and waiting on it just delays the tabs coming back.
+      duration: dock ? 260 : 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+
+    animation.start(({ finished }) => {
+      if (finished && !dock) setShown(null);
+    });
+
+    return () => animation.stop();
+  }, [dock, enter]);
+
+  if (!shown) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          opacity: enter,
+          transform: [
+            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [DOCK_TRAVEL, 0] }) },
+          ],
+        },
+      ]}
+    >
+      {shown}
+    </Animated.View>
+  );
+}
+
+/**
+ * How far the toolbar starts below the bottom edge.
+ *
+ * Deliberately more than the bar is tall. It only has to be off screen at the
+ * start, and the bar's height depends on the safe area, which differs by phone.
+ */
+const DOCK_TRAVEL = 160;
 
 /**
  * The one bar, over whatever the stack is showing.

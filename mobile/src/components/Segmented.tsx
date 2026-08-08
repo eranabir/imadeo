@@ -23,8 +23,15 @@ interface Props<T extends string> {
  * these screens the second option is the one people are usually after.
  */
 export function Segmented<T extends string>({ segments, active, onChange }: Props<T>) {
-  // Four across a phone leaves about 80pt a column, which "Content" plus an
-  // icon does not fit at the three-segment size.
+  /*
+   * Four across a phone leaves under 100pt a column, and a label beside an
+   * icon does not fit in it — "People & Pets" alone is most of that width.
+   *
+   * So a four-segment control stacks instead: the icon sits over the label and
+   * the column only has to be as wide as the words. That buys the icon room to
+   * be read at a glance rather than shrunk until it is a smudge, which is what
+   * squeezing it onto the same line had cost.
+   */
   const tight = segments.length > 3;
 
   return (
@@ -57,11 +64,11 @@ export function Segmented<T extends string>({ segments, active, onChange }: Prop
           >
             <View
               style={{
-                flexDirection: 'row',
+                flexDirection: tight ? 'column' : 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: tight ? 4 : 6,
-                paddingVertical: 9,
+                gap: tight ? 3 : 6,
+                paddingVertical: tight ? 7 : 9,
                 paddingHorizontal: 2,
                 borderRadius: radius.pill,
                 backgroundColor: on ? colors.primary : 'transparent',
@@ -70,7 +77,7 @@ export function Segmented<T extends string>({ segments, active, onChange }: Prop
               {segment.icon && (
                 <Icon
                   name={segment.icon}
-                  size={tight ? 13 : 15}
+                  size={tight ? 17 : 15}
                   color={on ? colors.onPrimary : colors.muted}
                 />
               )}

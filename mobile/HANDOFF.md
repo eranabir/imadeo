@@ -27,23 +27,24 @@ and the floating bars' geometry (`BAR_RADIUS`, `BAR_MARGIN`, `BAR_HEIGHT`) is in
 
 ## What is broken
 
-**Tapping a person does not push its route.** `PeopleScreen.tsx` calls
-`router.push({ pathname: '/person/[id]', params: … })` and nothing happens — no
-navigation, no warning in logcat. Unverified but likely the same for
-`/folder/[id]`, `/album/[id]` and `/place/[city]`, since all four went through
-the same change. **This is the first thing to fix.**
-
-Worth checking: whether the routes are being discovered at all (nothing else in
-the tree references them), and whether `Gate` returning `<Stack>` from inside a
-conditional in `app/_layout.tsx` is interfering.
-
 **Android lost its blur.** SDK 57's `expo-blur` wants a `blurTarget` prop for
 `dimezisBlurView`; without it the method falls back to `none`. Logcat says so on
 every launch. `src/components/Glass.tsx`.
 
-**iOS is entirely unverified.** Everything above was seen only on the Android
-emulator. Expo Go cannot run this app — native modules it does not contain — so
-iOS needs `npx expo prebuild -p ios && npx pod-install && npx expo run:ios`.
+## What turned out not to be broken
+
+**The routing bug was a stale bundle.** Tapping a person did nothing on the
+machine this was written on. It does now, with no change to the routing code:
+all four pushed routes — `/person/[id]`, `/folder/[id]`, `/album/[id]` and
+`/place/[city]` — were tapped through on both an Android emulator and an iPhone
+17 Pro Max simulator after a clean rebuild. If it comes back, suspect Metro's
+cache before the router: expo-router finds routes by walking `app/`, and a cache
+from before those files existed leaves `push` silently doing nothing.
+
+**iOS is verified.** The native tab bar, all four pushed routes, the edge-swipe
+back, and both light and dark. It needs a real build —
+`npx expo prebuild -p ios && npx pod-install && npx expo run:ios` — because Expo
+Go cannot load it.
 
 ## What is still owed
 
@@ -54,14 +55,20 @@ iOS needs `npx expo prebuild -p ios && npx pod-install && npx expo run:ios`.
    `app/_layout.tsx` still draws the old one above the stack. Both Google Photos
    and Immich put these below the bar anyway.
 
-2. **Rehome the photo-selection actions.** `PhotoActions` and `DeviceActions`
-   replace the tab bar while a selection is live. A system tab bar cannot be
-   replaced, so they need to become a sheet or a bar floating above the tabs.
-   Affects Library, Browse, album, folder, person, place and search.
-
-3. **`TAB_BAR_CLEARANCE` is now a guess.** The native bar's height cannot be
+2. **`TAB_BAR_CLEARANCE` is still a guess.** The native bar's height cannot be
    measured — Expo's docs say so, and it moves to the side on iPad. Every grid's
-   bottom padding derives from it.
+   bottom padding derives from it. Worth reading alongside SDK 57's automatic
+   content insets, which inset the first scroll view inside a tab screen and may
+   already be doing half of this.
+
+3. **Backup, the two pieces not built yet.** Uploading on open and on resume:
+   only the fifteen-minute background task exists, and the `AppState` listener
+   in `LibraryScreen` re-checks permissions rather than starting a run. And
+   deduplication by content: `syncDone` keys on the OS asset id, so a photo the
+   server already holds from the web, the CLI or another phone is sent again and
+   discarded on arrival — bandwidth, never correctness. Immich hashes instead,
+   at the point albums are chosen; this app has no album selection to hang that
+   off yet.
 
 ## The design work behind this
 

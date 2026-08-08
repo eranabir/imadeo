@@ -9,19 +9,13 @@ import { useResource } from '../lib/api';
 import {
   setAppearance,
   setAutoplayVideos,
+  setCellularAllowed,
   useAppearance,
   useAutoplayVideos,
+  useCellularAllowed,
 } from '../lib/preferences';
-import { isAvailable, isEnabled, lastRun, setEnabled, type LastRun } from '../lib/autobackup';
+import { isAvailable, isEnabled, setEnabled } from '../lib/autobackup';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
-
-/** What the last background run did, in a line. */
-function summary(run: LastRun | null): string {
-  if (!run) return 'On — waiting for the first run.';
-  const when = new Date(run.at).toLocaleString();
-  if (run.sent === 0 && run.failed === 0) return `On — nothing new at ${when}.`;
-  return `On — sent ${run.sent} at ${when}${run.failed > 0 ? `, ${run.failed} failed` : ''}.`;
-}
 
 /**
  * The background-backup setting, and whether the phone will honour it.
@@ -33,14 +27,12 @@ function summary(run: LastRun | null): string {
 function useAutoBackup() {
   const [on, setOn] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
-  const [last, setLast] = useState<LastRun | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [enabled, allowed, run] = await Promise.all([isEnabled(), isAvailable(), lastRun()]);
+    const [enabled, allowed] = await Promise.all([isEnabled(), isAvailable()]);
     setOn(enabled);
     setAvailable(allowed);
-    setLast(run);
   }, []);
 
   useEffect(() => {
@@ -63,7 +55,7 @@ function useAutoBackup() {
     [refresh],
   );
 
-  return { on, available, last, busy, toggle };
+  return { on, available, busy, toggle };
 }
 
 interface Props {
@@ -106,6 +98,7 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
   const me = useResource<Me>(serverUrl, '/users/me');
   const auto = useAutoBackup();
   const autoplay = useAutoplayVideos();
+  const cellular = useCellularAllowed();
   const appearance = useAppearance();
 
   /**
@@ -153,21 +146,46 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
           />
         </Group>
 
-        <Group>
+        <Group title="Backup">
           <SwitchRow
             icon="backup"
             label="Back up in the background"
             hint={
               auto.available === false
                 ? 'Your phone has background activity switched off for Imadeo.'
-                : auto.on
-                  ? summary(auto.last)
-                  : 'Off — photos go only while Imadeo is open.'
+                : 'Keep sending while Imadeo is closed'
             }
             on={auto.on}
             disabled={auto.available === false || auto.busy}
             onChange={auto.toggle}
           />
+
+          {/* Photos and videos apart, because their sizes are not comparable: a
+              day of pictures is tens of megabytes and one video can be more
+              than all of them. Both start off, so mobile data is never spent by
+              a run nobody asked for.
+
+              Every hint here says what its switch does and does not change with
+              it. A hint that flips between two readings makes you toggle the
+              thing to find out which way round it is, and one that grows a line
+              when you turn it on moves everything under it. */}
+          <SwitchRow
+            icon="library"
+            label="Photos"
+            hint="Use mobile data to back up photos"
+            on={cellular.photos}
+            onChange={(next) => void setCellularAllowed({ ...cellular, photos: next })}
+          />
+          <SwitchRow
+            icon="play"
+            label="Videos"
+            hint="Use mobile data to back up videos"
+            on={cellular.videos}
+            onChange={(next) => void setCellularAllowed({ ...cellular, videos: next })}
+          />
+        </Group>
+
+        <Group>
           <SwitchRow
             icon="play"
             label="Play videos automatically"
@@ -204,33 +222,8 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
           </View>
         </Group>
 
-        {auto.on && (
-          <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 19, marginTop: -6, marginBottom: 16 }}>
-            {/* Said plainly, because the alternative is someone deciding the
-                feature is broken when it is working exactly as the platform
-                allows. Neither iOS nor Android will wake an app the moment a
-                photo is taken. */}
-            Your phone decides when to run this — usually while charging on
-            Wi-Fi, and at most every 15 minutes. Opening Imadeo always sends
-            anything outstanding straight away.
-          </Text>
-        )}
-
         <Action label="Connect to a different server" onPress={onChangeServer} />
         <Action label="Sign out" onPress={onSignOut} danger />
-
-        <Text
-          style={{
-            color: colors.faint,
-            fontSize: 12.5,
-            lineHeight: 19,
-            textAlign: 'center',
-            marginTop: 26,
-          }}
-        >
-          A run always picks up from where it stopped, whether it was you
-          opening the app or your phone deciding it was a good moment.
-        </Text>
       </ScrollView>
     </View>
   );
@@ -322,17 +315,36 @@ function Choice({
   );
 }
 
-function Group({ children }: { children: ReactNode }) {
+function Group({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <View
-      style={{
-        backgroundColor: colors.surface,
-        borderRadius: 18,
-        paddingHorizontal: 14,
-        marginBottom: 16,
-      }}
-    >
-      {children}
+    <View style={{ marginBottom: 16 }}>
+      {/* Above the card rather than inside it, the way both platforms head a
+          list of settings — the heading names the group, it is not a row in
+          it. */}
+      {title && (
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 12.5,
+            fontWeight: '700',
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+          }}
+        >
+          {title}
+        </Text>
+      )}
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          borderRadius: 18,
+          paddingHorizontal: 14,
+        }}
+      >
+        {children}
+      </View>
     </View>
   );
 }

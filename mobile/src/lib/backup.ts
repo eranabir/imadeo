@@ -10,7 +10,9 @@ import * as FileSystem from 'expo-file-system/legacy';
  * imported the same way here for the same reason.
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
+import * as Network from 'expo-network';
 import { storedToken } from './auth';
+import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
 
 const DONE_KEY = 'imadeo.uploaded';
@@ -162,6 +164,39 @@ export function mimeOf(filename: string, kind: MediaLibrary.MediaTypeValue): str
   return MIME[extension] ?? (kind === 'video' ? 'video/mp4' : 'image/jpeg');
 }
 
+/** Which of the two settings an asset answers to. */
+function kindOf(asset: MediaLibrary.Asset): 'photos' | 'videos' {
+  return asset.mediaType === MediaLibrary.MediaType.video ? 'videos' : 'photos';
+}
+
+/**
+ * What the connection underfoot is allowed to send.
+ *
+ * Only `CELLULAR` counts as metered. Wi-Fi, ethernet and a VPN riding on top of
+ * one are not, and neither is a type the platform cannot name — treating
+ * `UNKNOWN` as mobile data would stop backups on connections that cost nothing,
+ * which is a worse failure than the one this is guarding against.
+ *
+ * Offline holds everything: there is no point starting a run that cannot reach
+ * the server, and the count tells the screen why nothing moved.
+ */
+async function allowedNow(): Promise<(kind: 'photos' | 'videos') => boolean> {
+  let state: Network.NetworkState | null = null;
+  try {
+    state = await Network.getNetworkStateAsync();
+  } catch {
+    // No answer from the platform. Assume the connection is free rather than
+    // silently refusing to back anything up.
+    return () => true;
+  }
+
+  if (state.isConnected === false) return () => false;
+  if (state.type !== Network.NetworkStateType.CELLULAR) return () => true;
+
+  const cellular = cellularAllowed();
+  return (kind) => cellular[kind];
+}
+
 /** One item's outcome, as far as the run has got. */
 export interface Attempt {
   id: string;
@@ -174,6 +209,14 @@ export interface Progress {
   done: number;
   total: number;
   failed: number;
+  /**
+   * Held back because this connection is not allowed to carry them.
+   *
+   * Counted rather than queued: they are not waiting their turn, they are
+   * waiting for a different network, and a progress bar that includes them
+   * would never finish. The screen says so instead.
+   */
+  held: number;
   /**
    * The queue, in the order it will be sent, and where the run has reached.
    *
@@ -223,13 +266,25 @@ export async function runBackup(
   });
 
   const wanted = only ? new Set(only) : null;
-  const pending = page.assets.filter(
+  const unsent = page.assets.filter(
     (asset) => !done.has(asset.id) && (wanted === null || wanted.has(asset.id)),
   );
+
+  /*
+   * What this connection is allowed to carry.
+   *
+   * Read once, at the start. A run that re-checked between every item would
+   * stop halfway through a video the moment a phone left the house, and the
+   * partial upload would be wasted either way — the next run picks the rest up.
+   */
+  const allowed = await allowedNow();
+  const pending = unsent.filter((asset) => allowed(kindOf(asset)));
+
   const progress: Progress = {
     done: 0,
     total: pending.length,
     failed: 0,
+    held: unsent.length - pending.length,
     queue: pending.map((asset) => ({ id: asset.id, filename: asset.filename })),
     at: -1,
     sent: [],

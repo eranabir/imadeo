@@ -161,7 +161,7 @@ export function LibraryScreen({ serverUrl }: Props) {
     stop.current = false;
     setError(null);
     setRunning(true);
-    setProgress({ done: 0, total: 0, failed: 0, queue: [], at: -1, sent: [], failures: [] });
+    setProgress({ done: 0, total: 0, failed: 0, held: 0, queue: [], at: -1, sent: [], failures: [] });
     try {
       await runBackup(serverUrl, setProgress, () => stop.current, only);
       setPending(await pendingCount(serverUrl));

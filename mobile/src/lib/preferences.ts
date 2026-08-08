@@ -5,6 +5,7 @@ import { getItem, setItem } from './storage';
 
 const AUTOPLAY_KEY = 'imadeo.autoplayVideos';
 const APPEARANCE_KEY = 'imadeo.appearance';
+const CELLULAR_KEY = 'imadeo.cellular';
 
 /** What the user asked for, which is not the same as what is drawn. */
 export type Appearance = 'system' | 'dark' | 'light';
@@ -17,7 +18,34 @@ const systemIsDark = () => SystemAppearance.getColorScheme() !== 'light';
 
 export const resolvedDark = () => (appearance === 'system' ? systemIsDark() : appearance === 'dark');
 
+/**
+ * What UIKit has been told, so it is only ever told when it changes.
+ *
+ * `setColorScheme` announces itself through the same change listener this
+ * module subscribes to, and that listener repaints while `system` is chosen —
+ * so without this guard the two would call each other.
+ */
+let nativeStyle: 'light' | 'dark' | 'unspecified' | undefined;
+
+/**
+ * The platform's own chrome follows the setting too.
+ *
+ * The palette reaches what this app draws and stops there. The tab bar belongs
+ * to `UITabBarController`, and it takes its material and its label colour from
+ * the interface style — so a light palette under a dark UIKit is a translucent
+ * dark bar and white labels over a white page, which reads as no bar at all.
+ * `unspecified` gives the choice back to the system — and, unlike `null`, puts
+ * the real system scheme back in the cache that `systemIsDark` reads.
+ */
+function paintNative() {
+  const next = appearance === 'system' ? 'unspecified' : appearance;
+  if (next === nativeStyle) return;
+  nativeStyle = next;
+  SystemAppearance.setColorScheme(next);
+}
+
 function paint() {
+  paintNative();
   applyPalette(resolvedDark() ? DARK : LIGHT);
   for (const listener of appearanceListeners) listener(appearance);
 }
@@ -74,12 +102,66 @@ export function autoplayVideos(): boolean {
   return autoplay;
 }
 
+/**
+ * What may go up over mobile data, kept apart for photos and for videos.
+ *
+ * Both default to off, which is Wi-Fi only. A backup is not something anyone
+ * asks for at the moment it happens — it runs on resume and in the background —
+ * so the cost of getting this wrong lands on someone who never chose to pay it,
+ * and the safe default is the one that cannot.
+ *
+ * Two settings rather than one because the sizes are not comparable. A day of
+ * photographs is tens of megabytes and a single video can be more than all of
+ * them; wanting the first on the move and not the second is the ordinary case,
+ * and one switch cannot say it.
+ */
+let cellular = { photos: false, videos: false };
+const cellularListeners = new Set<(next: { photos: boolean; videos: boolean }) => void>();
+
+export function cellularAllowed(): { photos: boolean; videos: boolean } {
+  return cellular;
+}
+
+export async function setCellularAllowed(next: { photos: boolean; videos: boolean }) {
+  cellular = next;
+  for (const listener of cellularListeners) listener(next);
+  await setItem(CELLULAR_KEY, JSON.stringify(next));
+}
+
+/** Subscribes a screen to the setting, so the switches and a run never disagree. */
+export function useCellularAllowed(): { photos: boolean; videos: boolean } {
+  const [value, setValue] = useState(cellular);
+
+  useEffect(() => {
+    cellularListeners.add(setValue);
+    return () => {
+      cellularListeners.delete(setValue);
+    };
+  }, []);
+
+  return value;
+}
+
 /** Reads the stored value once at start-up. */
 export async function restorePreferences() {
-  const [stored, mode] = await Promise.all([getItem(AUTOPLAY_KEY), getItem(APPEARANCE_KEY)]);
+  const [stored, mode, metered] = await Promise.all([
+    getItem(AUTOPLAY_KEY),
+    getItem(APPEARANCE_KEY),
+    getItem(CELLULAR_KEY),
+  ]);
 
   autoplay = stored !== 'off';
   for (const listener of listeners) listener(autoplay);
+
+  if (metered) {
+    try {
+      const parsed = JSON.parse(metered) as Partial<typeof cellular>;
+      cellular = { photos: parsed.photos === true, videos: parsed.videos === true };
+      for (const listener of cellularListeners) listener(cellular);
+    } catch {
+      // Unreadable: leave both off, which is the safe answer anyway.
+    }
+  }
 
   if (mode === 'dark' || mode === 'light' || mode === 'system') {
     appearance = mode;
