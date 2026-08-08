@@ -546,6 +546,107 @@ export class AssetService {
    * dropdowns. Offering a free-text box for "camera make" invites typos that
    * silently match nothing; a list of what exists cannot be wrong.
    */
+  /**
+   * Every place this library has photos in, largest first.
+   *
+   * Grouped in the database rather than by pulling assets and counting in
+   * memory: a library is hundreds of thousands of rows and a dozen places, and
+   * the answer is the dozen.
+   *
+   * A cover comes back with each one because a list of place names is a list of
+   * words, and this is a photo app — the most recent photo taken there is what
+   * makes "Kyoto" mean something at a glance.
+   */
+  async places(userId: string) {
+    const rows = await this.prisma.$queryRaw<
+      {
+        city: string | null;
+        state: string | null;
+        country: string | null;
+        count: bigint;
+        coverAssetId: string;
+        latitude: number | null;
+        longitude: number | null;
+      }[]
+    >`
+      SELECT DISTINCT ON (e.city, e.country)
+        e.city, e.state, e.country,
+        COUNT(*) OVER (PARTITION BY e.city, e.country)::bigint AS count,
+        a.id AS "coverAssetId",
+        e.latitude, e.longitude
+      FROM asset_exif e
+      JOIN assets a ON a.id = e."assetId"
+      WHERE a."ownerId" = ${userId}::uuid
+        AND a."deletedAt" IS NULL
+        AND a.visibility <> 'LOCKED'
+        AND e.city IS NOT NULL
+      -- DISTINCT ON keeps the first row of each group, so ordering by date
+      -- within the group is what makes the cover the newest photo there.
+      ORDER BY e.city, e.country, a."localDateTime" DESC
+    `;
+
+    return rows
+      .map(({ count, ...place }) => ({ ...place, count: Number(count) }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Coordinates for every photo that has them, for plotting.
+   *
+   * Deliberately thin — an id and two numbers. The map holds all of them at
+   * once to cluster them, and sending the full asset for each would be
+   * megabytes of EXIF nobody is going to look at.
+   */
+  async mapPoints(userId: string) {
+    const rows = await this.prisma.$queryRaw<
+      { id: string; latitude: number; longitude: number; city: string | null }[]
+    >`
+      SELECT a.id, e.latitude, e.longitude, e.city
+      FROM asset_exif e
+      JOIN assets a ON a.id = e."assetId"
+      WHERE a."ownerId" = ${userId}::uuid
+        AND a."deletedAt" IS NULL
+        AND a.visibility <> 'LOCKED'
+        AND e.latitude IS NOT NULL
+        AND e.longitude IS NOT NULL
+      ORDER BY a."localDateTime" DESC
+    `;
+    return rows;
+  }
+
+  /** Photos that have coordinates but no place name yet, for the backfill. */
+  async assetsMissingPlace(userId: string) {
+    return this.prisma.assetExif.findMany({
+      where: {
+        asset: { ownerId: userId, deletedAt: null },
+        latitude: { not: null },
+        longitude: { not: null },
+        city: null,
+      },
+      select: { assetId: true, latitude: true, longitude: true },
+    });
+  }
+
+  /**
+   * The device asset ids this owner has already backed up.
+   *
+   * Deliberately not scoped to a `deviceId`. That id is minted per install, so a
+   * reinstall — or a TestFlight build sitting alongside a development one, which
+   * is the case that found this — looks like a brand new phone and offers to
+   * upload the whole camera roll again. The photo ids themselves come from the
+   * OS and outlive any one install, so matching on those is what actually
+   * answers "have I sent this picture before".
+   */
+  async backedUpDeviceAssetIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.asset.findMany({
+      where: { ownerId: userId, deletedAt: null, deviceAssetId: { not: null } },
+      select: { deviceAssetId: true },
+      distinct: ['deviceAssetId'],
+    });
+
+    return rows.flatMap((row) => (row.deviceAssetId ? [row.deviceAssetId] : []));
+  }
+
   async searchFacets(userId: string) {
     const distinct = async (column: string) => {
       const rows = await this.prisma.$queryRawUnsafe<{ value: string }[]>(

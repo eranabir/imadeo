@@ -129,6 +129,24 @@ export const configuration = () => {
       transcodePolicy: process.env.FFMPEG_TRANSCODE_POLICY ?? 'required',
     },
 
+    geocoding: {
+      /// Turning this off leaves latitude and longitude untouched and the map
+      /// working; only the place *names* go, and with them the ability to search
+      /// for a city. It is a switch because a lookup sends a photo's coordinates
+      /// to a third party, which not every self-hoster will accept.
+      enabled: bool(process.env.GEOCODING_ENABLED, true),
+      url: process.env.GEOCODING_URL ?? 'https://nominatim.openstreetmap.org',
+      /// Nominatim's policy is one request per second per application, enforced
+      /// by blocking those that ignore it. Raise this, never lower it, unless
+      /// you are pointing GEOCODING_URL at your own instance.
+      minIntervalMs: int(process.env.GEOCODING_MIN_INTERVAL_MS, 1_100),
+      /// The same policy requires an application to identify itself.
+      userAgent: process.env.GEOCODING_USER_AGENT ?? 'Imadeo/0.1 (self-hosted photo server)',
+      /// Place names come back in this language, so a photo from Tokyo reads
+      /// "Tokyo" rather than "東京都" unless you would rather it did not.
+      language: process.env.GEOCODING_LANGUAGE ?? 'en',
+    },
+
     machineLearning: {
       enabled: bool(process.env.ML_ENABLED, true),
       url: process.env.ML_URL ?? 'http://localhost:3003',

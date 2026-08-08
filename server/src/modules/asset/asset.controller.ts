@@ -16,6 +16,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthDto } from '../../common/auth.types';
 import { Auth, Authed, AuthedUserId } from '../../common/decorators';
+import { GeocodingService } from '../../infra/geo/geocoding.service';
+import { JOB, QUEUE } from '../../infra/job/job.constants';
+import { JobService } from '../../infra/job/job.service';
 import { AssetService, type UploadedFile as MulterFile } from './asset.service';
 import { DuplicateService } from './duplicate.service';
 import {
@@ -36,6 +39,8 @@ export class AssetController {
   constructor(
     private readonly assetService: AssetService,
     private readonly duplicates: DuplicateService,
+    private readonly geocoding: GeocodingService,
+    private readonly jobs: JobService,
   ) {}
 
   @Post('upload')
@@ -108,6 +113,58 @@ export class AssetController {
   @ApiOperation({ summary: 'Distinct places and cameras present in the library' })
   searchFacets(@AuthedUserId() userId: string) {
     return this.assetService.searchFacets(userId);
+  }
+
+  @Get('backed-up')
+  @ApiOperation({
+    summary: 'Device asset ids already backed up by this account',
+    description:
+      'Lets a freshly installed app tell which of the photos on the phone are already safe, instead of offering to send them all again.',
+  })
+  backedUp(@AuthedUserId() userId: string) {
+    return this.assetService.backedUpDeviceAssetIds(userId);
+  }
+
+  @Get('places')
+  @ApiOperation({
+    summary: 'Places the library has photos in, most photographed first',
+    description: 'Each carries a count, a cover photo and a coordinate to drop a pin on.',
+  })
+  places(@AuthedUserId() userId: string) {
+    return this.assetService.places(userId);
+  }
+
+  @Get('map')
+  @ApiOperation({
+    summary: 'Every photo that has coordinates, as points',
+    description: 'Id, latitude and longitude only — enough to plot and cluster, nothing more.',
+  })
+  mapPoints(@AuthedUserId() userId: string) {
+    return this.assetService.mapPoints(userId);
+  }
+
+  @Get('places/status')
+  @ApiOperation({ summary: 'How many photos still have coordinates but no place name' })
+  async placesStatus(@AuthedUserId() userId: string) {
+    const missing = await this.assetService.assetsMissingPlace(userId);
+    return { enabled: this.geocoding.enabled, pending: missing.length };
+  }
+
+  @Post('places/backfill')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Name the places of photos uploaded before geocoding existed',
+    description:
+      'Rate-limited to one lookup a second by the geocoder, so a large library takes a while. Safe to call again; it only looks at photos still missing a name.',
+  })
+  async backfillPlaces(@AuthedUserId() userId: string) {
+    const missing = await this.assetService.assetsMissingPlace(userId);
+    await this.jobs.enqueueMany(
+      QUEUE.METADATA,
+      JOB.REVERSE_GEOCODE,
+      missing.map(({ assetId }) => ({ assetId })),
+    );
+    return { queued: missing.length };
   }
 
   @Get('search/status')

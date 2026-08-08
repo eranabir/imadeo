@@ -21,6 +21,9 @@ export const ALL_QUEUES: QueueName[] = Object.values(QUEUE);
 
 export const JOB = {
   EXTRACT_METADATA: 'extract-metadata',
+  /// Names the place of a photo that already has coordinates. Its own job so a
+  /// backfill of thousands can be queued without re-reading every file's EXIF.
+  REVERSE_GEOCODE: 'reverse-geocode',
   GENERATE_THUMBNAILS: 'generate-thumbnails',
   TRANSCODE_VIDEO: 'transcode-video',
   ENCODE_CLIP: 'encode-clip',
