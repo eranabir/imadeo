@@ -6,7 +6,8 @@ import { Icon } from '../components/Icon';
 import { Loading } from '../components/Loading';
 import { Touchable } from '../components/ui';
 import { thumbnail, useResource } from '../lib/api';
-import { frameOf, MAP_STYLE_JSON } from '../lib/mapstyle';
+import { resolvedDark } from '../lib/preferences';
+import { frameOf, mapStyleJson } from '../lib/mapstyle';
 import { useNavigation } from '../navigation';
 import { colors, radius, shadow, TAB_BAR_CLEARANCE } from '../theme';
 
@@ -266,7 +267,7 @@ function MapOf({
   return (
     <MapLibre
       style={{ flex: 1 }}
-      mapStyle={MAP_STYLE_JSON}
+      mapStyle={mapStyleJson(resolvedDark())}
       // MapLibre's own logo is not this app's, and the tile licence is served
       // by the attribution control, which stays.
       logo={false}

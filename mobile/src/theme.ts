@@ -48,6 +48,14 @@ export interface Palette {
   overlay: string;
   /** Behind a sheet, dimming everything the sheet is not. */
   backdrop: string;
+  /**
+   * The field a photograph is shown against, full screen.
+   *
+   * Black under a dark app, white under a light one. It was hardcoded to black
+   * either way, so in light mode the whole app was white and the photo sat in a
+   * black letterbox — the one surface that ignored the setting.
+   */
+  viewer: string;
   /** Android's ripple, which has to invert with the surface under it. */
   ripple: string;
 }
@@ -78,6 +86,7 @@ export const DARK: Palette = {
   chrome: '#141e24',
   overlay: 'rgba(0, 0, 0, 0.45)',
   backdrop: 'rgba(0, 0, 0, 0.62)',
+  viewer: '#000000',
   ripple: 'rgba(232, 239, 242, 0.11)',
 };
 
@@ -114,6 +123,7 @@ export const LIGHT: Palette = {
   // photograph is not lighter in light mode.
   overlay: 'rgba(0, 0, 0, 0.45)',
   backdrop: 'rgba(15, 30, 38, 0.35)',
+  viewer: '#ffffff',
   ripple: 'rgba(22, 36, 44, 0.09)',
 };
 

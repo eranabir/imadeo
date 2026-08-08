@@ -86,7 +86,7 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <View style={{ flex: 1, backgroundColor: colors.viewer }}>
         <FlatList
           ref={list}
           data={assets}

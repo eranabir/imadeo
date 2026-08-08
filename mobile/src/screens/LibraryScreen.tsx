@@ -19,6 +19,7 @@ import { Empty } from '../components/AssetGrid';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
+import { intoDays } from '../lib/day';
 import { Icon } from '../components/Icon';
 import { DeviceActions } from '../components/PhotoActions';
 import { ConfirmSheet } from '../components/sheets';
@@ -41,46 +42,9 @@ const COLUMNS = 3;
  * not this one, because "12 March" reads faster than "12 March 2026" and the
  * year is only news when it is a different one.
  */
-function dayLabel(at: number): string {
-  const taken = new Date(at);
-  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const now = new Date();
-  const days = Math.round((midnight(now) - midnight(taken)) / 86_400_000);
-
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-
-  return taken.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'long',
-    ...(taken.getFullYear() === now.getFullYear() ? null : { year: 'numeric' }),
-  });
-}
-
-/**
- * The camera roll cut into days, then into rows.
- *
- * SectionList cannot lay a section out in columns, so each row of three is one
- * item. Grouping first and chunking second keeps a day's last row short rather
- * than letting the next day start halfway across it.
- */
-function byDay(assets: MediaLibrary.Asset[]) {
-  const days: { title: string; data: MediaLibrary.Asset[][] }[] = [];
-
-  for (const asset of assets) {
-    const title = dayLabel(asset.creationTime);
-    let day = days[days.length - 1];
-    if (!day || day.title !== title) {
-      day = { title, data: [] };
-      days.push(day);
-    }
-    const row = day.data[day.data.length - 1];
-    if (!row || row.length === COLUMNS) day.data.push([asset]);
-    else row.push(asset);
-  }
-
-  return days;
-}
+/** Cut into days, with each day already split into rows of `COLUMNS`. */
+const byDay = (assets: MediaLibrary.Asset[]) =>
+  intoDays(assets, (asset) => asset.creationTime, COLUMNS);
 
 /**
  * What is on this phone.
@@ -615,7 +579,7 @@ function DeviceViewer({
   const [at, setAt] = useState(Math.max(0, start));
 
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]}>
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer }]}>
       <FlatList
         data={assets}
         horizontal

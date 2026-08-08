@@ -7,13 +7,12 @@
  * source of tiles, one layer drawing it. Keep it in step with
  * `app/src/lib/mapstyle.ts` — the point of the exercise is that the two agree.
  *
- * The tiles are CARTO's Dark Matter rather than OpenStreetMap's own, for two
- * reasons. Their labels are in English worldwide, where the standard OSM tiles
- * are labelled in each country's own language — a map of your holiday is no use
- * if you cannot read the town names. And it is a near-grey dark basemap, which
- * sits at the weight of the app's surfaces instead of being a lit panel in a
- * dark room. The web client uses the matching light sheet when its theme is
- * light; this app is dark throughout, so it only ever needs this one.
+ * The tiles are CARTO's Positron and Dark Matter rather than OpenStreetMap's
+ * own, for two reasons. Their labels are in English worldwide, where the
+ * standard OSM tiles are labelled in each country's own language — a map of
+ * your holiday is no use if you cannot read the town names. And they come as a
+ * matched light and dark pair, which is what lets the map follow the theme
+ * rather than sitting on the page as a black rectangle.
  *
  * Free to use with attribution. Anyone running Imadeo at scale should still
  * point `EXPO_PUBLIC_MAP_TILES` at their own tile server or a paid plan, which
@@ -22,43 +21,42 @@
 const OVERRIDE = process.env.EXPO_PUBLIC_MAP_TILES;
 
 /** CARTO serves the same tiles from four hosts; using all of them parallelises the fetches. */
-const TILES = OVERRIDE
-  ? [OVERRIDE]
-  : ['a', 'b', 'c', 'd'].map(
-      (host) => `https://${host}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`,
-    );
+const tiles = (sheet: 'dark_all' | 'light_all') =>
+  OVERRIDE
+    ? [OVERRIDE]
+    : ['a', 'b', 'c', 'd'].map(
+        (host) => `https://${host}.basemaps.cartocdn.com/${sheet}/{z}/{x}/{y}@2x.png`,
+      );
 
 /** Required by the tile licence, and shown on the map itself. */
 export const MAP_ATTRIBUTION = '© OpenStreetMap contributors © CARTO';
 
-export const MAP_STYLE = {
-  version: 8 as const,
-  sources: {
-    base: {
-      type: 'raster' as const,
-      tiles: TILES,
-      tileSize: 256,
-      attribution: MAP_ATTRIBUTION,
+/**
+ * The style document for one theme.
+ *
+ * It was pinned to the dark sheet, written when this app was dark throughout.
+ * Once Appearance grew a Light option that left the Places card as a black
+ * rectangle on a white page — the one surface in the app that ignored the
+ * setting.
+ */
+export function mapStyle(dark: boolean) {
+  return {
+    version: 8 as const,
+    sources: {
+      base: {
+        type: 'raster' as const,
+        tiles: tiles(dark ? 'dark_all' : 'light_all'),
+        tileSize: 256,
+        attribution: MAP_ATTRIBUTION,
+      },
     },
-  },
-  layers: [
-    {
-      id: 'base',
-      type: 'raster' as const,
-      source: 'base',
-    },
-  ],
-};
+    layers: [{ id: 'base', type: 'raster' as const, source: 'base' }],
+  };
+}
 
 /** The same document as a string, which is what the native view wants. */
-export const MAP_STYLE_JSON = JSON.stringify(MAP_STYLE);
+export const mapStyleJson = (dark: boolean) => JSON.stringify(mapStyle(dark));
 
-/**
- * A camera that frames whatever points there are.
- *
- * A map opening on a fixed coordinate shows an ocean and invites you to go and
- * find your own holiday. Shared between the clients so both open the same way.
- */
 export function frameOf(points: { latitude: number; longitude: number }[]) {
   if (points.length === 0) return null;
 

@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
-import { useCallback, useState, type ReactElement, type ReactNode } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { FlatList, Pressable, RefreshControl, SectionList, Text, View } from 'react-native';
 import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
+import { intoDays } from '../lib/day';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { Icon, type IconName } from './Icon';
@@ -37,6 +38,14 @@ interface Props {
   onStartSelecting?: (id: string) => void;
   /** Something was changed from the viewer, so this list is stale. */
   onChanged?: () => void;
+  /**
+   * Cuts the grid into days, with the date above each.
+   *
+   * Off by default. A folder or a set of search results is a set of photographs
+   * that answer one question, and the day each was taken is beside the point;
+   * a library scrolled for minutes is nothing but days.
+   */
+  groupByDay?: boolean;
 }
 
 /**
@@ -65,6 +74,7 @@ export function AssetGrid({
   onToggle,
   onStartSelecting,
   onChanged,
+  groupByDay = false,
 }: Props) {
   const selecting = (selected?.length ?? 0) > 0;
   const [viewing, setViewing] = useState<number | null>(null);
@@ -79,6 +89,198 @@ export function AssetGrid({
     },
     [selecting, onToggle],
   );
+
+  /**
+   * One tile. Drawn the same whether the grid is grouped by day or not.
+   *
+   * `at` is the photo's place in the whole list rather than in its row, because
+   * that is what the viewer pages through — a row-relative index would open the
+   * wrong photograph on every day but the first.
+   */
+  const renderTile = (item: Asset, at: number) => {
+    const length = formatDuration(item.duration);
+    const on = selected?.includes(item.id) ?? false;
+
+    return (
+        <Pressable
+          key={item.id}
+          onPress={() => press(item.id, at)}
+          onLongPress={() => onStartSelecting?.(item.id)}
+          delayLongPress={280}
+          accessibilityRole={selecting ? 'checkbox' : 'image'}
+          accessibilityLabel={item.originalFileName ?? 'Photo'}
+          accessibilityState={selecting ? { checked: on } : undefined}
+          style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
+        >
+          {/* Inset while selected, so the tile visibly lifts out of the grid
+              rather than only gaining a tick in the corner. */}
+          <View
+            style={{
+              flex: 1,
+              padding: on ? 5 : 0,
+              backgroundColor: on ? colors.primary : 'transparent',
+              borderRadius: on ? radius.sm : 0,
+            }}
+          >
+            <Image
+              source={thumbnail(serverUrl, item.id, token)}
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: colors.surface,
+                borderRadius: on ? 4 : 0,
+              }}
+              contentFit="cover"
+              recyclingKey={item.id}
+              transition={120}
+            />
+          </View>
+
+          {item.isFavorite && !on && (
+            <View style={{ position: 'absolute', left: 6, bottom: 5 }}>
+              <Icon name="heart-filled" size={13} color="#fff" />
+            </View>
+          )}
+
+          {item.type === 'VIDEO' && !on && (
+            <View
+              style={{
+                position: 'absolute',
+                right: 5,
+                bottom: 5,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Icon name="play" size={11} color="#fff" />
+              {length && (
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: '600',
+                    // A white label on a white-ish photo is otherwise gone.
+                    textShadowColor: 'rgba(0,0,0,0.6)',
+                    textShadowRadius: 3,
+                  }}
+                >
+                  {length}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {selecting && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 7,
+                right: 7,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                borderWidth: 2,
+                borderColor: on ? colors.primary : 'rgba(255,255,255,0.85)',
+                backgroundColor: on ? colors.primary : 'rgba(0,0,0,0.28)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {on && <Icon name="check" size={13} color={colors.onPrimary} strong />}
+            </View>
+          )}
+        </Pressable>
+    );
+  };
+
+  const days = useMemo(
+    () => (groupByDay ? intoDays(assets, (asset) => asset.localDateTime, columns) : []),
+    [groupByDay, assets, columns],
+  );
+
+  /** Where each photo sits in the whole list, for the viewer. */
+  const place = useMemo(() => {
+    const map = new Map<string, number>();
+    assets.forEach((asset, at) => map.set(asset.id, at));
+    return map;
+  }, [assets]);
+
+  const shared = {
+    contentContainerStyle: { paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE },
+    ListHeaderComponent: header,
+    refreshControl: onRefresh ? (
+      <RefreshControl
+        refreshing={loading}
+        onRefresh={onRefresh}
+        tintColor={colors.primary}
+        colors={[colors.primary]}
+        progressBackgroundColor={colors.surface}
+        // Otherwise the spinner appears underneath the glass header.
+        progressViewOffset={topInset}
+      />
+    ) : undefined,
+    ListEmptyComponent: !showEmptyState ? null : loading ? (
+      // The shape of the grid that is arriving, not a spinner over a void.
+      <GridSkeleton columns={columns} />
+    ) : (
+      <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
+        {emptyExtra}
+      </Empty>
+    ),
+  };
+
+  if (groupByDay) {
+    return (
+      <>
+        <SectionList
+          sections={days}
+          keyExtractor={(row) => row[0].id}
+          // The heading would otherwise sit under the bar it scrolls beneath.
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <Text
+              style={{
+                color: colors.text,
+                fontSize: 15,
+                fontWeight: '700',
+                letterSpacing: -0.3,
+                // Flush with the tiles, which sit at the screen edge with only
+                // their gutter.
+                paddingLeft: 2,
+                paddingRight: 2,
+                paddingTop: 18,
+                paddingBottom: 5,
+              }}
+            >
+              {section.title}
+            </Text>
+          )}
+          renderItem={({ item: row }) => (
+            <View style={{ flexDirection: 'row' }}>
+              {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
+              {/* Keeps a short last row aligned with the ones above it rather
+                  than spreading its tiles across the width. */}
+              {row.length < columns &&
+                Array.from({ length: columns - row.length }, (_, i) => (
+                  <View key={`gap-${i}`} style={{ flex: 1 / columns }} />
+                ))}
+            </View>
+          )}
+          {...shared}
+        />
+
+        <AssetViewer
+          serverUrl={serverUrl}
+          token={token}
+          assets={assets}
+          index={viewing}
+          onClose={() => setViewing(null)}
+          onChanged={() => onChanged?.()}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -104,101 +306,7 @@ export function AssetGrid({
           />
         ) : undefined
       }
-      renderItem={({ item, index }) => {
-        const length = formatDuration(item.duration);
-        const on = selected?.includes(item.id) ?? false;
-
-        return (
-          <Pressable
-            onPress={() => press(item.id, index)}
-            onLongPress={() => onStartSelecting?.(item.id)}
-            delayLongPress={280}
-            accessibilityRole={selecting ? 'checkbox' : 'image'}
-            accessibilityLabel={item.originalFileName ?? 'Photo'}
-            accessibilityState={selecting ? { checked: on } : undefined}
-            style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
-          >
-            {/* Inset while selected, so the tile visibly lifts out of the grid
-                rather than only gaining a tick in the corner. */}
-            <View
-              style={{
-                flex: 1,
-                padding: on ? 5 : 0,
-                backgroundColor: on ? colors.primary : 'transparent',
-                borderRadius: on ? radius.sm : 0,
-              }}
-            >
-              <Image
-                source={thumbnail(serverUrl, item.id, token)}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: colors.surface,
-                  borderRadius: on ? 4 : 0,
-                }}
-                contentFit="cover"
-                recyclingKey={item.id}
-                transition={120}
-              />
-            </View>
-
-            {item.isFavorite && !on && (
-              <View style={{ position: 'absolute', left: 6, bottom: 5 }}>
-                <Icon name="heart-filled" size={13} color="#fff" />
-              </View>
-            )}
-
-            {item.type === 'VIDEO' && !on && (
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 5,
-                  bottom: 5,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Icon name="play" size={11} color="#fff" />
-                {length && (
-                  <Text
-                    style={{
-                      color: '#fff',
-                      fontSize: 11,
-                      fontWeight: '600',
-                      // A white label on a white-ish photo is otherwise gone.
-                      textShadowColor: 'rgba(0,0,0,0.6)',
-                      textShadowRadius: 3,
-                    }}
-                  >
-                    {length}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {selecting && (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 7,
-                  right: 7,
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  borderWidth: 2,
-                  borderColor: on ? colors.primary : 'rgba(255,255,255,0.85)',
-                  backgroundColor: on ? colors.primary : 'rgba(0,0,0,0.28)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {on && <Icon name="check" size={13} color={colors.onPrimary} strong />}
-              </View>
-            )}
-          </Pressable>
-        );
-      }}
+      renderItem={({ item, index }) => renderTile(item, index)}
       ListEmptyComponent={
         !showEmptyState ? null : loading ? (
           // The shape of the grid that is arriving, not a spinner over a void.

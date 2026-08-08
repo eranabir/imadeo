@@ -261,6 +261,14 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         <PlacesBody serverUrl={serverUrl} topInset={clearance} />
       ) : (
       <AssetGrid
+        /*
+         * The library scrolled for minutes is nothing but days, so it says so.
+         *
+         * A folder and a set of search results are photographs that answer one
+         * question, and when each was taken is beside the point there — they
+         * keep the plain grid.
+         */
+        groupByDay={atRoot && showing === 'photos'}
         serverUrl={serverUrl}
         assets={assets}
         token={token}
