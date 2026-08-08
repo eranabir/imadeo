@@ -3,8 +3,11 @@ import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { AlbumCard, FolderCard, Section } from '../components/Cards';
 import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import type { IconName } from '../components/Icon';
+import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
+import { PlacesBody } from './PlacesScreen';
 import { ConfirmSheet, MoveSheet, PromptSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
@@ -13,6 +16,8 @@ import { useNavigation } from '../navigation';
 import { colors } from '../theme';
 
 interface Props {
+  /** Where this screen publishes its bar; unset when it is the Browse tab. */
+  slot?: string;
   serverUrl: string;
   /** Null browses the top level, which is also the Imadeo tab itself. */
   folderId: string | null;
@@ -20,7 +25,7 @@ interface Props {
   onBack?: () => void;
 }
 
-type Shelf = 'photos' | 'folders' | 'albums';
+type Shelf = 'photos' | 'folders' | 'albums' | 'places';
 
 /** Whatever a long press landed on. */
 type Target = { kind: 'folder' | 'album'; id: string; name: string };
@@ -37,7 +42,7 @@ type Target = { kind: 'folder' | 'album'; id: string; name: string };
  * already the bottom half of the screen, and a shelf that showed the entire
  * library from within one folder would be lying about where you are.
  */
-export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
+export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props) {
   const { push } = useNavigation();
   const atRoot = folderId === null;
 
@@ -65,7 +70,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
      * fresh backup of an old camera roll somewhere in the middle, so a backup
      * that had just finished looked as though nothing had happened.
      */
-    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=added&order=desc' : null,
+    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=date&order=desc' : null,
   );
   const allAlbums = useResource<Album[]>(
     serverUrl,
@@ -118,6 +123,58 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
       : undefined;
 
   const clearance = useHeaderClearance(atRoot ? 54 : 0);
+
+  /**
+   * What belongs in the bar, wherever the bar happens to be.
+   *
+   * As a tab it is handed to the shell, which owns the one persistent bar; as a
+   * pushed folder this screen covers the shell entirely and draws it itself.
+   */
+  const bar = {
+    title: title ?? 'Browse',
+    subtitle,
+    icon: (onBack
+      ? 'folder'
+      : showing === 'photos'
+        ? 'library'
+        : showing === 'albums'
+          ? 'album'
+          : 'browse') as IconName,
+    action:
+      showing === 'photos' ? undefined : (
+        <HeaderAction
+          label="New"
+          icon="plus"
+          onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
+        />
+      ),
+    below: atRoot ? (
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+        <Segmented
+          segments={[
+            { id: 'photos', label: 'Photos', icon: 'library' },
+            { id: 'folders', label: 'Folders', icon: 'folder' },
+            { id: 'albums', label: 'Albums', icon: 'album' },
+            { id: 'places', label: 'Places', icon: 'pin' },
+          ]}
+          active={shelf}
+          onChange={(next) => {
+            selection.clear();
+            setShelf(next);
+          }}
+        />
+      </View>
+    ) : undefined,
+  };
+
+  // One slot or the other: `browse` as a tab, the stack's own key as a folder.
+  // Either way the shell draws it, and this screen never carries a bar of its
+  // own across the top of the one already there.
+  useHeaderSlot(
+    slot ?? 'browse',
+    { ...bar, onBack },
+    [title, subtitle, showing, shelf, atRoot, onBack],
+  );
   const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0;
 
   /** Runs a write, then refetches whichever shelf is showing. */
@@ -193,39 +250,16 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header
-        title={title ?? 'Browse'}
-        subtitle={subtitle}
-        icon={onBack ? 'folder' : showing === 'photos' ? 'library' : showing === 'albums' ? 'album' : 'browse'}
-        onBack={onBack}
-        action={
-          showing === 'photos' ? undefined : (
-            <HeaderAction
-              label="New"
-              icon="plus"
-              onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
-            />
-          )
-        }
-      >
-        {atRoot && (
-          <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-            <Segmented
-              segments={[
-                { id: 'photos', label: 'Photos', icon: 'library' },
-                { id: 'folders', label: 'Folders', icon: 'folder' },
-                { id: 'albums', label: 'Albums', icon: 'album' },
-              ]}
-              active={shelf}
-              onChange={(next) => {
-                selection.clear();
-                setShelf(next);
-              }}
-            />
-          </View>
-        )}
-      </Header>
+      {/*
+        Places replaces the grid rather than sitting above it.
 
+        It is a map and a set of covers, not a wall of photographs, so there is
+        no grid for it to share — the shelf is a different shape from the other
+        three and pretending otherwise would mean an empty grid under a map.
+      */}
+      {showing === 'places' ? (
+        <PlacesBody serverUrl={serverUrl} topInset={clearance} />
+      ) : (
       <AssetGrid
         serverUrl={serverUrl}
         assets={assets}
@@ -259,6 +293,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
               : 'Folders and albums you create appear here, along with anything not filed into one.'
         }
       />
+      )}
 
       <PhotoActions
         serverUrl={serverUrl}

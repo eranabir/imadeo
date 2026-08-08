@@ -12,6 +12,7 @@ import {
   Animated,
   BackHandler,
   Easing,
+  PanResponder,
   Platform,
   StyleSheet,
   useWindowDimensions,
@@ -29,7 +30,8 @@ import { colors } from './theme';
 export type Route =
   | { name: 'folder'; id: string | null; title: string }
   | { name: 'album'; id: string; title: string }
-  | { name: 'person'; id: string; title: string };
+  | { name: 'person'; id: string; title: string; kind: 'PERSON' | 'PET' }
+  | { name: 'place'; city: string; title: string };
 
 export interface Entry {
   route: Route;
@@ -140,6 +142,9 @@ export function useNavigation(): Navigation {
  * overlapping siblings follows elevation before tree order, so a bar with any
  * elevation of its own would otherwise punch through a screen laid over it.
  */
+/** The strip along the left edge that the back gesture starts in. */
+const EDGE = 24;
+
 export function PushedScreen({
   entry,
   children,
@@ -147,9 +152,20 @@ export function PushedScreen({
   entry: Entry;
   children: ReactNode;
 }) {
-  const { settle } = useNavigation();
+  const { settle, pop } = useNavigation();
   const { width } = useWindowDimensions();
+  /**
+   * Two values, because they are driven by two different things.
+   *
+   * `slide` is the push and the pop, animated on the native driver so the
+   * screen arrives at sixty frames whatever the JS thread is doing. `drag` is
+   * the finger, which has to be written from JS — and a value the native driver
+   * has taken over cannot be. Adding them together would put the sum back on
+   * one driver and break whichever half lost, so each gets its own node: an
+   * outer view for the animation, an inner one for the gesture.
+   */
   const slide = useRef(new Animated.Value(width)).current;
+  const drag = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.timing(slide, {
@@ -159,6 +175,38 @@ export function PushedScreen({
       useNativeDriver: true,
     }).start();
   }, [slide]);
+
+  /**
+   * Dragged back from the left edge.
+   *
+   * Only from the edge: a gesture claimed anywhere would fight every horizontal
+   * scroll on the screen — a row of album covers, the photo viewer's own pager.
+   * Twenty-four points is the strip iOS itself reserves for this, and it is
+   * claimed on movement so a tap near the edge still reaches what is under it.
+   */
+  const back = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) =>
+        gesture.x0 < EDGE && gesture.dx > 6 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_event, gesture) => {
+        if (gesture.dx > 0) drag.setValue(gesture.dx);
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        // A third of the way, or a flick: both mean the same thing, and asking
+        // for both makes the gesture feel like it is refusing to let go.
+        if (gesture.dx > width * 0.3 || gesture.vx > 0.5) {
+          pop();
+          return;
+        }
+        Animated.spring(drag, {
+          toValue: 0,
+          useNativeDriver: false,
+          bounciness: 0,
+        }).start();
+      },
+    }),
+  ).current;
 
   useEffect(() => {
     if (!entry.leaving) return;
@@ -170,6 +218,9 @@ export function PushedScreen({
       settle(entry.key);
     };
 
+    // From wherever the finger left it, so a released drag carries on rather
+    // than snapping back to be animated out again.
+    drag.setValue(0);
     Animated.timing(slide, {
       toValue: width,
       duration: EXIT_MS,
@@ -188,14 +239,14 @@ export function PushedScreen({
      */
     const failsafe = setTimeout(release, EXIT_MS + 250);
     return () => clearTimeout(failsafe);
-  }, [entry.leaving, entry.key, slide, width, settle]);
+  }, [entry.leaving, entry.key, slide, drag, width, settle]);
 
   return (
     <Animated.View
+      {...back.panHandlers}
       style={[
         StyleSheet.absoluteFill,
         {
-          backgroundColor: colors.bg,
           transform: [{ translateX: slide }],
           zIndex: 100 + entry.key,
           elevation: 100 + entry.key,
@@ -212,7 +263,14 @@ export function PushedScreen({
           : null,
       ]}
     >
-      {children}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: colors.bg, transform: [{ translateX: drag }] },
+        ]}
+      >
+        {children}
+      </Animated.View>
     </Animated.View>
   );
 }

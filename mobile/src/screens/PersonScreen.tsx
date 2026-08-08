@@ -1,24 +1,55 @@
 import { useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import { HeaderAction, useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { request, useResource, type Asset, type Paged } from '../lib/api';
 import { colors } from '../theme';
 
 interface Props {
+  /** Where this screen publishes its bar. */
+  slot: string;
   serverUrl: string;
   personId: string;
   title: string;
+  /** Whether the server has this grouped with the people or with the pets. */
+  kind: 'PERSON' | 'PET';
   onBack: () => void;
 }
 
 /** Every photo one person or pet appears in. */
-export function PersonScreen({ serverUrl, personId, title, onBack }: Props) {
+export function PersonScreen({ serverUrl, personId, title, kind, slot, onBack }: Props) {
   const [name, setName] = useState(title === 'Unnamed' ? '' : title);
   const [naming, setNaming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Held locally so the header answers the press before the server does. */
+  const [is, setIs] = useState(kind);
+
+  /**
+   * Moves this group between People and Pets.
+   *
+   * Detection decides which of the two something is, and it gets it wrong — a
+   * dog photographed face-on lands among the people often enough that there had
+   * to be a way to say so. Nothing else changes; the faces, the name and the
+   * cover all go with it.
+   */
+  const swapKind = async () => {
+    const next = is === 'PET' ? 'PERSON' : 'PET';
+    setIs(next);
+    setSaveError(null);
+    try {
+      await request(serverUrl, `/people/${personId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ kind: next }),
+      });
+    } catch (e) {
+      // Put back what was there: the group did not move.
+      setIs(is);
+      setSaveError(e instanceof Error ? e.message : 'Could not move this group.');
+    }
+  };
 
   const { data, token, error, loading, reload } = useResource<Paged<Asset>>(
     serverUrl,
@@ -29,24 +60,40 @@ export function PersonScreen({ serverUrl, personId, title, onBack }: Props) {
 
   const total = data?.pagination?.total ?? 0;
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header
-        title={name || 'Unnamed'}
-        subtitle={total ? `${total.toLocaleString()} ${total === 1 ? 'photo' : 'photos'}` : undefined}
-        icon="person"
-       
-        onBack={onBack}
-        action={
+  // Published rather than drawn: the shell owns the one bar, and a screen that
+  // brought its own would slide it in over the top of the one already there.
+  useHeaderSlot(
+    slot,
+    {
+      title: name || 'Unnamed',
+      subtitle: total
+        ? `${total.toLocaleString()} ${total === 1 ? 'photo' : 'photos'}`
+        : undefined,
+      icon: is === 'PET' ? 'pet' : 'person',
+      onBack,
+      action: (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <HeaderAction
+            label={is === 'PET' ? 'This is a person' : 'This is a pet'}
+            icon={is === 'PET' ? 'person' : 'pet'}
+            compact
+            // No confirmation: it is one tap to undo, and the label already
+            // says which way it goes.
+            onPress={() => void swapKind()}
+          />
           <HeaderAction
             label={name ? 'Rename' : 'Add name'}
             icon="edit"
-           
             onPress={() => setNaming(true)}
           />
-        }
-      />
+        </View>
+      ),
+    },
+    [name, total, is, onBack],
+  );
 
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AssetGrid
         serverUrl={serverUrl}
         assets={data?.items ?? []}

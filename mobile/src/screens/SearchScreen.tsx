@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { AlbumCard, FolderCard, PersonCard, Section } from '../components/Cards';
-import { Header, useHeaderClearance } from '../components/Header';
+import { useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
@@ -16,6 +17,13 @@ interface Places {
   folders: { id: string; name: string; path: string }[];
   albums: { id: string; name: string; assetCount: number }[];
   items: Asset[];
+}
+
+interface Town {
+  city: string | null;
+  country: string | null;
+  count: number;
+  coverAssetId: string;
 }
 
 interface IndexStatus {
@@ -81,9 +89,24 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
     mode === 'people' ? '/people?minFaces=1&size=500' : null,
   );
 
+  /**
+   * The towns and cities photos were taken in.
+   *
+   * Fetched whole and filtered here for the same reason the people list is:
+   * there are a dozen of them, not thousands, and a round trip per keystroke
+   * to narrow twelve rows is a round trip wasted.
+   */
+  const towns = useResource<Town[]>(serverUrl, mode === 'places' ? '/assets/places' : null);
+
   const needle = query.trim().toLowerCase();
   const matches = (subjects.data ?? []).filter(
     (person) => !needle || person.name.toLowerCase().includes(needle),
+  );
+
+  const placeMatches = (towns.data ?? []).filter(
+    (town) =>
+      !needle ||
+      [town.city, town.country].filter(Boolean).join(', ').toLowerCase().includes(needle),
   );
 
   /**
@@ -100,6 +123,81 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
   );
 
   const clearance = useHeaderClearance(104);
+
+  // The bar belongs to the shell, so a swipe between tabs leaves it alone.
+  useHeaderSlot(
+    'search',
+    {
+      title: 'Search',
+      icon: 'search',
+      below: (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 10 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 9,
+                paddingHorizontal: 13,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: focused ? colors.primary : colors.border,
+                backgroundColor: colors.surface,
+              }}
+            >
+              <Icon name="search" size={17} color={focused ? colors.primary : colors.faint} />
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder={
+                  mode === 'smart'
+                    ? 'What is in the photo?'
+                    : mode === 'people'
+                      ? "A person or pet's name"
+                      : mode === 'places'
+                        ? 'A town, album or folder'
+                        : 'A file name'
+                }
+                placeholderTextColor={colors.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                // Skips the debounce when someone has finished typing and said so.
+                onSubmitEditing={() => setQuery(text.trim())}
+                style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: 11 }}
+              />
+              {text.length > 0 && (
+                <Pressable
+                  onPress={() => setText('')}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear"
+                >
+                  <Icon name="close" size={16} color={colors.faint} />
+                </Pressable>
+              )}
+            </View>
+
+            <Segmented
+              segments={[
+                { id: 'smart', label: 'Content', icon: 'sparkle' },
+                { id: 'people', label: 'People', icon: 'people' },
+                { id: 'places', label: 'Places', icon: 'pin' },
+                { id: 'files', label: 'Files', icon: 'photo' },
+              ]}
+              active={mode}
+              onChange={(next) => {
+                selection.clear();
+                setMode(next);
+              }}
+            />
+          </View>
+      ),
+    },
+    [mode, text, focused],
+  );
+
   const selection = useSelection();
   const items = data?.items ?? [];
   const folders = data?.folders ?? [];
@@ -107,71 +205,6 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header title="Search" icon="search">
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 10 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 9,
-              paddingHorizontal: 13,
-              borderRadius: radius.md,
-              borderWidth: 1,
-              borderColor: focused ? colors.primary : colors.border,
-              backgroundColor: colors.surface,
-            }}
-          >
-            <Icon name="search" size={17} color={focused ? colors.primary : colors.faint} />
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder={
-                mode === 'smart'
-                  ? 'What is in the photo?'
-                  : mode === 'people'
-                    ? "A person or pet's name"
-                    : mode === 'places'
-                      ? 'An album or folder name'
-                      : 'A file name'
-              }
-              placeholderTextColor={colors.faint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              // Skips the debounce when someone has finished typing and said so.
-              onSubmitEditing={() => setQuery(text.trim())}
-              style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: 11 }}
-            />
-            {text.length > 0 && (
-              <Pressable
-                onPress={() => setText('')}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Clear"
-              >
-                <Icon name="close" size={16} color={colors.faint} />
-              </Pressable>
-            )}
-          </View>
-
-          <Segmented
-            segments={[
-              { id: 'smart', label: 'Content', icon: 'sparkle' },
-              { id: 'people', label: 'People', icon: 'people' },
-              { id: 'places', label: 'Places', icon: 'folder' },
-              { id: 'files', label: 'Files', icon: 'photo' },
-            ]}
-            active={mode}
-            onChange={(next) => {
-              selection.clear();
-              setMode(next);
-            }}
-          />
-        </View>
-      </Header>
-
       <AssetGrid
         serverUrl={serverUrl}
         assets={items}
@@ -215,7 +248,28 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                       token={subjects.token}
                       size={68}
                       onPress={() =>
-                        push({ name: 'person', id: person.id, title: person.name || 'Unnamed' })
+                        push({ name: 'person', id: person.id, kind: person.kind, title: person.name || 'Unnamed' })
+                      }
+                    />
+                  ))}
+                </View>
+              </Section>
+            )}
+
+            {mode === 'places' && placeMatches.length > 0 && (
+              <Section title="Places" trailing={`${placeMatches.length}`}>
+                <View style={{ paddingHorizontal: 16, gap: 8 }}>
+                  {placeMatches.map((town) => (
+                    <FolderCard
+                      key={[town.city, town.country].join(',')}
+                      folder={{ name: [town.city, town.country].filter(Boolean).join(', ') }}
+                      detail={`${town.count.toLocaleString()} ${town.count === 1 ? 'photo' : 'photos'}`}
+                      onPress={() =>
+                        push({
+                          name: 'place',
+                          city: town.city ?? '',
+                          title: [town.city, town.country].filter(Boolean).join(', '),
+                        })
                       }
                     />
                   ))}
@@ -267,7 +321,12 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
         }
         // A search that turns up albums or faces but no loose photos has found
         // something; only a search that found nothing at all is empty.
-        showEmptyState={folders.length === 0 && albums.length === 0 && matches.length === 0}
+        showEmptyState={
+          folders.length === 0 &&
+          albums.length === 0 &&
+          matches.length === 0 &&
+          placeMatches.length === 0
+        }
         emptyIcon={
           mode === 'smart'
             ? 'sparkle'

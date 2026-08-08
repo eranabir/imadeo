@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { Glass, liquidGlass } from '../components/Glass';
-import { Header, useHeaderClearance } from '../components/Header';
+import { Glass } from '../components/Glass';
+import { useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { Icon, type IconName } from '../components/Icon';
-import { Toggle } from '../components/ui';
+import { Toggle, Touchable } from '../components/ui';
 import { useResource } from '../lib/api';
+import {
+  setAppearance,
+  setAutoplayVideos,
+  useAppearance,
+  useAutoplayVideos,
+} from '../lib/preferences';
 import { isAvailable, isEnabled, lastRun, setEnabled, type LastRun } from '../lib/autobackup';
-import { colors, TAB_BAR_CLEARANCE } from '../theme';
+import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
 /** What the last background run did, in a line. */
 function summary(run: LastRun | null): string {
@@ -75,16 +82,52 @@ interface Statistics {
    * silently gives NaN on any library past a few gigabytes.
    */
   usageInBytes: string;
+  /**
+   * Real numbers for the volume the library sits on.
+   *
+   * From `/users/me/statistics` rather than `/assets/statistics`, which counts
+   * assets but knows nothing about the disk — the same endpoint the web
+   * client's storage card reads, so the two agree.
+   */
+  disk?: {
+    totalBytes: number | null;
+    availableBytes: number | null;
+    usedBytes: number | null;
+  };
+}
+
+interface Me {
+  /** A cap set for this account, if any. Null means the disk is the limit. */
+  quotaSizeInBytes?: string | number | null;
 }
 
 export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) {
-  const { data } = useResource<Statistics>(serverUrl, '/assets/statistics');
+  const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
+  const me = useResource<Me>(serverUrl, '/users/me');
   const auto = useAutoBackup();
+  const autoplay = useAutoplayVideos();
+  const appearance = useAppearance();
+
+  /**
+   * Room this library has, not the size of the disk.
+   *
+   * A quota if the account has one, otherwise what is used plus what is still
+   * free on the volume. Measuring against the disk's total would report a
+   * nearly full bar for an empty library sharing a disk with everything else,
+   * which is the mistake the web client's card documents.
+   */
+  const quota = me.data?.quotaSizeInBytes ? Number(me.data.quotaSizeInBytes) : null;
+  const free = data?.disk?.availableBytes ?? null;
+  const capacity =
+    quota ?? (data && free !== null ? Number(data.usageInBytes) + free : null);
   const clearance = useHeaderClearance();
+
+  // Like every other tab: the bar is the shell's, so it stays put while this
+  // page slides in and out from under it.
+  useHeaderSlot('settings', { title: 'Settings', icon: 'settings' }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header title="Settings" icon="settings" />
 
       <ScrollView
         contentContainerStyle={{
@@ -94,14 +137,19 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
         }}
       >
         <Group>
-          <Row icon="backup" label="Server" value={serverUrl.replace(/^https?:\/\//, '')} />
+          <Row
+            icon="backup"
+            label="Server"
+            value={serverUrl.replace(/^https?:\/\//, '')}
+            // A green dot only when the server has actually answered — the
+            // statistics request is the proof, so nothing else has to be asked.
+            dot={data ? colors.online : me.error ? colors.danger : undefined}
+          />
           <Row icon="library" label="Photos" value={data ? data.images.toLocaleString() : '—'} />
           <Row icon="play" label="Videos" value={data ? data.videos.toLocaleString() : '—'} />
-          <Row
-            icon="photo"
-            label="Storage used"
-            value={data ? bytes(data.usageInBytes) : '—'}
-            last
+          <StorageRow
+            used={data ? Number(data.usageInBytes) : null}
+            capacity={capacity}
           />
         </Group>
 
@@ -120,12 +168,40 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
             disabled={auto.available === false || auto.busy}
             onChange={auto.toggle}
           />
-          <Row
-            icon="sparkle"
-            label="Appearance"
-            value={liquidGlass ? 'Liquid glass' : 'Dark'}
-            last
+          <SwitchRow
+            icon="play"
+            label="Play videos automatically"
+            hint={
+              autoplay
+                ? 'A video starts as soon as you open it.'
+                : 'Videos wait for you to press play.'
+            }
+            on={autoplay}
+            onChange={(next) => void setAutoplayVideos(next)}
           />
+
+          {/* Three plain words. What the app is made of — glass, blur, whatever
+              the platform gives it — is not the user's business; whether it is
+              light or dark is. */}
+          <View style={{ paddingVertical: 14, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Icon name="sparkle" size={19} color={colors.primary} />
+              <Text style={{ flex: 1, color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+                Appearance
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['system', 'dark', 'light'] as const).map((mode) => (
+                <Choice
+                  key={mode}
+                  label={mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'}
+                  active={appearance === mode}
+                  onPress={() => void setAppearance(mode)}
+                />
+              ))}
+            </View>
+          </View>
         </Group>
 
         {auto.on && (
@@ -157,6 +233,92 @@ export function SettingsScreen({ serverUrl, onSignOut, onChangeServer }: Props) 
         </Text>
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * How much room is left, as a figure and a bar.
+ *
+ * A number on its own says nothing — five gigabytes is either nothing or
+ * everything depending on what it is out of.
+ */
+function StorageRow({ used, capacity }: { used: number | null; capacity: number | null }) {
+  const percent =
+    used !== null && capacity !== null && capacity > 0
+      ? Math.min(100, (used / capacity) * 100)
+      : null;
+
+  return (
+    <View style={{ paddingVertical: 14, gap: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Icon name="storage" size={19} color={colors.primary} />
+        <Text style={{ flex: 1, color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+          Storage used
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 14.5, fontWeight: '600' }}>
+          {used === null ? '—' : percent === null ? bytes(used) : `${Math.round(percent)}%`}
+        </Text>
+      </View>
+
+      <View
+        style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}
+      >
+        <View
+          style={{
+            height: '100%',
+            // A hair of bar even at nothing used, so the control reads as a
+            // gauge rather than as an empty box.
+            width: `${percent === null ? 4 : Math.max(percent, 1.5)}%`,
+            borderRadius: 3,
+            backgroundColor: colors.primary,
+          }}
+        />
+      </View>
+
+      <Text style={{ color: colors.faint, fontSize: 12.5 }}>
+        {used === null
+          ? 'Reading your server…'
+          : capacity === null
+            ? `${bytes(used)} used`
+            : `${bytes(used)} of ${bytes(capacity)} used · ${bytes(capacity - used)} free`}
+      </Text>
+    </View>
+  );
+}
+
+/** One of a small set of mutually exclusive answers. */
+function Choice({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Touchable onPress={onPress} radius={radius.pill} label={label} style={{ flex: 1 }}>
+      <View
+        style={{
+          alignItems: 'center',
+          paddingVertical: 9,
+          borderRadius: radius.pill,
+          backgroundColor: active ? colors.primary : colors.bg,
+          borderWidth: 1,
+          borderColor: active ? colors.primary : colors.border,
+        }}
+      >
+        <Text
+          style={{
+            color: active ? colors.onPrimary : colors.muted,
+            fontSize: 14,
+            fontWeight: '700',
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    </Touchable>
   );
 }
 
@@ -219,11 +381,14 @@ function Row({
   label,
   value,
   last = false,
+  dot,
 }: {
   icon: IconName;
   label: string;
   value: string;
   last?: boolean;
+  /** A status pip beside the value, when there is a status worth showing. */
+  dot?: string;
 }) {
   return (
     <View
@@ -238,6 +403,7 @@ function Row({
     >
       <Icon name={icon} size={18} color={colors.faint} />
       <Text style={{ color: colors.muted, fontSize: 15, flex: 1 }}>{label}</Text>
+      {dot && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot }} />}
       <Text
         numberOfLines={1}
         style={{ color: colors.text, fontSize: 15, fontWeight: '600', maxWidth: '55%' }}

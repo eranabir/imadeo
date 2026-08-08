@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, Text, View } from 'react-native';
+import {
+  Animated,
+  PanResponder,
+  Platform,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelectionBar } from '../selection';
 import { colors, radius, ripple, shadow, wash } from '../theme';
@@ -10,10 +18,15 @@ export type Tab = 'library' | 'browse' | 'search' | 'people' | 'settings';
 
 interface Props {
   active: Tab;
-  onChange: (tab: Tab) => void;
+  /**
+   * `dragging` is set while a finger is running along the bar, which is the one
+   * case where the page must not animate its way there — five queued slides
+   * would arrive long after the thumb did.
+   */
+  onChange: (tab: Tab, dragging?: boolean) => void;
 }
 
-const TABS: { id: Tab; label: string; icon: IconName }[] = [
+export const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'library', label: 'Library', icon: 'phone' },
   { id: 'browse', label: 'Browse', icon: 'browse' },
   { id: 'search', label: 'Search', icon: 'search' },
@@ -25,7 +38,7 @@ const TABS: { id: Tab; label: string; icon: IconName }[] = [
 export const BAR_RADIUS = 28;
 export const BAR_MARGIN = 12;
 
-const ICON = 20;
+const ICON = Platform.OS === 'ios' ? 22 : 20;
 
 /**
  * The indicator's size, fixed so its radius can be exactly half its height.
@@ -35,11 +48,16 @@ const ICON = 20;
  * Android resolve those differently, so the shape verified on web was not the
  * shape that shipped. These are numbers.
  */
-const PILL_HEIGHT = 30;
-const PILL_WIDTH = 54;
+/*
+ * A little larger on iOS, where the bar is real glass floating over the page
+ * and reads lighter than the same shape drawn flat — and where the home
+ * indicator sits just under it, so a short bar looks squeezed against the edge.
+ */
+const PILL_HEIGHT = Platform.OS === 'ios' ? 34 : 30;
+const PILL_WIDTH = Platform.OS === 'ios' ? 60 : 54;
 
 /** Padding the indicator has to clear to line up with the icons. */
-const ROW_PAD_Y = 6;
+const ROW_PAD_Y = Platform.OS === 'ios' ? 8 : 6;
 const ROW_PAD_X = 4;
 /**
  * Each column's own vertical padding, and the indicator's offset within the row.
@@ -48,7 +66,7 @@ const ROW_PAD_X = 4;
  * declared here as 2 while the column below hardcoded 4, so the indicator rode
  * two points high and every selected glyph sat low inside it.
  */
-const TAB_PAD_Y = 4;
+const TAB_PAD_Y = Platform.OS === 'ios' ? 5 : 4;
 
 /**
  * The bar's outer height, so anything floating above it can clear it.
@@ -72,6 +90,7 @@ export const BAR_HEIGHT = ROW_PAD_Y * 2 + TAB_PAD_Y * 2 + PILL_HEIGHT + 3 + 14;
  */
 export function Tabs({ active, onChange }: Props) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { active: selecting } = useSelectionBar();
   const [barWidth, setBarWidth] = useState(0);
 
@@ -85,6 +104,76 @@ export function Tabs({ active, onChange }: Props) {
     },
     [barWidth],
   );
+
+  /**
+   * The live geometry and callback, readable from the gesture.
+   *
+   * `PanResponder.create` runs once, so its handlers close over the first
+   * render — where the bar has not been measured and `barWidth` is still zero.
+   * Everything the gesture needs is therefore read through a ref that each
+   * render keeps current.
+   */
+  const now = useRef({ barWidth: 0, screen: 0, onChange });
+  now.current = { barWidth, screen: width, onChange };
+
+  /**
+   * Which tab a finger at this screen x is over.
+   *
+   * From the gesture's absolute coordinates rather than the event's
+   * `locationX`, which is measured against whatever small view the finger
+   * happens to be over — a tab, an icon — and not against the row. The row is
+   * centred, so its left edge is half of what the screen has left over.
+   */
+  const tabAt = (screenX: number) => {
+    const { barWidth: w, screen } = now.current;
+    if (w === 0) return null;
+    const left = (screen - w) / 2 + ROW_PAD_X;
+    const column = (w - ROW_PAD_X * 2) / TABS.length;
+    const at = Math.floor((screenX - left) / column);
+    return TABS[Math.min(TABS.length - 1, Math.max(0, at))] ?? null;
+  };
+
+  /**
+   * Press the bar and slide along it; the selection follows the finger.
+   *
+   * A tab bar is five targets side by side, and the gesture people try is to
+   * hold and run a thumb across them rather than lift and tap for each. It
+   * replaces the per-tab press handlers: a tap is a drag that never moved, and
+   * one responder over the whole row handles both without them fighting over
+   * the touch.
+   */
+  const at = useRef<string | null>(null);
+  const scrub = useRef(
+    PanResponder.create({
+      /*
+       * Captured, not merely offered.
+       *
+       * Each tab is a `Pressable`, and in the responder negotiation the child
+       * is asked first — so every touch was claimed by whichever tab it landed
+       * on and this never saw the rest of the finger's path.
+       */
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (_event, gesture) => {
+        const tab = tabAt(gesture.x0);
+        at.current = tab?.id ?? null;
+        if (tab) now.current.onChange(tab.id);
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const tab = tabAt(gesture.moveX);
+        // Only when it changes: dragging within one tab must not re-select it
+        // sixty times a second.
+        if (tab && tab.id !== at.current) {
+          at.current = tab.id;
+          now.current.onChange(tab.id, true);
+        }
+      },
+      onPanResponderRelease: () => {
+        at.current = null;
+      },
+    }),
+  ).current;
 
   const slide = useRef(new Animated.Value(0)).current;
   /** Skips the animation the first time, so the bar does not fly in on launch. */
@@ -135,6 +224,7 @@ export function Tabs({ active, onChange }: Props) {
     >
       <Glass radius={BAR_RADIUS} interactive={liquidGlass} style={shadow(3)}>
         <View
+          {...scrub.panHandlers}
           onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
           style={{
             flexDirection: 'row',
@@ -179,6 +269,10 @@ export function Tabs({ active, onChange }: Props) {
             return (
               <Pressable
                 key={tab.id}
+                // The press is handled by the row's responder, which owns the
+                // touch from the moment it lands. This stays a `Pressable` for
+                // the ripple and for screen readers, which need a target of
+                // their own to announce and activate.
                 onPress={() => onChange(tab.id)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}

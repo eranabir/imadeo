@@ -1,6 +1,7 @@
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { Header, useHeaderClearance } from '../components/Header';
+import { useHeaderClearance } from '../components/Header';
+import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
 import { useResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
@@ -17,6 +18,8 @@ interface AlbumDetail {
 }
 
 interface Props {
+  /** Where this screen publishes its bar. */
+  slot: string;
   serverUrl: string;
   albumId: string;
   title: string;
@@ -24,7 +27,7 @@ interface Props {
 }
 
 /** Everything inside one album. */
-export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
+export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) {
   const { data, token, error, loading, reload } = useResource<AlbumDetail>(
     serverUrl,
     `/albums/${albumId}?size=500&sortBy=date&order=desc`,
@@ -40,16 +43,16 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
     .filter(Boolean)
     .join(' · ');
 
+  // Published rather than drawn: the shell owns the one bar, and a screen that
+  // brought its own would slide it in over the top of the one already there.
+  useHeaderSlot(
+    slot,
+    { title: data?.name ?? title, subtitle, icon: 'album', onBack },
+    [data?.name, title, subtitle, onBack],
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header
-        title={data?.name ?? title}
-        subtitle={subtitle}
-        icon="album"
-       
-        onBack={onBack}
-      />
-
       <AssetGrid
         serverUrl={serverUrl}
         assets={data?.assets ?? []}
