@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { LayoutAnimation } from 'react-native';
 import type { IconName } from './components/Icon';
+import { useAppearance } from './lib/preferences';
 
 export interface HeaderConfig {
   title: string;
@@ -116,12 +117,23 @@ export function useHeaderSlot(
   const context = useContext(SlotContext);
   const publish = context?.publish;
 
+  /*
+   * Republished when the palette changes, whatever else has not.
+   *
+   * `config` holds elements built inside this effect, and an element freezes
+   * any inline style given to it — so a plain `<View>` in `below` keeps the
+   * colour that was current when it was created, while a component nested in
+   * the same tree re-reads the palette on its next render and does not. That is
+   * exactly what left Search with a dark field above a light segmented control.
+   */
+  const appearance = useAppearance();
+
   useEffect(() => {
     if (!publish || !enabled) return;
     publish(id, config);
     return () => publish(id, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publish, id, enabled, ...deps]);
+  }, [publish, id, enabled, appearance, ...deps]);
 }
 
 /** What the shell should put in the bar right now. */

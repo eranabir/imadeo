@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Stack, usePathname, useSegments } from 'expo-router';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Account } from '../src/components/Account';
 import { Header } from '../src/components/Header';
 import { HeaderSlots, useHeaderSlots } from '../src/header';
 import { Loading } from '../src/components/Loading';
@@ -196,7 +197,20 @@ function Bar() {
   const bar = key ? slots[key] : undefined;
   if (!bar) return null;
 
-  return <Header {...bar}>{bar.below}</Header>;
+  /*
+   * Not on a pushed screen, and not on Settings.
+   *
+   * A pushed screen's bar is about the thing it pushed to and carries a back
+   * chevron already; and the button leads to Settings, so putting it on Settings
+   * is a control that does nothing.
+   */
+  const account = !pushed && pathname !== '/settings' ? <Account /> : undefined;
+
+  return (
+    <Header {...bar} account={account}>
+      {bar.below}
+    </Header>
+  );
 }
 
 /** Which slot each tab publishes under, by its route. */

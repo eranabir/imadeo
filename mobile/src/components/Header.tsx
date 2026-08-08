@@ -22,6 +22,14 @@ interface Props {
   onBack?: () => void;
   /** A single control on the right — a New button, a Rename, a filter. */
   action?: ReactNode;
+  /**
+   * The account button, in the far corner.
+   *
+   * Separate from `action` because it is not the screen's: it says whose
+   * library this is and is the same on every tab, so a screen that already has
+   * a New button does not have to choose between the two.
+   */
+  account?: ReactNode;
   /** Search fields and segmented controls that belong to the bar, not the list. */
   children?: ReactNode;
 }
@@ -42,7 +50,7 @@ interface Props {
  * It still floats above the content, so every list below it has to open with
  * `headerClearance` worth of padding, or its first row starts life hidden.
  */
-export function Header({ title, subtitle, icon, onBack, action, children }: Props) {
+export function Header({ title, subtitle, icon, onBack, action, account, children }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -126,6 +134,7 @@ export function Header({ title, subtitle, icon, onBack, action, children }: Prop
         </View>
 
         {action}
+        {account}
       </View>
 
       {/* A row of air under the title before the bar's rounded edge. Without it
