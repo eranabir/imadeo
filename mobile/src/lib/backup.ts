@@ -1,5 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
+/*
+ * The legacy entry, deliberately.
+ *
+ * SDK 57 rewrote this module: an `Asset` is now an object of getters
+ * (`getCreationTime`, `getMediaType`) rather than plain fields, and `SortBy`
+ * has gone from the main export. That is a migration of its own — the backup
+ * engine and the device grid both read these fields all over — and it does not
+ * belong in the middle of a navigation migration. `expo-file-system` is
+ * imported the same way here for the same reason.
+ */
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { storedToken } from './auth';
 import { getItem, removeItem, setItem } from './storage';
 
