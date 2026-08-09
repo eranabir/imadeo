@@ -14,7 +14,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { initialWindowMetrics } from 'react-native-safe-area-context';
 import { BRAND, colors, radius, ripple, shadow, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 
@@ -202,7 +202,6 @@ export function Sheet({
    */
   tall?: boolean;
 }) {
-  const insets = useSafeAreaInsets();
 
   /**
    * The panel rises; the backdrop fades. Two things, not one.
@@ -337,7 +336,7 @@ export function Sheet({
               borderTopLeftRadius: radius.xl,
               borderTopRightRadius: radius.xl,
               paddingTop: 10,
-              paddingBottom: Math.max(insets.bottom, 16),
+              paddingBottom: Math.max(HOME_INDICATOR, 16),
               ...(tall ? { height: '85%' } : { maxHeight: '85%' }),
               transform: [{ translateY: lift }],
             },
@@ -390,6 +389,18 @@ export function Sheet({
 
 /** How far a sheet travels on its way in and out — past the bottom of any phone. */
 const TRAVEL = 900;
+
+/**
+ * The bar at the bottom of the phone, and nothing else.
+ *
+ * `useSafeAreaInsets` inside a tab is not the window's inset: the tab navigator
+ * puts its own bar into the context so that screens lay out above it, which on
+ * this phone makes the bottom inset 83 rather than the 34 the home indicator
+ * takes. A sheet is a modal over the whole window — the tab bar is behind it,
+ * not under it — so padding for both left a white band under every confirmation
+ * the height of a bar that was not there.
+ */
+const HOME_INDICATOR = initialWindowMetrics?.insets.bottom ?? 0;
 
 /** One choice in a sheet: an icon, a label, and something it does. */
 export function SheetRow({
