@@ -217,7 +217,20 @@ export function AssetGrid({
   };
 
   const days = useMemo(
-    () => (groupByDay ? intoDays(assets, (asset) => asset.localDateTime, columns) : []),
+    () =>
+      groupByDay
+        ? /*
+           * Days with something in them, and rows that are not empty.
+           *
+           * An empty row reached `keyExtractor`, which reads the first photo in
+           * it, and the whole list came down with "cannot read property 'id' of
+           * undefined" — taking the dates and the end of the grid with it. The
+           * cause belongs upstream; this is the list refusing to be handed one.
+           */
+          intoDays(assets, (asset) => asset.localDateTime, columns)
+            .map((section) => ({ ...section, data: section.data.filter((row) => row.length > 0) }))
+            .filter((section) => section.data.length > 0)
+        : [],
     [groupByDay, assets, columns],
   );
 
@@ -341,7 +354,7 @@ export function AssetGrid({
       <>
         <SectionList
           sections={days}
-          keyExtractor={(row) => row[0].id}
+          keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
           /*

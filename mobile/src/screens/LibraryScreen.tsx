@@ -426,7 +426,7 @@ export function LibraryScreen({ serverUrl }: Props) {
       */}
       <SectionList
         sections={sections}
-        keyExtractor={(row) => row[0].id}
+        keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
         stickySectionHeadersEnabled={false}
         ref={list}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
