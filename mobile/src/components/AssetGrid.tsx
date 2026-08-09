@@ -24,6 +24,7 @@ import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton } from './Loading';
+import { DateLabel, Scrubber } from './Scrubber';
 import { Touchable } from './ui';
 
 interface Props {
@@ -220,6 +221,19 @@ export function AssetGrid({
     [groupByDay, assets, columns],
   );
 
+  /*
+   * The day at the top of the screen, from whatever rows are on it.
+   *
+   * Stable across renders because `SectionList` will not accept a new handler
+   * once it is mounted — it throws rather than swapping it.
+   */
+  const onViewable = useRef(
+    ({ viewableItems }: { viewableItems: { section?: { title?: string } }[] }) => {
+      const first = viewableItems.find((item) => item.section?.title);
+      if (first?.section?.title) setDay(first.section.title);
+    },
+  ).current;
+
   /** Where each photo sits in the whole list, for the viewer. */
   const place = useMemo(() => {
     const map = new Map<string, number>();
@@ -227,7 +241,40 @@ export function AssetGrid({
     return map;
   }, [assets]);
 
+  /*
+   * What the scrubber and the date label are driven by.
+   *
+   * The offset lives in an `Animated.Value` so the handle can follow a fling
+   * without a render per frame; the day under the bar is state, because it
+   * changes a few times a second at most and has to reach a `Text`.
+   */
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const list = useRef<SectionList<Asset[]> | FlatList<Asset[]>>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [day, setDay] = useState<string | undefined>(undefined);
+  const [seeking, setSeeking] = useState(false);
+
+  const seek = useCallback((offset: number) => {
+    // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
+    // the handle is working in pixels, and section indices cannot answer where
+    // 43% of the way down is.
+    (list.current as SectionList<Asset[]> | null)
+      ?.getScrollResponder()
+      ?.scrollTo({ y: offset, animated: false });
+  }, []);
+
   const shared = {
+    ref: list as never,
+    onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: false,
+    }),
+    scrollEventThrottle: 16,
+    onContentSizeChange: (_: number, height: number) => setContentHeight(height),
+    onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
+      setViewportHeight(event.nativeEvent.layout.height),
+    onViewableItemsChanged: onViewable,
+    viewabilityConfig: { itemVisiblePercentThreshold: 10 },
     contentContainerStyle: { paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
@@ -259,14 +306,24 @@ export function AssetGrid({
           keyExtractor={(row) => row[0].id}
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
-          renderSectionHeader={({ section }) => (
-            <DayHeader
-              title={section.title}
-              ids={section.data.flat().map((asset) => asset.id)}
-              selected={selected}
-              onToggleDay={onToggleDay}
-            />
-          )}
+          /*
+           * Nothing above a day until there is a reason for one.
+           *
+           * A heading over every date turns a wall of photographs into a list
+           * of dates, and the label under the bar answers the same question
+           * while taking no room in the grid. Selecting is the reason: the
+           * headings come back so a whole day can be taken in one press.
+           */
+          renderSectionHeader={({ section }) =>
+            selecting ? (
+              <DayHeader
+                title={section.title}
+                ids={section.data.flat().map((asset) => asset.id)}
+                selected={selected}
+                onToggleDay={onToggleDay}
+              />
+            ) : null
+          }
           renderItem={({ item: row }) => (
             <View style={{ flexDirection: 'row' }}>
               {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
@@ -280,6 +337,34 @@ export function AssetGrid({
           )}
           {...shared}
         />
+
+        {/* Under the bar rather than in the grid, and only where the grid is
+            cut into days — a folder or a set of results is not a timeline and
+            has no date to report. */}
+        {groupByDay && !selecting && (
+          <View
+            pointerEvents="none"
+            // Over the first rows rather than in the gap above them. The bar
+            // and the grid meet with 16pt between them and the label is taller
+            // than that; floating it is also what Google Photos does with the
+            // same label, and it reads as belonging to the photographs.
+            style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}
+          >
+            <DateLabel>{day}</DateLabel>
+          </View>
+        )}
+
+        {groupByDay && (
+          <Scrubber
+            scrollY={scrollY}
+            contentHeight={contentHeight}
+            viewportHeight={viewportHeight}
+            topInset={topInset}
+            label={seeking ? day : undefined}
+            onSeek={seek}
+            onDrag={setSeeking}
+          />
+        )}
 
         <AssetViewer
           serverUrl={serverUrl}

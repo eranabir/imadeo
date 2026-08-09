@@ -19,6 +19,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  Animated,
   SectionList,
   StyleSheet,
   Text,
@@ -26,6 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayHeader, Empty } from '../components/AssetGrid';
+import { DateLabel, Scrubber } from '../components/Scrubber';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
@@ -342,6 +344,25 @@ export function LibraryScreen({ serverUrl }: Props) {
     [picked.length, pickedPending, running, progress, total, pending, backedUp, host],
   );
 
+  /* The rail and the label, exactly as the server-side grid drives them. */
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const list = useRef<SectionList<MediaLibrary.Asset[]>>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [day, setDay] = useState<string | undefined>(undefined);
+  const [seeking, setSeeking] = useState(false);
+
+  const onViewable = useRef(
+    ({ viewableItems }: { viewableItems: { section?: { title?: string } }[] }) => {
+      const first = viewableItems.find((item) => item.section?.title);
+      if (first?.section?.title) setDay(first.section.title);
+    },
+  ).current;
+
+  const seek = useCallback((offset: number) => {
+    list.current?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
+  }, []);
+
   /*
    * The gate stands here, below every hook.
    *
@@ -394,15 +415,28 @@ export function LibraryScreen({ serverUrl }: Props) {
         sections={sections}
         keyExtractor={(row) => row[0].id}
         stickySectionHeadersEnabled={false}
+        ref={list}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: false,
+        })}
+        scrollEventThrottle={16}
+        onContentSizeChange={(_, height) => setContentHeight(height)}
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+        onViewableItemsChanged={onViewable}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
         contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE }}
-        renderSectionHeader={({ section }) => (
-          <DayHeader
-            title={section.title}
-            ids={idsOf(section.data)}
-            selected={picked}
-            onToggleDay={toggleDay}
-          />
-        )}
+        // Nothing above a day until a selection gives it a reason; the label
+        // under the bar answers "when am I" the rest of the time.
+        renderSectionHeader={({ section }) =>
+          picked.length > 0 ? (
+            <DayHeader
+              title={section.title}
+              ids={idsOf([...section.data])}
+              selected={picked}
+              onToggleDay={toggleDay}
+            />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -482,6 +516,27 @@ export function LibraryScreen({ serverUrl }: Props) {
             />
           )
         }
+      />
+
+      {/* The day at the top of the screen, in place of a heading above every
+          one of them. Hidden while selecting, when the headings come back. */}
+      {picked.length === 0 && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: clearance + 6, left: 0, right: 0 }}
+        >
+          <DateLabel>{day}</DateLabel>
+        </View>
+      )}
+
+      <Scrubber
+        scrollY={scrollY}
+        contentHeight={contentHeight}
+        viewportHeight={viewportHeight}
+        topInset={clearance}
+        label={seeking ? day : undefined}
+        onSeek={seek}
+        onDrag={setSeeking}
       />
 
       {/*
