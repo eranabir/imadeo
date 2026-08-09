@@ -16,6 +16,8 @@ interface Props {
   children: ReactNode;
   /** Align the panel's left edge, right edge, or centre to the anchor. */
   align?: 'start' | 'end' | 'center';
+  /** The element that opened the popover. Pressing it again should toggle closed. */
+  trigger?: HTMLElement | null;
   matchWidth?: boolean;
   className?: string;
 }
@@ -34,6 +36,7 @@ export function Popover({
   onDismiss,
   children,
   align = 'start',
+  trigger,
   matchWidth,
   className,
 }: Props) {
@@ -73,6 +76,10 @@ export function Popover({
       if (event.key === 'Escape') onDismiss();
     };
     const onPointer = (event: MouseEvent) => {
+      // A trigger lives outside the panel, but it is still part of the same
+      // control. Treating its second press as an outside click closes here and
+      // then reopens in the trigger's click handler.
+      if (trigger?.contains(event.target as Node)) return;
       if (panel.current && !panel.current.contains(event.target as Node)) onDismiss();
     };
     // `true` so the dismissal wins over handlers that stop propagation.
@@ -87,7 +94,7 @@ export function Popover({
       window.removeEventListener('resize', onDismiss);
       window.removeEventListener('scroll', onDismiss, true);
     };
-  }, [onDismiss]);
+  }, [onDismiss, trigger]);
 
   return createPortal(
     <div

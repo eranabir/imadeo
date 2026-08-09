@@ -182,7 +182,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
             <Segmented
               segments={[
                 { id: 'smart', label: 'Content', icon: 'sparkle' },
-                { id: 'people', label: 'People & Pets', icon: 'people' },
+                { id: 'people', label: 'People & Pets', icon: 'people', weight: 1.3 },
                 { id: 'places', label: 'Places', icon: 'pin' },
                 { id: 'files', label: 'Files', icon: 'photo' },
               ]}

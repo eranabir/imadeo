@@ -20,6 +20,7 @@ interface Props {
   items: MenuItem[];
   onDismiss: () => void;
   align?: 'start' | 'end' | 'center';
+  trigger?: HTMLElement | null;
   matchWidth?: boolean;
   header?: ReactNode;
   className?: string;
@@ -35,6 +36,7 @@ export function Menu({
   items,
   onDismiss,
   align = 'start',
+  trigger,
   matchWidth,
   header,
   className,
@@ -60,6 +62,7 @@ export function Menu({
       anchor={anchor}
       onDismiss={onDismiss}
       align={align}
+      trigger={trigger}
       matchWidth={matchWidth}
       className={clsx('min-w-52 py-2', className)}
     >
@@ -84,7 +87,9 @@ export function Menu({
               className={clsx(
                 'flex w-full items-center gap-2.5 rounded-[0.5rem] px-2.5 py-2 text-left text-sm transition',
                 'disabled:pointer-events-none disabled:opacity-45',
-                item.danger
+                item.checked
+                  ? 'bg-primary-soft font-medium text-primary'
+                  : item.danger
                   ? 'text-danger hover:bg-danger-soft'
                   : 'text-content hover:bg-surface-sunken',
               )}

@@ -92,7 +92,21 @@ export function Settings() {
         <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
       </header>
 
-      <div className="mx-auto flex max-w-4xl gap-8 px-5 py-6">
+      <div className="mx-auto flex max-w-4xl flex-col gap-5 px-5 py-6 sm:flex-row sm:gap-8">
+        <div className="sm:hidden">
+          <Select
+            label="Section"
+            value={section}
+            options={sections.map(({ id, label, icon: Icon }) => ({
+              value: id,
+              label,
+              icon: <Icon size={16} />,
+            }))}
+            onChange={setSection}
+            className="w-full justify-between"
+          />
+        </div>
+
         <nav className="hidden w-44 shrink-0 space-y-0.5 sm:block">
           {sections.map(({ id, label, icon: Icon }) => (
             <button

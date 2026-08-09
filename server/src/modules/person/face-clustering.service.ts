@@ -58,6 +58,11 @@ export class FaceClusteringService {
       FROM asset_faces f
       JOIN assets a ON a.id = f."assetId"
       WHERE a."ownerId" = ${ownerId}::uuid
+        -- Trashed photos may be restored with their existing grouping, but
+        -- must not teach a newly uploaded photo who it is. Otherwise a new
+        -- dog can inherit the name and group of a dog that only exists in
+        -- Trash.
+        AND a."deletedAt" IS NULL
         AND f."personId" IS NOT NULL
         AND f."deletedAt" IS NULL
         AND f.embedding IS NOT NULL

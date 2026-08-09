@@ -1,6 +1,151 @@
+import { Image } from 'expo-image';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import { colors, radius } from '../theme';
+
+const MARK = 128;
+const HALF = MARK / 2;
+
+/** One quarter of the real mark, arriving from its own corner. */
+function MarkPiece({
+  progress,
+  left,
+  top,
+}: {
+  progress: Animated.Value;
+  left: boolean;
+  top: boolean;
+}) {
+  const imageLeft = left ? 0 : -HALF;
+  const imageTop = top ? 0 : -HALF;
+  const fromX = imageLeft + (left ? -18 : 18);
+  const fromY = imageTop + (top ? -18 : 18);
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: left ? 0 : HALF,
+        top: top ? 0 : HALF,
+        width: HALF,
+        height: HALF,
+        overflow: 'hidden',
+      }}
+    >
+      <Animated.View
+        style={{
+          width: MARK,
+          height: MARK,
+          opacity: progress,
+          transform: [
+            { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [fromX, imageLeft] }) },
+            { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [fromY, imageTop] }) },
+          ],
+        }}
+      >
+        <Image
+          source={require('../../assets/splash-icon.png')}
+          style={{ width: MARK, height: MARK }}
+          contentFit="contain"
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * The mark assembles like four photographs finding their place in an album.
+ *
+ * There is no loading copy to read and no spinner to decode: the app's actual
+ * emblem performs the one short piece of motion, then comes to rest.
+ */
+export function Opening() {
+  const pieces = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const settle = useRef(new Animated.Value(0)).current;
+  const turn = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const arrive = Animated.stagger(
+      70,
+      pieces.map((piece) =>
+        Animated.spring(piece, {
+          toValue: 1,
+          damping: 13,
+          stiffness: 165,
+          mass: 0.75,
+          useNativeDriver: true,
+        }),
+      ),
+    );
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(settle, {
+          toValue: 1,
+          duration: 950,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(settle, {
+          toValue: 0,
+          duration: 950,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const rotate = Animated.loop(
+      Animated.sequence([
+        Animated.delay(420),
+        Animated.timing(turn, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(700),
+        Animated.timing(turn, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    arrive.start(({ finished }) => {
+      if (finished) {
+        breathe.start();
+        rotate.start();
+      }
+    });
+    return () => {
+      arrive.stop();
+      breathe.stop();
+      rotate.stop();
+    };
+  }, [pieces, settle, turn]);
+
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Opening Imadeo">
+      <Animated.View
+        style={{
+          width: MARK,
+          height: MARK,
+          opacity: settle.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }),
+          transform: [
+            { translateY: settle.interpolate({ inputRange: [0, 1], outputRange: [2, -4] }) },
+            { scale: settle.interpolate({ inputRange: [0, 1], outputRange: [1, 1.07] }) },
+            { rotate: turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+          ],
+        }}
+      >
+        <MarkPiece progress={pieces[0]} left top />
+        <MarkPiece progress={pieces[1]} left={false} top />
+        <MarkPiece progress={pieces[2]} left top={false} />
+        <MarkPiece progress={pieces[3]} left={false} top={false} />
+      </Animated.View>
+    </View>
+  );
+}
 
 /** Uneven, so it reads as photographs rather than a grid of buttons. */
 const TILES = [

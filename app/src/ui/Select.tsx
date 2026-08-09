@@ -69,6 +69,7 @@ export function Select<T extends string>({
           anchor={anchor}
           onDismiss={() => setAnchor(null)}
           align="end"
+          trigger={trigger.current}
           className="min-w-48 py-1.5"
         >
           <div role="listbox" className="px-1.5">

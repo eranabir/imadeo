@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Account } from '../src/components/Account';
 import { Header } from '../src/components/Header';
 import { HeaderSlots, useHeaderSlots } from '../src/header';
-import { Loading } from '../src/components/Loading';
+import { Opening } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
@@ -65,7 +65,7 @@ function Gate() {
   if (restoring) {
     return (
       <View style={[styles.fill, styles.centre]}>
-        <Loading label="Opening Imadeo…" />
+        <Opening />
       </View>
     );
   }

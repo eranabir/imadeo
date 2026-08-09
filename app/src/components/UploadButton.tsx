@@ -29,9 +29,12 @@ interface Progress {
  */
 export function UploadButton({
   compact = false,
+  iconOnly = false,
   onError,
 }: {
   compact?: boolean;
+  /** Keeps the must-have upload action visible in a narrow top bar. */
+  iconOnly?: boolean;
   onError?: (message: string) => void;
 }) {
   const filesInput = useRef<HTMLInputElement>(null);
@@ -192,14 +195,17 @@ export function UploadButton({
           <button
             type="button"
             onClick={() => pick('files')}
+            aria-label={iconOnly ? 'Upload files' : undefined}
             className={
-              compact
+              iconOnly
+                ? 'grid h-10 w-10 place-items-center rounded-l-full text-white transition hover:bg-black/10'
+                : compact
                 ? 'flex h-10 items-center gap-2 rounded-l-full pl-4 pr-3 text-sm font-medium text-white transition hover:bg-black/10'
                 : 'flex h-10 w-full items-center justify-center gap-2 rounded-l-full px-4 text-sm font-medium text-white transition hover:bg-black/10'
             }
           >
             <Upload size={16} />
-            Upload
+            {!iconOnly && 'Upload'}
           </button>
           {/* aria-label alone is invisible to sighted people, so the only
               control here without its own text label gets a real tooltip. */}

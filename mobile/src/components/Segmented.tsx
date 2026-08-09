@@ -7,6 +7,8 @@ export interface Segment<T extends string> {
   id: T;
   label: string;
   icon?: IconName;
+  /** Lets one unusually long label keep the breathing room of its neighbours. */
+  weight?: number;
 }
 
 interface Props<T extends string> {
@@ -60,7 +62,7 @@ export function Segmented<T extends string>({ segments, active, onChange }: Prop
             selected={on}
             label={segment.label}
             radius={radius.pill}
-            style={[{ flex: 1 }, on ? shadow(1) : null]}
+            style={[{ flex: segment.weight ?? 1 }, on ? shadow(1) : null]}
           >
             <View
               style={{
@@ -69,7 +71,7 @@ export function Segmented<T extends string>({ segments, active, onChange }: Prop
                 justifyContent: 'center',
                 gap: tight ? 3 : 6,
                 paddingVertical: tight ? 7 : 9,
-                paddingHorizontal: 2,
+                paddingHorizontal: tight ? 6 : 2,
                 borderRadius: radius.pill,
                 backgroundColor: on ? colors.primary : 'transparent',
               }}

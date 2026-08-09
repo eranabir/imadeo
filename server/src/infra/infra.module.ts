@@ -6,7 +6,6 @@ import { MediaService } from './media/media.service';
 import { MetadataService } from './metadata/metadata.service';
 import { MachineLearningService } from './ml/ml.service';
 import { StorageService } from './storage/storage.service';
-import { VaultCryptoService } from './storage/vault-crypto.service';
 
 /**
  * Stateless helpers that wrap the filesystem, sharp/ffmpeg and exiftool.
@@ -16,7 +15,6 @@ import { VaultCryptoService } from './storage/vault-crypto.service';
 @Module({
   providers: [
     StorageService,
-    VaultCryptoService,
     MediaService,
     MetadataService,
     MailService,
@@ -26,7 +24,6 @@ import { VaultCryptoService } from './storage/vault-crypto.service';
   ],
   exports: [
     StorageService,
-    VaultCryptoService,
     MediaService,
     MetadataService,
     MailService,

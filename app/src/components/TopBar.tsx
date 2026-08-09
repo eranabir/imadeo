@@ -1,6 +1,6 @@
-import { LogOut, Monitor, Moon, Search, Settings, SlidersHorizontal, Sun, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { LogOut, Menu as MenuIcon, Monitor, Moon, Search, Settings, SlidersHorizontal, Sun, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { formatBytes } from '../lib/format';
 import { useAuth } from '../store/auth';
 import { useTheme } from '../store/theme';
@@ -14,7 +14,7 @@ import {
   type Anchor,
   type MenuItem,
 } from '../ui';
-import { LogoLockup } from './Logo';
+import { Logo, LogoLockup } from './Logo';
 import { SearchOptions, emptyFilters } from './SearchOptions';
 import { UploadButton } from './UploadButton';
 
@@ -26,16 +26,32 @@ const initialsOf = (name: string) =>
     .map((part) => part[0]?.toUpperCase())
     .join('') || '?';
 
-export function TopBar({ stats }: { stats?: AssetStatistics }) {
+interface NavigationItem {
+  to: string;
+  label: string;
+  icon: ComponentType<{ size?: number; className?: string }>;
+  tint: string;
+}
+
+export function TopBar({
+  stats,
+  navigation,
+}: {
+  stats?: AssetStatistics;
+  navigation: readonly NavigationItem[];
+}) {
   const { user, logout } = useAuth();
   const { theme, cycle } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const [query, setQuery] = useState(params.get('q') ?? '');
   const [accountAnchor, setAccountAnchor] = useState<Anchor | null>(null);
   const avatarRef = useRef<HTMLButtonElement>(null);
+  const navigationRef = useRef<HTMLSpanElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [navigationAnchor, setNavigationAnchor] = useState<Anchor | null>(null);
 
   useEffect(() => {
     // "/" focuses search the way it does in most media apps, but never while
@@ -79,11 +95,20 @@ export function TopBar({ stats }: { stats?: AssetStatistics }) {
     },
   ];
 
+  const navigationItems: MenuItem[] = navigation.map(({ to, label, icon: Icon, tint }) => ({
+    id: to,
+    label,
+    icon: <Icon size={16} className={tint} />,
+    checked: to === '/' ? location.pathname === '/' : location.pathname.startsWith(to),
+    onSelect: () => navigate(to),
+  }));
+
   return (
     <>
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle/70 bg-surface/85 px-4 backdrop-blur-xl">
-      <Link to="/" className="shrink-0">
-        <LogoLockup size={34} />
+      <Link to="/" className="shrink-0" aria-label="Imadeo home">
+        <span className="sm:hidden"><Logo size={34} /></span>
+        <span className="hidden sm:block"><LogoLockup size={34} /></span>
       </Link>
 
       <form onSubmit={submitSearch} className="mx-auto w-full max-w-2xl">
@@ -118,15 +143,36 @@ export function TopBar({ stats }: { stats?: AssetStatistics }) {
       </form>
 
       <div className="flex shrink-0 items-center gap-1.5">
+        <span ref={navigationRef} className="md:hidden">
+          <Tooltip label="Navigation">
+            <IconButton
+              label="Navigation"
+              onClick={() =>
+                setNavigationAnchor(
+                  navigationAnchor ? null : anchorFromElement(navigationRef.current!),
+                )
+              }
+            >
+              <MenuIcon size={19} />
+            </IconButton>
+          </Tooltip>
+        </span>
+
+        <div className="md:hidden">
+          <UploadButton compact iconOnly />
+        </div>
+
         <div className="hidden md:block">
           <UploadButton compact />
         </div>
 
-        <Tooltip label={`Theme: ${theme}`}>
-          <IconButton label={`Theme: ${theme}`} onClick={cycle}>
-            <ThemeIcon size={18} />
-          </IconButton>
-        </Tooltip>
+        <div className="hidden sm:block">
+          <Tooltip label={`Theme: ${theme}`}>
+            <IconButton label={`Theme: ${theme}`} onClick={cycle}>
+              <ThemeIcon size={18} />
+            </IconButton>
+          </Tooltip>
+        </div>
 
         <button
           ref={avatarRef}
@@ -144,6 +190,7 @@ export function TopBar({ stats }: { stats?: AssetStatistics }) {
           <Menu
             anchor={accountAnchor}
             align="end"
+            trigger={avatarRef.current}
             items={accountItems}
             onDismiss={() => setAccountAnchor(null)}
             className="min-w-60"
@@ -158,6 +205,17 @@ export function TopBar({ stats }: { stats?: AssetStatistics }) {
                 )}
               </>
             }
+          />
+        )}
+
+        {navigationAnchor && (
+          <Menu
+            anchor={navigationAnchor}
+            align="end"
+            trigger={navigationRef.current}
+            items={navigationItems}
+            onDismiss={() => setNavigationAnchor(null)}
+            className="max-h-[calc(100vh-5rem)] overflow-y-auto"
           />
         )}
       </div>

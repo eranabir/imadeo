@@ -27,7 +27,7 @@ import { TopBar } from './TopBar';
 import { useLibraryActions } from './useLibraryActions';
 
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
-const NAV = [
+export const NAV = [
   // The primary token rather than a Tailwind cyan: this row's colour and the
   // selected pill's label are the same colour, and a hand-picked cyan next to
   // the primary is two cyans that nearly match, which looks like a mistake.
@@ -153,7 +153,7 @@ export function Layout() {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar stats={stats} />
+      <TopBar stats={stats} navigation={NAV} />
 
       <div className="flex min-h-0 flex-1">
         {/* The rail itself does not scroll — only the nav inside it does. When
@@ -340,4 +340,3 @@ export function Layout() {
     </div>
   );
 }
-
