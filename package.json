@@ -30,7 +30,8 @@
     "test": "yarn workspaces foreach -A run test",
     "dev:mobile": "yarn workspace @imadeo/mobile start",
     "dev:android": "yarn workspace @imadeo/mobile android",
-    "dev:ios": "yarn workspace @imadeo/mobile ios"
+    "dev:ios": "yarn workspace @imadeo/mobile ios",
+    "release:ios": "yarn workspace @imadeo/mobile release:ios"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

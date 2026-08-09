@@ -45,7 +45,8 @@
     "start": "npx expo start",
     "android": "npx expo run:android",
     "ios": "npx expo run:ios",
-    "web": "npx expo start --web"
+    "web": "npx expo start --web",
+    "release:ios":"npx eas-cli build --platform ios --profile production --auto-submit"
   },
   "private": true
 }
