@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
+import { libraryChanged } from './api';
 import { storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
@@ -431,6 +432,12 @@ async function send(
 
   progress.at = -1;
   await saveDone(done);
+
+  // Only when something actually landed. A run that found nothing to send left
+  // the library exactly as it was, and waking every screen to refetch the same
+  // answer is the sort of thing that makes a photo app feel busy for nothing.
+  if (progress.sent.length > 0) libraryChanged();
+
   onProgress({ ...progress });
   return progress;
 }
