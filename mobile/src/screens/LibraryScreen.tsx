@@ -11,8 +11,10 @@ import { Image } from 'expo-image';
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   AppState,
+  Easing,
   FlatList,
   Dimensions,
   Linking,
@@ -27,15 +29,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayHeader, Empty } from '../components/AssetGrid';
-import { DateLabel, Scrubber, useScrolledAway } from '../components/Scrubber';
+import { useGrowFrom, type Rect } from '../components/grow';
+import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { intoDays } from '../lib/day';
-import { Icon } from '../components/Icon';
+import { Icon, type IconName } from '../components/Icon';
 import { DeviceActions } from '../components/PhotoActions';
 import { ConfirmSheet } from '../components/sheets';
-import { Button, Touchable } from '../components/ui';
+import { Button, Sheet, Touchable } from '../components/ui';
 import { isEnabled } from '../lib/autobackup';
 import { backupInFlight, pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
 import { useSelectionBar } from '../selection';
@@ -94,10 +97,13 @@ export function LibraryScreen({ serverUrl }: Props) {
    * button backs up everything outstanding, which is the common case.
    */
   const [picked, setPicked] = useState<string[]>([]);
-  /** The device photo open full screen, if any. Declared with the other state
-      rather than beside the list, which is below the permission gate's early
-      return. */
-  const [viewing, setViewing] = useState<MediaLibrary.Asset | null>(null);
+  /** The device photo open full screen, and the tile it came up out of.
+      Declared with the other state rather than beside the list, which is below
+      the permission gate's early return. */
+  const [viewing, setViewing] = useState<{
+    asset: MediaLibrary.Asset;
+    from: Rect | null;
+  } | null>(null);
   /** The per-item backup list, opened from the progress bar. */
   const [showProgress, setShowProgress] = useState(false);
   /** Set while the "remove from this phone" confirmation is up. */
@@ -153,14 +159,19 @@ export function LibraryScreen({ serverUrl }: Props) {
   const backedUp = pending === 0;
   const host = serverUrl.replace(/^https?:\/\//, '');
 
-  /** Start, or stop what is already running. */
-  const backUp = async () => {
+  /**
+   * Start, or stop what is already running.
+   *
+   * `ids` is the one photo the viewer asked for; without it the selection is
+   * what goes, and without a selection everything outstanding does.
+   */
+  const backUp = async (ids?: string[]) => {
     if (running) {
       // Already running: this press is a stop.
       stop.current = true;
       return;
     }
-    const only = picked.length > 0 ? picked : undefined;
+    const only = ids ?? (picked.length > 0 ? picked : undefined);
     stop.current = false;
     setError(null);
     setRunning(true);
@@ -169,7 +180,9 @@ export function LibraryScreen({ serverUrl }: Props) {
       await runBackup(serverUrl, setProgress, () => stop.current, only);
       setPending(await pendingCount(serverUrl));
       setUploaded(await uploadedIds(serverUrl));
-      setPicked([]);
+      // A selection is what was sent, so it has been dealt with. One photo sent
+      // from the viewer leaves whatever was picked exactly where it was.
+      if (!ids) setPicked([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Backup failed.');
     } finally {
@@ -260,13 +273,13 @@ export function LibraryScreen({ serverUrl }: Props) {
    * The OS asks its own question on top of ours; on iOS it must, and there is no
    * way to delete without it.
    */
-  const removeFromPhone = async () => {
+  const removeFromPhone = async (ids?: string[]) => {
     setError(null);
     try {
-      const removed = await MediaLibrary.deleteAssetsAsync(picked);
+      const removed = await MediaLibrary.deleteAssetsAsync(ids ?? picked);
       // Declining the system prompt is an answer, not a failure.
       if (!removed) return;
-      setPicked([]);
+      if (!ids) setPicked([]);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
@@ -349,28 +362,13 @@ export function LibraryScreen({ serverUrl }: Props) {
   const list = useRef<SectionList<MediaLibrary.Asset[]>>(null);
   const [contentHeight, setContentHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
   const [away, markAway] = useScrolledAway();
 
-  const onViewable = useRef(
-    ({
-      viewableItems,
-    }: {
-      viewableItems: { index: number | null; section?: { title?: string } }[];
-    }) => {
-      /*
-       * A row, not a heading.
-       *
-       * The headings are still items even while they render as nothing, and a
-       * heading of no height reports itself visible at moments when not one of
-       * the photographs under it is — so the label kept naming a day whose
-       * pictures were nowhere on the screen. Only rows can say what is showing.
-       */
-      const first = viewableItems.find((item) => item.index !== null && item.section?.title);
-      if (first?.section?.title) setDay(first.section.title);
-    },
-  ).current;
+  /* Only the tail below the grid is set from this; the date is not. */
+  const [rowHeight, setRowHeight] = useState(0);
+
+  const [day, markDay, Cell] = useDayAtTop(sections, clearance);
 
   const seek = useCallback((offset: number) => {
     list.current?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
@@ -431,22 +429,23 @@ export function LibraryScreen({ serverUrl }: Props) {
         ref={list}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: false,
-          listener: (event: { nativeEvent: { contentOffset: { y: number } } }) =>
-        markAway(event.nativeEvent.contentOffset.y),
+          listener: (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+            markAway(event.nativeEvent.contentOffset.y);
+            markDay(event.nativeEvent.contentOffset.y);
+          },
         })}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={(_, height) => setContentHeight(height)}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
-        onViewableItemsChanged={onViewable}
-        // Most of a row, not a sliver: at ten percent the label named the day
-        // above the one actually on screen.
-        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
-        // Room under the last row for it to be scrolled up to, so the label
-        // can name the final day the way it names every other one.
+        // Every cell reports where it sits, which is what the date is read from.
+        CellRendererComponent={Cell}
+        // Room under the last row for it to be scrolled up to, so the label can
+        // name the final day the way it names every other one — a screen less
+        // the bar and one row, which lands the last row exactly at the bar.
         contentContainerStyle={{
           paddingTop: clearance,
-          paddingBottom: TAB_BAR_CLEARANCE + Math.max(0, viewportHeight - clearance - 180),
+          paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - clearance - rowHeight),
         }}
         // Nothing above a day until a selection gives it a reason; the label
         // under the bar answers "when am I" the rest of the time.
@@ -510,7 +509,13 @@ export function LibraryScreen({ serverUrl }: Props) {
           ) : null
         }
         renderItem={({ item: row }) => (
-          <View style={{ flexDirection: 'row' }}>
+          <View
+            style={{ flexDirection: 'row' }}
+            onLayout={(event) => {
+              const height = event.nativeEvent.layout.height;
+              if (Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
+            }}
+          >
             {row.map((item) => (
               <Tile
                 key={item.id}
@@ -519,7 +524,7 @@ export function LibraryScreen({ serverUrl }: Props) {
                 sent={uploaded.has(item.id)}
                 selecting={picked.length > 0}
                 onToggle={toggle}
-                onOpen={setViewing}
+                onOpen={(asset, from) => setViewing({ asset, from })}
               />
             ))}
             {/* Keeps a day's last row aligned with the ones above it rather
@@ -570,23 +575,23 @@ export function LibraryScreen({ serverUrl }: Props) {
         server by asset id and token, and these files have neither — they are
         local `ph://` references the Photos framework resolves.
       */}
-      <Modal
-        visible={viewing !== null}
-        animationType="fade"
-        onRequestClose={() => setViewing(null)}
-        // Opaque, not transparent: the viewer fills the screen with black
-        // anyway, and a transparent window let the tab bar underneath composite
-        // faintly over the photograph.
-        statusBarTranslucent
-      >
-        {viewing && (
-          <DeviceViewer
-            assets={assets}
-            start={assets.findIndex((asset) => asset.id === viewing.id)}
-            onClose={() => setViewing(null)}
-          />
-        )}
-      </Modal>
+      {viewing && (
+        <DeviceViewer
+          assets={assets}
+          start={assets.findIndex((asset) => asset.id === viewing.asset.id)}
+          from={viewing.from}
+          host={host}
+          uploaded={uploaded}
+          busy={running}
+          onClose={() => setViewing(null)}
+          onBackUp={(asset) => void backUp([asset.id])}
+          onRemove={(asset) => {
+            // Nothing left to look at on this page once it is gone.
+            setViewing(null);
+            void removeFromPhone([asset.id]);
+          }}
+        />
+      )}
 
       {/*
         The per-item account of the run.
@@ -644,15 +649,32 @@ export function LibraryScreen({ serverUrl }: Props) {
  *
  * Only the pages either side are rendered: a phone with ten thousand photos
  * would otherwise mount ten thousand images the moment one is opened.
+ *
+ * It owns its own `Modal` so that the hardware back button and the close button
+ * are the same door — one that shuts with the animation rather than through it.
  */
 function DeviceViewer({
   assets,
   start,
+  from,
+  host,
+  uploaded,
+  busy,
   onClose,
+  onBackUp,
+  onRemove,
 }: {
   assets: MediaLibrary.Asset[];
   start: number;
+  /** The tile this was opened from, when it could be measured in time. */
+  from: Rect | null;
+  host: string;
+  /** Which of these the server already holds. */
+  uploaded: Set<string>;
+  busy: boolean;
   onClose: () => void;
+  onBackUp: (asset: MediaLibrary.Asset) => void;
+  onRemove: (asset: MediaLibrary.Asset) => void;
 }) {
   /*
    * Measured straight from the window, not through the hook.
@@ -665,69 +687,321 @@ function DeviceViewer({
    */
   const { width, height } = Dimensions.get('window');
   const insets = useSafeAreaInsets();
-  const [at, setAt] = useState(Math.max(0, start));
+  const opened = Math.max(0, start);
+  const [at, setAt] = useState(opened);
+  /** The bar over the photograph, which a tap puts out of the way. */
+  const [chrome, setChrome] = useState(true);
+  const [details, setDetails] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const asset = assets[at] ?? assets[opened];
+
+  /*
+   * Back into the tile only while that tile is still the photograph on screen.
+   * After a swipe the one it was opened from is somewhere else entirely, and
+   * shrinking into the wrong square is worse than not shrinking at all.
+   */
+  const [leaving, setLeaving] = useState(false);
+  const { mounted, enter, grown } = useGrowFrom(at === opened ? from : null, !leaving);
+
+  const bar = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.timing(bar, {
+      toValue: chrome ? 1 : 0,
+      duration: chrome ? 150 : 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [chrome, bar]);
+
+  /*
+   * Shrinking back is a state change rather than a call: `useGrowFrom` runs the
+   * animation and says when there is nothing left on screen, and only then is
+   * the viewer taken down.
+   */
+  const leave = useCallback(() => setLeaving(true), []);
+
+  useEffect(() => {
+    if (leaving && !mounted) onClose();
+  }, [leaving, mounted, onClose]);
+
+  const backedUp = uploaded.has(asset.id);
+  const taken = asset.creationTime ? new Date(asset.creationTime) : null;
 
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer }]}>
-      <FlatList
-        data={assets}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(asset) => asset.id}
-        initialScrollIndex={Math.max(0, start)}
-        // Every page is exactly the screen's width, so the list never has to
-        // measure anything to know where a given photo starts.
-        getItemLayout={(_data, index) => ({ length: width, offset: width * index, index })}
-        onMomentumScrollEnd={(event) =>
-          setAt(Math.round(event.nativeEvent.contentOffset.x / width))
-        }
-        windowSize={3}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close photo"
-            style={{ width, height, justifyContent: 'center' }}
-          >
-            <Image
-              source={item.uri}
-              style={{ width, height }}
-              contentFit="contain"
-              recyclingKey={item.id}
-              transition={140}
-            />
-          </Pressable>
-        )}
-      />
+    <Modal visible transparent animationType="none" onRequestClose={leave} statusBarTranslucent>
+      <View style={StyleSheet.absoluteFill}>
+        {/* The dark comes up under the photograph rather than with it, so the
+            grid is still there to be left behind. */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer, opacity: enter }]}
+        />
 
-      {/* Where you are in the roll, which a paged viewer otherwise never says. */}
-      <View
-        style={{
-          position: 'absolute',
-          top: insets.top + 8,
-          left: 0,
-          right: 0,
-          alignItems: 'center',
-        }}
-        pointerEvents="none"
-      >
-        <Text
+        <Animated.View style={[StyleSheet.absoluteFill, grown]}>
+          <FlatList
+            data={assets}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id}
+            initialScrollIndex={opened}
+            // Every page is exactly the screen's width, so the list never has to
+            // measure anything to know where a given photo starts.
+            getItemLayout={(_data, index) => ({ length: width, offset: width * index, index })}
+            onMomentumScrollEnd={(event) =>
+              setAt(Math.round(event.nativeEvent.contentOffset.x / width))
+            }
+            windowSize={3}
+            renderItem={({ item }) => (
+              <Pressable
+                // A tap puts the bar away rather than closing, which is what the
+                // server-side viewer does and what leaves the photograph alone.
+                onPress={() => setChrome((on) => !on)}
+                accessibilityRole="image"
+                accessibilityLabel={item.filename}
+                style={{ width, height, justifyContent: 'center' }}
+              >
+                <Image
+                  source={item.uri}
+                  style={{ width, height }}
+                  contentFit="contain"
+                  recyclingKey={item.id}
+                  transition={140}
+                />
+              </Pressable>
+            )}
+          />
+        </Animated.View>
+
+        {/*
+          Everything along the top, and nothing along the bottom.
+
+          The bottom edge of a photo viewer belongs to whatever is being played,
+          and to the home gesture besides. This bar owns the photograph: what it
+          is on the left, what can be done with it on the right.
+        */}
+        <Animated.View
+          pointerEvents={chrome ? 'box-none' : 'none'}
           style={{
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: '700',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            paddingTop: insets.top + 8,
+            paddingBottom: 12,
             paddingHorizontal: 12,
-            paddingVertical: 5,
-            borderRadius: radius.pill,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
             backgroundColor: colors.overlay,
-            overflow: 'hidden',
+            opacity: Animated.multiply(bar, enter),
           }}
         >
-          {at + 1} of {assets.length}
-        </Text>
+          <Touchable onPress={leave} radius={radius.pill} label="Close" style={{ width: 38, height: 38 }}>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="close" size={22} color="#fff" />
+            </View>
+          </Touchable>
+
+          <View style={{ flex: 1, marginLeft: 4 }}>
+            <Text numberOfLines={1} style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+              {asset.filename}
+            </Text>
+            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 1 }}>
+              {[
+                `${at + 1} of ${assets.length}`,
+                taken ? taken.toLocaleDateString() : null,
+                asset.mediaType === 'video' ? runningTime(asset.duration) : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          </View>
+
+          <ViewerAction icon="info" label="Details" tint="#fff" onPress={() => setDetails(true)} />
+
+          {/*
+            Backed up or not is the one thing this tab exists to answer, so the
+            state and the action are the same control: a tick once the server
+            has it, and the way to send it until then.
+          */}
+          <ViewerAction
+            icon={backedUp ? 'cloud-done' : 'backup'}
+            label={backedUp ? `Already on ${host}` : 'Back up now'}
+            // White like everything else over a photograph. The accent picked
+            // out one control on a bar where nothing else is coloured, which
+            // read as a button to press rather than the state it is.
+            tint="#fff"
+            disabled={backedUp || busy}
+            onPress={() => onBackUp(asset)}
+          />
+
+          <ViewerAction
+            icon="trash"
+            label="Remove from this phone"
+            tint="#fff"
+            disabled={busy}
+            onPress={() => setRemoving(true)}
+          />
+        </Animated.View>
+
+        <Sheet open={details} title={asset.filename} onClose={() => setDetails(false)}>
+          <PhotoFacts asset={asset} backedUp={backedUp} host={host} />
+        </Sheet>
+
+        {/* The same words the grid's own confirmation uses, because it is the
+            same deletion — one photo rather than a selection. */}
+        <ConfirmSheet
+          open={removing}
+          title="Remove this from this phone?"
+          description={
+            backedUp
+              ? `It stays on ${host}. Only the copy in this phone's gallery is removed, and you can still see it in Browse.`
+              : 'This has not been backed up yet, so this copy would be gone for good.'
+          }
+          confirmLabel="Remove from phone"
+          onClose={() => setRemoving(false)}
+          onConfirm={() => {
+            setRemoving(false);
+            onRemove(asset);
+          }}
+        />
       </View>
+    </Modal>
+  );
+}
+
+/** A length in the way a phone writes one: 1:07, not 67 seconds. */
+function runningTime(seconds: number) {
+  const total = Math.round(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** A size in the way a phone writes one. */
+function fileSize(bytes: number) {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${unit > 0 && size < 10 ? size.toFixed(1) : Math.round(size)} ${units[unit]}`;
+}
+
+/**
+ * What a photograph is, for the times the picture is not the question.
+ *
+ * "Is this one safe yet" first, because that is what this tab is for and the
+ * rest is the sort of thing you only look up once you have started wondering
+ * whether to clear some space.
+ */
+function PhotoFacts({
+  asset,
+  backedUp,
+  host,
+}: {
+  asset: MediaLibrary.Asset;
+  backedUp: boolean;
+  host: string;
+}) {
+  const [size, setSize] = useState<number | null>(null);
+
+  /*
+   * The size is looked up rather than carried on the asset, and only once the
+   * sheet is open. `shouldDownloadFromNetwork` is deliberately left off: on a
+   * phone using Optimise Storage that would pull the original back from iCloud
+   * to put a number on a line, so an offloaded photo says nothing instead.
+   */
+  useEffect(() => {
+    let alive = true;
+    setSize(null);
+
+    void (async () => {
+      try {
+        const info = await MediaLibrary.getAssetInfoAsync(asset);
+        const uri = info.localUri;
+        if (!uri || uri.startsWith('ph://')) return;
+        const file = await FileSystem.getInfoAsync(uri);
+        if (alive && file.exists && !file.isDirectory) setSize(file.size);
+      } catch {
+        // A size is a nicety; the rest of the sheet is not waiting on it.
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [asset]);
+
+  const taken = asset.creationTime ? new Date(asset.creationTime) : null;
+
+  return (
+    <View style={{ paddingHorizontal: 4, paddingBottom: 6 }}>
+      <Fact
+        label="Backup"
+        value={backedUp ? `On ${host}` : 'Not backed up yet'}
+        tint={backedUp ? colors.primary : undefined}
+      />
+      {taken && (
+        <Fact
+          label="Taken"
+          value={taken.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
+        />
+      )}
+      <Fact
+        label={asset.mediaType === 'video' ? 'Video' : 'Photo'}
+        value={[
+          `${asset.width} × ${asset.height}`,
+          asset.mediaType === 'video' ? runningTime(asset.duration) : null,
+          size === null ? null : fileSize(size),
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      />
     </View>
+  );
+}
+
+/** One line of the details sheet: what it is on the left, what it says on the right. */
+function Fact({ label, value, tint }: { label: string; value: string; tint?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16, paddingVertical: 10 }}>
+      <Text style={{ color: colors.faint, fontSize: 13.5, width: 78 }}>{label}</Text>
+      <Text style={{ color: tint ?? colors.text, fontSize: 14.5, fontWeight: '600', flex: 1 }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** One round control in the viewer's bar, sized to sit beside a title. */
+function ViewerAction({
+  icon,
+  label,
+  tint,
+  onPress,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  tint: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Touchable
+      onPress={onPress}
+      disabled={disabled}
+      radius={radius.pill}
+      label={label}
+      style={{ width: 40, height: 40 }}
+    >
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} size={21} color={tint} />
+      </View>
+    </Touchable>
   );
 }
 
@@ -745,14 +1019,33 @@ function Tile({
   sent: boolean;
   selecting: boolean;
   onToggle: (id: string) => void;
-  onOpen: (asset: MediaLibrary.Asset) => void;
+  onOpen: (asset: MediaLibrary.Asset, from: Rect | null) => void;
 }) {
+  /*
+   * Where this tile is on the screen, handed over with the photograph.
+   *
+   * The viewer grows out of it, and the only moment its place is knowable is
+   * the tap itself — the grid scrolls, and a position measured at layout would
+   * be describing where the tile used to be. `measureInWindow` answers on the
+   * next frame; if it cannot, the photograph opens without growing rather than
+   * not at all.
+   */
+  const box = useRef<View>(null);
+
+  const open = () => {
+    if (!box.current) return onOpen(item, null);
+    box.current.measureInWindow((x, y, width, height) =>
+      onOpen(item, width > 0 ? { x, y, width, height } : null),
+    );
+  };
+
   return (
           <Pressable
+            ref={box}
             // Long-press opens selection, exactly as it does in the server grid;
             // once anything is picked a plain tap adds to it rather than needing
             // the gesture again.
-            onPress={() => (selecting ? onToggle(item.id) : onOpen(item))}
+            onPress={() => (selecting ? onToggle(item.id) : open())}
             onLongPress={() => onToggle(item.id)}
             delayLongPress={280}
             accessibilityRole={selecting ? 'checkbox' : 'image'}

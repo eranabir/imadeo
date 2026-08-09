@@ -22,9 +22,10 @@ import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
 import { intoDays } from '../lib/day';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
+import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton } from './Loading';
-import { DateLabel, Scrubber, useScrolledAway } from './Scrubber';
+import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from './Scrubber';
 import { Touchable } from './ui';
 
 interface Props {
@@ -99,17 +100,33 @@ export function AssetGrid({
   groupByDay = false,
 }: Props) {
   const selecting = (selected?.length ?? 0) > 0;
-  const [viewing, setViewing] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<{ at: number; from: Rect | null } | null>(null);
+
+  /*
+   * Where each tile on screen is, so the viewer can grow out of the one tapped.
+   *
+   * Held by id rather than measured at layout: the grid scrolls, and a position
+   * taken when the tile was drawn describes where it used to be. The tap is the
+   * only moment the answer is worth having.
+   */
+  const tiles = useRef(new Map<string, View>()).current;
 
   // While photos are picked out a tap adds to the selection; otherwise it
   // opens the photo. One gesture, and which it means is never ambiguous
   // because the ticks are on screen whenever it means the first.
   const press = useCallback(
     (id: string, at: number) => {
-      if (selecting) onToggle?.(id);
-      else setViewing(at);
+      if (selecting) return onToggle?.(id);
+
+      const tile = tiles.get(id);
+      // `measureInWindow` answers on the next frame; without a tile to ask, the
+      // photograph opens without growing rather than not at all.
+      if (!tile) return setViewing({ at, from: null });
+      tile.measureInWindow((x, y, width, height) =>
+        setViewing({ at, from: width > 0 ? { x, y, width, height } : null }),
+      );
     },
-    [selecting, onToggle],
+    [selecting, onToggle, tiles],
   );
 
   /**
@@ -126,6 +143,10 @@ export function AssetGrid({
     return (
         <Pressable
           key={item.id}
+          ref={(node) => {
+            if (node) tiles.set(item.id, node);
+            else tiles.delete(item.id);
+          }}
           onPress={() => press(item.id, at)}
           onLongPress={() => onStartSelecting?.(item.id)}
           delayLongPress={280}
@@ -234,31 +255,6 @@ export function AssetGrid({
     [groupByDay, assets, columns],
   );
 
-  /*
-   * The day at the top of the screen, from whatever rows are on it.
-   *
-   * Stable across renders because `SectionList` will not accept a new handler
-   * once it is mounted — it throws rather than swapping it.
-   */
-  const onViewable = useRef(
-    ({
-      viewableItems,
-    }: {
-      viewableItems: { index: number | null; section?: { title?: string } }[];
-    }) => {
-      /*
-       * A row, not a heading.
-       *
-       * The headings are still items even while they render as nothing, and a
-       * heading of no height reports itself visible at moments when not one of
-       * the photographs under it is — so the label kept naming a day whose
-       * pictures were nowhere on the screen. Only rows can say what is showing.
-       */
-      const first = viewableItems.find((item) => item.index !== null && item.section?.title);
-      if (first?.section?.title) setDay(first.section.title);
-    },
-  ).current;
-
   /** Where each photo sits in the whole list, for the viewer. */
   const place = useMemo(() => {
     const map = new Map<string, number>();
@@ -277,9 +273,17 @@ export function AssetGrid({
   const list = useRef<SectionList<Asset[]> | FlatList<Asset[]>>(null);
   const [contentHeight, setContentHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
   const [away, markAway] = useScrolledAway();
+
+  /*
+   * One row of tiles, measured rather than assumed: a tile is a square of a
+   * third of the width on one phone and of something else on the next. Only the
+   * tail below the grid is set from it, which a point either way cannot spoil.
+   */
+  const [rowHeight, setRowHeight] = useState(0);
+
+  const [day, markDay, Cell] = useDayAtTop(days, topInset);
 
   const seek = useCallback((offset: number) => {
     // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
@@ -294,8 +298,10 @@ export function AssetGrid({
     ref: list as never,
     onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
       useNativeDriver: false,
-      listener: (event: { nativeEvent: { contentOffset: { y: number } } }) =>
-        markAway(event.nativeEvent.contentOffset.y),
+      listener: (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+        markAway(event.nativeEvent.contentOffset.y);
+        markDay(event.nativeEvent.contentOffset.y);
+      },
     }),
     scrollEventThrottle: 16,
     // The platform's own indicator would sit right beside the handle saying the
@@ -304,28 +310,22 @@ export function AssetGrid({
     onContentSizeChange: (_: number, height: number) => setContentHeight(height),
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
-    onViewableItemsChanged: onViewable,
-    /*
-     * Most of a row, not a sliver of one.
-     *
-     * At ten percent a row that has almost entirely left the top of the screen
-     * still counts as visible, so the label named the day above whatever was
-     * actually being looked at — a date sitting over photographs that do not
-     * belong to it, which is worse than no date at all.
-     */
-    viewabilityConfig: { itemVisiblePercentThreshold: 60 },
+    // Every cell reports where it sits, which is what the date is read from.
+    CellRendererComponent: Cell,
     /*
      * Room under the last row for it to be scrolled up to.
      *
      * The label names whatever is at the top of the screen, and without this
      * the final day can never get there — the list runs out first, so the last
-     * photographs in a library are the one stretch it cannot name. The tail is
-     * what is left of a screen once the bar and a row of tiles are taken out of
-     * it, which is exactly far enough and no further.
+     * photographs in a library are the one stretch it cannot name. A screen
+     * with the bar and one row of tiles taken out of it is exactly the gap
+     * between where the last row ends up and where it has to reach: any less
+     * and the scroll stops short of the last day, any more and it runs on past
+     * the end into empty space.
      */
     contentContainerStyle: {
       paddingTop: topInset,
-      paddingBottom: TAB_BAR_CLEARANCE + Math.max(0, viewportHeight - topInset - 180),
+      paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - topInset - rowHeight),
     },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
@@ -376,7 +376,13 @@ export function AssetGrid({
             ) : null
           }
           renderItem={({ item: row }) => (
-            <View style={{ flexDirection: 'row' }}>
+            <View
+              style={{ flexDirection: 'row' }}
+              onLayout={(event) => {
+                const height = event.nativeEvent.layout.height;
+                if (Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
+              }}
+            >
               {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
               {/* Keeps a short last row aligned with the ones above it rather
                   than spreading its tiles across the width. */}
@@ -425,7 +431,8 @@ export function AssetGrid({
           serverUrl={serverUrl}
           token={token}
           assets={assets}
-          index={viewing}
+          index={viewing?.at ?? null}
+          from={viewing?.from ?? null}
           onClose={() => setViewing(null)}
           onChanged={() => onChanged?.()}
         />
@@ -474,7 +481,8 @@ export function AssetGrid({
       serverUrl={serverUrl}
       token={token}
       assets={assets}
-      index={viewing}
+      index={viewing?.at ?? null}
+      from={viewing?.from ?? null}
       onClose={() => setViewing(null)}
       onChanged={() => onChanged?.()}
     />

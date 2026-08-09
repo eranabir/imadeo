@@ -1,5 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, PanResponder, Text, View } from 'react-native';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
+import {
+  Animated,
+  PanResponder,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { colors, radius, shadow } from '../theme';
 
 /** The handle's size, and the rail it runs in. */
@@ -213,6 +229,124 @@ export function useScrolledAway(): [boolean, (offset: number) => void] {
   }, []);
 
   return [away, mark];
+}
+
+/**
+ * The day sitting under the bar right now.
+ *
+ * Viewability cannot answer this. A row counts as visible anywhere in the
+ * viewport, so a day whose photographs are halfway down the screen reports
+ * itself just as loudly as the one at the top, and the threshold that decides
+ * "visible" means a row leaving the top stops counting while a third of it is
+ * still on screen — the label changed early on the way down, late on the way
+ * up, and never at the moment a day actually reached the bar.
+ *
+ * Nor can the offset be turned into a day by arithmetic. Every tile is a third
+ * of the screen wide and therefore a third of it tall, which is not a whole
+ * number of points on any phone ever made; a row measures 147.67 here and comes
+ * back from the layout as 148. Multiply that by the thousand rows a real
+ * library has and the answer is out by several days — which is exactly what a
+ * date over the wrong photographs looks like.
+ *
+ * So the rows are asked where they are rather than told. Each one reports its
+ * own place in the list as it is laid out, and the day is whichever row's top
+ * has last passed under the bar. Only the rows on screen are on the books, so
+ * the search is over a couple of dozen entries and no arithmetic is trusted
+ * further than a single row.
+ */
+export function useDayAtTop<T extends { id: string }>(
+  sections: { title: string; data: T[][] }[],
+  /** Room the floating header takes: the line the date is read at. */
+  topInset: number,
+): [string | undefined, (offset: number) => void, ComponentType<CellProps<T[]>>] {
+  const [day, setDay] = useState<string | undefined>(undefined);
+
+  /*
+   * Where each row on screen sits, by the id of the first photograph in it.
+   *
+   * A ref rather than state: this is written on every layout and read on every
+   * scroll frame, and neither wants a render.
+   */
+  const placed = useRef(new Map<string, number>()).current;
+
+  const dayOfRow = useMemo(() => {
+    const rows = new Map<string, string>();
+    for (const section of sections) {
+      for (const row of section.data) if (row[0]) rows.set(row[0].id, section.title);
+    }
+    return rows;
+  }, [sections]);
+
+  /**
+   * The wrapper the list puts around every cell, which is the one view whose
+   * position is measured against the scrolling content itself.
+   *
+   * The list's own `onLayout` has to be called too — this is standing in for
+   * its wrapper, not adding one, and virtualisation is driven by it.
+   */
+  const Cell = useMemo(
+    () =>
+      function Cell({ item, onLayout, children, ...rest }: CellProps<T[]>) {
+        const id = Array.isArray(item) && item[0]?.id ? item[0].id : null;
+
+        // Off the books the moment the row is recycled, so the search stays
+        // over what is on screen rather than everything ever scrolled past.
+        useEffect(() => () => void (id && placed.delete(id)), [id]);
+
+        return (
+          <View
+            {...rest}
+            onLayout={(event) => {
+              onLayout?.(event);
+              if (id) placed.set(id, event.nativeEvent.layout.y);
+            }}
+          >
+            {children}
+          </View>
+        );
+      },
+    [placed],
+  );
+
+  const mark = useCallback(
+    (offset: number) => {
+      const line = offset + topInset;
+
+      // The lowest row that has already reached the bar; failing that — at the
+      // very top of the list — the first row there is.
+      let last = -Infinity;
+      let first = Infinity;
+      let atLine: string | undefined;
+      let atTop: string | undefined;
+
+      for (const [id, y] of placed) {
+        if (y <= line && y > last) {
+          last = y;
+          atLine = id;
+        }
+        if (y < first) {
+          first = y;
+          atTop = id;
+        }
+      }
+
+      const title = dayOfRow.get(atLine ?? atTop ?? '');
+      if (title) setDay((was) => (was === title ? was : title));
+    },
+    [placed, dayOfRow, topInset],
+  );
+
+  return [day, mark, Cell];
+}
+
+/** What a `VirtualizedList` hands whatever it wraps its cells in. */
+export interface CellProps<T> {
+  cellKey: string;
+  index: number;
+  item: T;
+  style: StyleProp<ViewStyle>;
+  onLayout?: (event: LayoutChangeEvent) => void;
+  children: ReactNode;
 }
 
 /**
