@@ -228,8 +228,20 @@ export function AssetGrid({
    * once it is mounted — it throws rather than swapping it.
    */
   const onViewable = useRef(
-    ({ viewableItems }: { viewableItems: { section?: { title?: string } }[] }) => {
-      const first = viewableItems.find((item) => item.section?.title);
+    ({
+      viewableItems,
+    }: {
+      viewableItems: { index: number | null; section?: { title?: string } }[];
+    }) => {
+      /*
+       * A row, not a heading.
+       *
+       * The headings are still items even while they render as nothing, and a
+       * heading of no height reports itself visible at moments when not one of
+       * the photographs under it is — so the label kept naming a day whose
+       * pictures were nowhere on the screen. Only rows can say what is showing.
+       */
+      const first = viewableItems.find((item) => item.index !== null && item.section?.title);
       if (first?.section?.title) setDay(first.section.title);
     },
   ).current;
