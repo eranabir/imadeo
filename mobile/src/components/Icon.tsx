@@ -29,7 +29,8 @@ export type IconName =
   | 'done'
   | 'pin'
   | 'cloud-done'
-  | 'storage';
+  | 'storage'
+  | 'info';
 
 interface Props {
   name: IconName;
@@ -281,6 +282,17 @@ function shapes(name: IconName, color: string) {
           <Ellipse cx="12" cy="6" rx="7.5" ry="3" />
           <Path d="M4.5 6v12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
           <Path d="M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3" />
+        </>
+      );
+
+    case 'info':
+      // The stem is drawn from below the dot so the two never merge at 20px,
+      // which is the size this is actually used at.
+      return (
+        <>
+          <Circle cx="12" cy="12" r="9" />
+          <Path d="M12 11.2v5" />
+          <Path d="M12 7.9v.1" />
         </>
       );
 

@@ -3,9 +3,11 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { autoplayVideos } from '../lib/preferences';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   FlatList,
   Modal,
   Pressable,
+  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -14,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { duration as formatDuration, type Asset } from '../lib/api';
 import { colors, radius } from '../theme';
+import { useGrowFrom, type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { ConfirmSheet } from './sheets';
 import { Touchable } from './ui';
@@ -24,6 +27,8 @@ interface Props {
   assets: Asset[];
   /** Which one was tapped. Null closes the viewer. */
   index: number | null;
+  /** The tile it was tapped on, when it could be measured in time. */
+  from?: Rect | null;
   onClose: () => void;
   /** Something was changed from in here, so the grid behind is stale. */
   onChanged: () => void;
@@ -40,7 +45,7 @@ interface Props {
  * cover a pushed folder screen as readily as a tab — and it is genuinely modal,
  * with its own back behaviour and nothing underneath worth showing.
  */
-export function AssetViewer({ serverUrl, token, assets, index, onClose, onChanged }: Props) {
+export function AssetViewer({ serverUrl, token, assets, index, from, onClose, onChanged }: Props) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const list = useRef<FlatList<Asset>>(null);
@@ -52,16 +57,30 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
   /** Overrides the server's answer for anything favourited in this session. */
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
 
+  /** Which page it opened on, kept for the way back out. */
+  const opened = useRef(index ?? 0);
+
   // Opening on the tapped photo rather than the first one. The list is only
   // mounted while the viewer is open, so this runs once per opening.
   useEffect(() => {
     if (index === null) return;
+    opened.current = index;
     setCurrent(index);
     setChrome(true);
     setFavorites({});
   }, [index]);
 
-  if (index === null) return null;
+  /*
+   * Back into the tile only while that tile is still the photograph on screen.
+   * After a swipe the one it was opened from is somewhere else entirely, and
+   * shrinking into the wrong square is worse than not shrinking at all.
+   */
+  const { mounted, enter, grown } = useGrowFrom(
+    current === opened.current ? from ?? null : null,
+    index !== null,
+  );
+
+  if (!mounted) return null;
 
   const asset = assets[current];
   if (!asset) return null;
@@ -79,14 +98,15 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
   };
 
   return (
-    <Modal
-      visible
-      transparent={false}
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View style={{ flex: 1, backgroundColor: colors.viewer }}>
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={StyleSheet.absoluteFill}>
+        {/* The dark comes up under the photograph rather than with it, so the
+            grid is still there to be left behind. */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer, opacity: enter }]}
+        />
+
+        <Animated.View style={[StyleSheet.absoluteFill, grown]}>
         <FlatList
           ref={list}
           data={assets}
@@ -94,7 +114,7 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          initialScrollIndex={index}
+          initialScrollIndex={opened.current}
           // Every page is exactly the screen's width, so the list never has to
           // measure anything to jump straight to the one that was tapped.
           getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
@@ -135,10 +155,13 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
             </Pressable>
           )}
         />
+        </Animated.View>
 
         {chrome && (
           <>
-            <View
+            {/* Fades with the photograph rather than arriving over the grid
+                while it is still on its way up. */}
+            <Animated.View
               style={{
                 position: 'absolute',
                 top: 0,
@@ -150,7 +173,8 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 12,
-                backgroundColor: 'rgba(0,0,0,0.45)',
+                backgroundColor: colors.overlay,
+                opacity: enter,
               }}
             >
               <Touchable onPress={onClose} radius={radius.pill} label="Close" style={{ width: 38, height: 38 }}>
@@ -204,7 +228,7 @@ export function AssetViewer({ serverUrl, token, assets, index, onClose, onChange
                 disabled={busy}
                 onPress={() => setTrashing(true)}
               />
-            </View>
+            </Animated.View>
           </>
         )}
 

@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
+import { libraryChanged } from './api';
 import { storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
@@ -240,6 +241,23 @@ export interface Progress {
  * video will saturate the link either way, and one at a time keeps the progress
  * count honest and the failure of one item from taking others with it.
  */
+/**
+ * Whether a run is already in flight, anywhere in the app.
+ *
+ * There are three things that can start one now — the button, the app coming to
+ * the front, and the system waking the background task — and two of them can
+ * fire within a second of each other when a phone is unlocked. Two runs would
+ * read the same pending list and send everything twice; the server would refuse
+ * the duplicates, but the phone would still have uploaded them.
+ *
+ * Module-level rather than React state because the background task runs with no
+ * component mounted at all.
+ */
+let inFlight = false;
+
+/** Whether something is uploading right now. */
+export const backupInFlight = () => inFlight;
+
 export async function runBackup(
   baseUrl: string,
   onProgress: (p: Progress) => void,
@@ -249,6 +267,21 @@ export async function runBackup(
    * has not sent goes. Anything already uploaded is skipped either way, so
    * picking a photo that is already safe costs nothing.
    */
+  only?: string[],
+): Promise<Progress> {
+  if (inFlight) throw new Error('A backup is already running.');
+  inFlight = true;
+  try {
+    return await send(baseUrl, onProgress, shouldStop, only);
+  } finally {
+    inFlight = false;
+  }
+}
+
+async function send(
+  baseUrl: string,
+  onProgress: (p: Progress) => void,
+  shouldStop: () => boolean,
   only?: string[],
 ): Promise<Progress> {
   const token = await storedToken();
@@ -399,6 +432,12 @@ export async function runBackup(
 
   progress.at = -1;
   await saveDone(done);
+
+  // Only when something actually landed. A run that found nothing to send left
+  // the library exactly as it was, and waking every screen to refetch the same
+  // answer is the sort of thing that makes a photo app feel busy for nothing.
+  if (progress.sent.length > 0) libraryChanged();
+
   onProgress({ ...progress });
   return progress;
 }

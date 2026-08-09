@@ -1,4 +1,4 @@
-import { request } from './api';
+import { libraryChanged, request } from './api';
 
 /**
  * Every write the app can make, in one place.
@@ -9,7 +9,7 @@ import { request } from './api';
  * and a long-press menu that each built their own request would drift apart the
  * first time one of them gained a confirmation step.
  */
-export const actions = {
+const writes = {
   // -- photos ---------------------------------------------------------------
 
   favorite: (server: string, ids: string[], isFavorite: boolean) =>
@@ -112,3 +112,22 @@ export const actions = {
   deleteAlbum: (server: string, id: string) =>
     request(server, `/albums/${id}`, { method: 'DELETE' }),
 };
+
+/**
+ * The same writes, each announcing that the library has moved on.
+ *
+ * Wrapped rather than written into every one of them. There are a dozen here
+ * and there will be more, and the one that gets forgotten is the one whose
+ * effect never shows up on the screen next door — which is exactly the bug this
+ * is here to stop. Only on success: a request that failed changed nothing.
+ */
+export const actions = Object.fromEntries(
+  Object.entries(writes).map(([name, write]) => [
+    name,
+    async (...args: never[]) => {
+      const result = await (write as (...a: never[]) => Promise<unknown>)(...args);
+      libraryChanged();
+      return result;
+    },
+  ]),
+) as typeof writes;

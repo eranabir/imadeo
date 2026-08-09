@@ -163,6 +163,39 @@ export async function request<T>(
  * function at all: `expo-image` fetches them itself, so it needs the header
  * value rather than a promise for it.
  */
+/**
+ * A count of how many times this app has changed the library.
+ *
+ * Every screen holding server data has the same problem: a backup finishes, or
+ * a photo is moved or trashed, and every other screen is still showing what it
+ * fetched when it was opened. Browse kept saying "209 on your server" after six
+ * more had landed, and the photos themselves were simply absent until the app
+ * was restarted.
+ *
+ * One number, bumped by whatever did the changing, watched by every `useResource`
+ * — rather than each screen guessing when someone else might have altered
+ * something. Screens that ask on a timer already handle this; the rest could not.
+ */
+let revision = 0;
+const revisionListeners = new Set<(next: number) => void>();
+
+/** Says the library is not what it was, so anything showing it asks again. */
+export function libraryChanged() {
+  revision += 1;
+  for (const listener of revisionListeners) listener(revision);
+}
+
+function useRevision(): number {
+  const [value, setValue] = useState(revision);
+  useEffect(() => {
+    revisionListeners.add(setValue);
+    return () => {
+      revisionListeners.delete(setValue);
+    };
+  }, []);
+  return value;
+}
+
 export function useResource<T>(
   serverUrl: string,
   path: string | null,
@@ -186,6 +219,10 @@ export function useResource<T>(
    * the results for what was actually typed.
    */
   const generation = useRef(0);
+
+  // Part of `reload`'s identity, so the effect below re-runs and refetches the
+  // moment anything says the library has moved on.
+  const seen = useRevision();
 
   const reload = useCallback(async () => {
     if (path === null) {
@@ -214,7 +251,8 @@ export function useResource<T>(
     } finally {
       if (mine === generation.current) setLoading(false);
     }
-  }, [serverUrl, path]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverUrl, path, seen]);
 
   /**
    * Asks again on a timer, for answers that go stale by themselves.

@@ -279,6 +279,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         showEmptyState={nothing}
         selected={selection.ids}
         onToggle={selection.toggle}
+        onToggleDay={selection.toggleMany}
         onStartSelecting={selection.start}
         onChanged={reload}
         emptyIcon={showing === 'albums' ? 'album' : showing === 'photos' ? 'library' : 'folder'}

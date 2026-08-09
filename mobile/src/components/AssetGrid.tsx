@@ -1,12 +1,32 @@
 import { Image } from 'expo-image';
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from 'react';
-import { FlatList, Pressable, RefreshControl, SectionList, Text, View } from 'react-native';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import {
+  Animated,
+  Easing,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  SectionList,
+  Text,
+  View,
+} from 'react-native';
 import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
 import { intoDays } from '../lib/day';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
+import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton } from './Loading';
+import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from './Scrubber';
+import { Touchable } from './ui';
 
 interface Props {
   serverUrl: string;
@@ -35,6 +55,8 @@ interface Props {
   /** Photos currently picked out. Passing this turns on selection mode. */
   selected?: string[];
   onToggle?: (id: string) => void;
+  /** Takes or drops a whole day. Omitted, the day headings carry no control. */
+  onToggleDay?: (ids: string[]) => void;
   onStartSelecting?: (id: string) => void;
   /** Something was changed from the viewer, so this list is stale. */
   onChanged?: () => void;
@@ -72,22 +94,39 @@ export function AssetGrid({
   showEmptyState = true,
   selected,
   onToggle,
+  onToggleDay,
   onStartSelecting,
   onChanged,
   groupByDay = false,
 }: Props) {
   const selecting = (selected?.length ?? 0) > 0;
-  const [viewing, setViewing] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<{ at: number; from: Rect | null } | null>(null);
+
+  /*
+   * Where each tile on screen is, so the viewer can grow out of the one tapped.
+   *
+   * Held by id rather than measured at layout: the grid scrolls, and a position
+   * taken when the tile was drawn describes where it used to be. The tap is the
+   * only moment the answer is worth having.
+   */
+  const tiles = useRef(new Map<string, View>()).current;
 
   // While photos are picked out a tap adds to the selection; otherwise it
   // opens the photo. One gesture, and which it means is never ambiguous
   // because the ticks are on screen whenever it means the first.
   const press = useCallback(
     (id: string, at: number) => {
-      if (selecting) onToggle?.(id);
-      else setViewing(at);
+      if (selecting) return onToggle?.(id);
+
+      const tile = tiles.get(id);
+      // `measureInWindow` answers on the next frame; without a tile to ask, the
+      // photograph opens without growing rather than not at all.
+      if (!tile) return setViewing({ at, from: null });
+      tile.measureInWindow((x, y, width, height) =>
+        setViewing({ at, from: width > 0 ? { x, y, width, height } : null }),
+      );
     },
-    [selecting, onToggle],
+    [selecting, onToggle, tiles],
   );
 
   /**
@@ -104,6 +143,10 @@ export function AssetGrid({
     return (
         <Pressable
           key={item.id}
+          ref={(node) => {
+            if (node) tiles.set(item.id, node);
+            else tiles.delete(item.id);
+          }}
           onPress={() => press(item.id, at)}
           onLongPress={() => onStartSelecting?.(item.id)}
           delayLongPress={280}
@@ -195,7 +238,20 @@ export function AssetGrid({
   };
 
   const days = useMemo(
-    () => (groupByDay ? intoDays(assets, (asset) => asset.localDateTime, columns) : []),
+    () =>
+      groupByDay
+        ? /*
+           * Days with something in them, and rows that are not empty.
+           *
+           * An empty row reached `keyExtractor`, which reads the first photo in
+           * it, and the whole list came down with "cannot read property 'id' of
+           * undefined" — taking the dates and the end of the grid with it. The
+           * cause belongs upstream; this is the list refusing to be handed one.
+           */
+          intoDays(assets, (asset) => asset.localDateTime, columns)
+            .map((section) => ({ ...section, data: section.data.filter((row) => row.length > 0) }))
+            .filter((section) => section.data.length > 0)
+        : [],
     [groupByDay, assets, columns],
   );
 
@@ -206,8 +262,71 @@ export function AssetGrid({
     return map;
   }, [assets]);
 
+  /*
+   * What the scrubber and the date label are driven by.
+   *
+   * The offset lives in an `Animated.Value` so the handle can follow a fling
+   * without a render per frame; the day under the bar is state, because it
+   * changes a few times a second at most and has to reach a `Text`.
+   */
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const list = useRef<SectionList<Asset[]> | FlatList<Asset[]>>(null);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [seeking, setSeeking] = useState(false);
+  const [away, markAway] = useScrolledAway();
+
+  /*
+   * One row of tiles, measured rather than assumed: a tile is a square of a
+   * third of the width on one phone and of something else on the next. Only the
+   * tail below the grid is set from it, which a point either way cannot spoil.
+   */
+  const [rowHeight, setRowHeight] = useState(0);
+
+  const [day, markDay, Cell] = useDayAtTop(days, topInset);
+
+  const seek = useCallback((offset: number) => {
+    // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
+    // the handle is working in pixels, and section indices cannot answer where
+    // 43% of the way down is.
+    (list.current as SectionList<Asset[]> | null)
+      ?.getScrollResponder()
+      ?.scrollTo({ y: offset, animated: false });
+  }, []);
+
   const shared = {
-    contentContainerStyle: { paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE },
+    ref: list as never,
+    onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+      useNativeDriver: false,
+      listener: (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+        markAway(event.nativeEvent.contentOffset.y);
+        markDay(event.nativeEvent.contentOffset.y);
+      },
+    }),
+    scrollEventThrottle: 16,
+    // The platform's own indicator would sit right beside the handle saying the
+    // same thing in grey, and only one of the two can be grabbed.
+    showsVerticalScrollIndicator: false,
+    onContentSizeChange: (_: number, height: number) => setContentHeight(height),
+    onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
+      setViewportHeight(event.nativeEvent.layout.height),
+    // Every cell reports where it sits, which is what the date is read from.
+    CellRendererComponent: Cell,
+    /*
+     * Room under the last row for it to be scrolled up to.
+     *
+     * The label names whatever is at the top of the screen, and without this
+     * the final day can never get there — the list runs out first, so the last
+     * photographs in a library are the one stretch it cannot name. A screen
+     * with the bar and one row of tiles taken out of it is exactly the gap
+     * between where the last row ends up and where it has to reach: any less
+     * and the scroll stops short of the last day, any more and it runs on past
+     * the end into empty space.
+     */
+    contentContainerStyle: {
+      paddingTop: topInset,
+      paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - topInset - rowHeight),
+    },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
       <RefreshControl
@@ -235,29 +354,35 @@ export function AssetGrid({
       <>
         <SectionList
           sections={days}
-          keyExtractor={(row) => row[0].id}
+          keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
-          renderSectionHeader={({ section }) => (
-            <Text
-              style={{
-                color: colors.text,
-                fontSize: 15,
-                fontWeight: '700',
-                letterSpacing: -0.3,
-                // Flush with the tiles, which sit at the screen edge with only
-                // their gutter.
-                paddingLeft: 2,
-                paddingRight: 2,
-                paddingTop: 18,
-                paddingBottom: 5,
+          /*
+           * Nothing above a day until there is a reason for one.
+           *
+           * A heading over every date turns a wall of photographs into a list
+           * of dates, and the label under the bar answers the same question
+           * while taking no room in the grid. Selecting is the reason: the
+           * headings come back so a whole day can be taken in one press.
+           */
+          renderSectionHeader={({ section }) =>
+            selecting ? (
+              <DayHeader
+                title={section.title}
+                ids={section.data.flat().map((asset) => asset.id)}
+                selected={selected}
+                onToggleDay={onToggleDay}
+              />
+            ) : null
+          }
+          renderItem={({ item: row }) => (
+            <View
+              style={{ flexDirection: 'row' }}
+              onLayout={(event) => {
+                const height = event.nativeEvent.layout.height;
+                if (Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
               }}
             >
-              {section.title}
-            </Text>
-          )}
-          renderItem={({ item: row }) => (
-            <View style={{ flexDirection: 'row' }}>
               {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
               {/* Keeps a short last row aligned with the ones above it rather
                   than spreading its tiles across the width. */}
@@ -270,11 +395,44 @@ export function AssetGrid({
           {...shared}
         />
 
+        {/* Under the bar rather than in the grid, and only where the grid is
+            cut into days — a folder or a set of results is not a timeline and
+            has no date to report. */}
+        {groupByDay && !selecting && (
+          <View
+            pointerEvents="none"
+            // Over the first rows rather than in the gap above them. The bar
+            // and the grid meet with 16pt between them and the label is taller
+            // than that; floating it is also what Google Photos does with the
+            // same label, and it reads as belonging to the photographs.
+            style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}
+          >
+            <DateLabel visible={away}>{day}</DateLabel>
+          </View>
+        )}
+
+        {/* On every grid, not only the ones cut into days: a folder of two
+            thousand photographs is as hard to get through as a timeline, and
+            the rail hides itself when there is nowhere to go. */}
+        {(
+          <Scrubber
+            scrollY={scrollY}
+            contentHeight={contentHeight}
+            viewportHeight={viewportHeight}
+            topInset={topInset}
+            label={seeking ? day : undefined}
+            visible={away || seeking}
+            onSeek={seek}
+            onDrag={setSeeking}
+          />
+        )}
+
         <AssetViewer
           serverUrl={serverUrl}
           token={token}
           assets={assets}
-          index={viewing}
+          index={viewing?.at ?? null}
+          from={viewing?.from ?? null}
           onClose={() => setViewing(null)}
           onChanged={() => onChanged?.()}
         />
@@ -323,7 +481,8 @@ export function AssetGrid({
       serverUrl={serverUrl}
       token={token}
       assets={assets}
-      index={viewing}
+      index={viewing?.at ?? null}
+      from={viewing?.from ?? null}
       onClose={() => setViewing(null)}
       onChanged={() => onChanged?.()}
     />
@@ -392,6 +551,123 @@ export function Empty({
  * which is the convention on both platforms — an explicit "select" mode button
  * would be a third thing to find before any of the actions could be reached.
  */
+/** The circle's size, and the room it takes once it is there. */
+const DAY_MARK = 24;
+const DAY_SLOT = DAY_MARK + 10;
+
+/**
+ * A day's date, and — once a selection is live — a way to take the whole of it.
+ *
+ * Hidden until then. A circle beside every date on a library scrolled for
+ * minutes is a column of controls down a screen meant to be photographs, and
+ * there is nothing to select yet; the way in is the long press that starts a
+ * selection everywhere else in the app.
+ *
+ * It arrives from the left, where a checkbox belongs — ahead of the thing it
+ * governs rather than stranded at the far edge — and the date steps aside to
+ * let it in rather than the two swapping places between one frame and the next.
+ *
+ * Filled with the accent once the whole day is in, a dash while part of it is,
+ * so the day says what it is rather than what pressing it would do.
+ */
+export function DayHeader({
+  title,
+  ids,
+  selected,
+  onToggleDay,
+}: {
+  title: string;
+  ids: string[];
+  selected?: string[];
+  onToggleDay?: (ids: string[]) => void;
+}) {
+  const showing = !!onToggleDay && !!selected && selected.length > 0;
+  const all = ids.length > 0 && !!selected && ids.every((id) => selected.includes(id));
+  const some = !all && !!selected && ids.some((id) => selected.includes(id));
+
+  const enter = useRef(new Animated.Value(showing ? 1 : 0)).current;
+
+  useEffect(() => {
+    const animation = Animated.timing(enter, {
+      toValue: showing ? 1 : 0,
+      duration: showing ? 220 : 160,
+      easing: Easing.out(Easing.cubic),
+      // Width is what moves the date along, and width is not a property the
+      // native driver can carry.
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [showing, enter]);
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        // Inset from the edge, unlike the tiles below it. The date used to sit
+        // flush with them so it read as belonging to the photographs rather
+        // than floating above them — but flush against the screen edge is not
+        // the same as flush with a grid, and the words ended up against the
+        // bezel with nothing to breathe into.
+        paddingLeft: 16,
+        paddingRight: 16,
+        paddingTop: 18,
+        paddingBottom: 6,
+      }}
+    >
+      <Animated.View
+        pointerEvents={showing ? 'auto' : 'none'}
+        style={{
+          width: enter.interpolate({ inputRange: [0, 1], outputRange: [0, DAY_SLOT] }),
+          opacity: enter,
+          overflow: 'hidden',
+          justifyContent: 'center',
+        }}
+      >
+        <Touchable
+          onPress={() => onToggleDay?.(ids)}
+          radius={radius.pill}
+          label={all ? `Deselect ${title}` : `Select all of ${title}`}
+        >
+          <View
+            style={{
+              width: DAY_MARK,
+              height: DAY_MARK,
+              borderRadius: DAY_MARK / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: all ? 0 : 2,
+              borderColor: colors.primary,
+              backgroundColor: all ? colors.primary : 'transparent',
+            }}
+          >
+            {all ? (
+              <Icon name="check" size={14} color={colors.onPrimary} strong />
+            ) : some ? (
+              <View
+                style={{ width: 10, height: 2.5, borderRadius: 2, backgroundColor: colors.primary }}
+              />
+            ) : null}
+          </View>
+        </Touchable>
+      </Animated.View>
+
+      <Text
+        style={{
+          flex: 1,
+          color: colors.text,
+          fontSize: 15,
+          fontWeight: '700',
+          letterSpacing: -0.3,
+        }}
+      >
+        {title}
+      </Text>
+    </View>
+  );
+}
+
 export function useSelection() {
   const [ids, setIds] = useState<string[]>([]);
 
@@ -405,7 +681,25 @@ export function useSelection() {
     setIds((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
 
+  /**
+   * A whole day at once.
+   *
+   * Adds them all unless they are already all in, in which case the press means
+   * the opposite — the rule a checkbox at the head of a list follows everywhere.
+   */
+  const toggleMany = useCallback((many: string[]) => {
+    setIds((current) => {
+      const chosen = new Set(current);
+      const all = many.every((id) => chosen.has(id));
+      for (const id of many) {
+        if (all) chosen.delete(id);
+        else chosen.add(id);
+      }
+      return [...chosen];
+    });
+  }, []);
+
   const clear = useCallback(() => setIds([]), []);
 
-  return { ids, toggle, start, clear, active: ids.length > 0 };
+  return { ids, toggle, toggleMany, start, clear, active: ids.length > 0 };
 }
