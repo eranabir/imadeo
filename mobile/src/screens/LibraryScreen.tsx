@@ -192,6 +192,8 @@ export function LibraryScreen({ serverUrl }: Props) {
   backUpRef.current = backUp;
   const runningRef = useRef(running);
   runningRef.current = running;
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   /**
    * A run when the app arrives at the front, if automatic backup is on.
@@ -217,9 +219,20 @@ export function LibraryScreen({ serverUrl }: Props) {
       void backUpRef.current();
     };
 
+    /*
+     * Read the camera roll again before doing anything with it.
+     *
+     * The grid is read once when this screen mounts, and photos are taken while
+     * the app is away — that is the whole reason the run below exists. Without
+     * this the newest photo was uploaded and then missing from the one screen
+     * that is supposed to be showing what is on the phone: on the server, not
+     * in the library. Unconditional, because a stale grid is wrong whether or
+     * not automatic backup is switched on.
+     */
     void catchUp();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void catchUp();
+      if (state !== 'active') return;
+      void loadRef.current().then(catchUp);
     });
 
     return () => {
