@@ -427,7 +427,9 @@ export function LibraryScreen({ serverUrl }: Props) {
         onContentSizeChange={(_, height) => setContentHeight(height)}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onViewableItemsChanged={onViewable}
-        viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
+        // Most of a row, not a sliver: at ten percent the label named the day
+        // above the one actually on screen.
+        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         // Room under the last row for it to be scrolled up to, so the label
         // can name the final day the way it names every other one.
         contentContainerStyle={{

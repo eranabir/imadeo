@@ -280,7 +280,15 @@ export function AssetGrid({
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
     onViewableItemsChanged: onViewable,
-    viewabilityConfig: { itemVisiblePercentThreshold: 10 },
+    /*
+     * Most of a row, not a sliver of one.
+     *
+     * At ten percent a row that has almost entirely left the top of the screen
+     * still counts as visible, so the label named the day above whatever was
+     * actually being looked at — a date sitting over photographs that do not
+     * belong to it, which is worse than no date at all.
+     */
+    viewabilityConfig: { itemVisiblePercentThreshold: 60 },
     /*
      * Room under the last row for it to be scrolled up to.
      *
