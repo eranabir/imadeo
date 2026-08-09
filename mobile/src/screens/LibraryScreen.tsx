@@ -422,6 +422,7 @@ export function LibraryScreen({ serverUrl }: Props) {
           listener: markScrolling,
         })}
         scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
         onContentSizeChange={(_, height) => setContentHeight(height)}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onViewableItemsChanged={onViewable}
@@ -537,6 +538,7 @@ export function LibraryScreen({ serverUrl }: Props) {
         viewportHeight={viewportHeight}
         topInset={clearance}
         label={seeking ? day : undefined}
+        visible={scrolling || seeking}
         onSeek={seek}
         onDrag={setSeeking}
       />

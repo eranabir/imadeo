@@ -24,6 +24,7 @@ export function Scrubber({
   viewportHeight,
   topInset,
   label,
+  visible,
   onSeek,
   onDrag,
 }: {
@@ -35,6 +36,8 @@ export function Scrubber({
   topInset: number;
   /** What is under the handle right now — a date, usually. */
   label?: string;
+  /** Only while the list is moving, or being dragged by the handle itself. */
+  visible: boolean;
   onSeek: (offset: number) => void;
   onDrag: (dragging: boolean) => void;
 }) {
@@ -52,6 +55,17 @@ export function Scrubber({
    */
   const offset = useRef(0);
   const grabbed = useRef(0);
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.timing(fade, {
+      toValue: visible ? 1 : 0,
+      duration: visible ? 140 : 260,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [visible, fade]);
 
   const responder = useMemo(
     () =>
@@ -89,12 +103,13 @@ export function Scrubber({
 
   return (
     <View
-      pointerEvents="box-none"
+      pointerEvents={visible ? 'box-none' : 'none'}
       style={{ position: 'absolute', top: railTop, right: 0, width: RAIL, height: railHeight }}
     >
       <Animated.View
         {...responder.panHandlers}
         style={{
+          opacity: fade,
           position: 'absolute',
           right: 4,
           width: HANDLE,
@@ -126,6 +141,7 @@ export function Scrubber({
         <Animated.View
           pointerEvents="none"
           style={{
+            opacity: fade,
             position: 'absolute',
             right: RAIL + 8,
             transform: [{ translateY: y }],

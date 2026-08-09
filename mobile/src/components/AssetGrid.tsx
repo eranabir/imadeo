@@ -272,6 +272,9 @@ export function AssetGrid({
       listener: markScrolling,
     }),
     scrollEventThrottle: 16,
+    // The platform's own indicator would sit right beside the handle saying the
+    // same thing in grey, and only one of the two can be grabbed.
+    showsVerticalScrollIndicator: false,
     onContentSizeChange: (_: number, height: number) => setContentHeight(height),
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
@@ -366,6 +369,7 @@ export function AssetGrid({
             viewportHeight={viewportHeight}
             topInset={topInset}
             label={seeking ? day : undefined}
+            visible={scrolling || seeking}
             onSeek={seek}
             onDrag={setSeeking}
           />
