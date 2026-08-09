@@ -1,26 +1,30 @@
-import { Image } from "expo-image";
+import { Image } from 'expo-image';
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
-} from "react";
+} from 'react';
 import {
+  Animated,
+  Easing,
   FlatList,
   Pressable,
   RefreshControl,
   SectionList,
   Text,
   View,
-} from "react-native";
-import { duration as formatDuration, thumbnail, type Asset } from "../lib/api";
-import { intoDays } from "../lib/day";
-import { colors, radius, TAB_BAR_CLEARANCE } from "../theme";
-import { AssetViewer } from "./AssetViewer";
-import { Icon, type IconName } from "./Icon";
-import { GridSkeleton } from "./Loading";
-import { Touchable } from "./ui";
+} from 'react-native';
+import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
+import { intoDays } from '../lib/day';
+import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+import { AssetViewer } from './AssetViewer';
+import { Icon, type IconName } from './Icon';
+import { GridSkeleton } from './Loading';
+import { Touchable } from './ui';
 
 interface Props {
   serverUrl: string;
@@ -81,9 +85,9 @@ export function AssetGrid({
   header,
   topInset = 0,
   columns = 3,
-  emptyIcon = "photo",
-  emptyTitle = "Nothing here yet",
-  emptyBody = "Back up some photos and they will appear.",
+  emptyIcon = 'photo',
+  emptyTitle = 'Nothing here yet',
+  emptyBody = 'Back up some photos and they will appear.',
   emptyExtra = null,
   showEmptyState = true,
   selected,
@@ -119,105 +123,100 @@ export function AssetGrid({
     const on = selected?.includes(item.id) ?? false;
 
     return (
-      <Pressable
-        key={item.id}
-        onPress={() => press(item.id, at)}
-        onLongPress={() => onStartSelecting?.(item.id)}
-        delayLongPress={280}
-        accessibilityRole={selecting ? "checkbox" : "image"}
-        accessibilityLabel={item.originalFileName ?? "Photo"}
-        accessibilityState={selecting ? { checked: on } : undefined}
-        style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
-      >
-        {/* Inset while selected, so the tile visibly lifts out of the grid
-              rather than only gaining a tick in the corner. */}
-        <View
-          style={{
-            flex: 1,
-            padding: on ? 5 : 0,
-            backgroundColor: on ? colors.primary : "transparent",
-            borderRadius: on ? radius.sm : 0,
-          }}
+        <Pressable
+          key={item.id}
+          onPress={() => press(item.id, at)}
+          onLongPress={() => onStartSelecting?.(item.id)}
+          delayLongPress={280}
+          accessibilityRole={selecting ? 'checkbox' : 'image'}
+          accessibilityLabel={item.originalFileName ?? 'Photo'}
+          accessibilityState={selecting ? { checked: on } : undefined}
+          style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
         >
-          <Image
-            source={thumbnail(serverUrl, item.id, token)}
-            style={{
-              width: "100%",
-              height: "100%",
-              backgroundColor: colors.surface,
-              borderRadius: on ? 4 : 0,
-            }}
-            contentFit="cover"
-            recyclingKey={item.id}
-            transition={120}
-          />
-        </View>
-
-        {item.isFavorite && !on && (
-          <View style={{ position: "absolute", left: 6, bottom: 5 }}>
-            <Icon name="heart-filled" size={13} color="#fff" />
-          </View>
-        )}
-
-        {item.type === "VIDEO" && !on && (
+          {/* Inset while selected, so the tile visibly lifts out of the grid
+              rather than only gaining a tick in the corner. */}
           <View
             style={{
-              position: "absolute",
-              right: 5,
-              bottom: 5,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
+              flex: 1,
+              padding: on ? 5 : 0,
+              backgroundColor: on ? colors.primary : 'transparent',
+              borderRadius: on ? radius.sm : 0,
             }}
           >
-            <Icon name="play" size={11} color="#fff" />
-            {length && (
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 11,
-                  fontWeight: "600",
-                  // A white label on a white-ish photo is otherwise gone.
-                  textShadowColor: "rgba(0,0,0,0.6)",
-                  textShadowRadius: 3,
-                }}
-              >
-                {length}
-              </Text>
-            )}
+            <Image
+              source={thumbnail(serverUrl, item.id, token)}
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: colors.surface,
+                borderRadius: on ? 4 : 0,
+              }}
+              contentFit="cover"
+              recyclingKey={item.id}
+              transition={120}
+            />
           </View>
-        )}
 
-        {selecting && (
-          <View
-            style={{
-              position: "absolute",
-              top: 7,
-              right: 7,
-              width: 22,
-              height: 22,
-              borderRadius: 11,
-              borderWidth: 2,
-              borderColor: on ? colors.primary : "rgba(255,255,255,0.85)",
-              backgroundColor: on ? colors.primary : "rgba(0,0,0,0.28)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {on && (
-              <Icon name="check" size={13} color={colors.onPrimary} strong />
-            )}
-          </View>
-        )}
-      </Pressable>
+          {item.isFavorite && !on && (
+            <View style={{ position: 'absolute', left: 6, bottom: 5 }}>
+              <Icon name="heart-filled" size={13} color="#fff" />
+            </View>
+          )}
+
+          {item.type === 'VIDEO' && !on && (
+            <View
+              style={{
+                position: 'absolute',
+                right: 5,
+                bottom: 5,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Icon name="play" size={11} color="#fff" />
+              {length && (
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: '600',
+                    // A white label on a white-ish photo is otherwise gone.
+                    textShadowColor: 'rgba(0,0,0,0.6)',
+                    textShadowRadius: 3,
+                  }}
+                >
+                  {length}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {selecting && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 7,
+                right: 7,
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                borderWidth: 2,
+                borderColor: on ? colors.primary : 'rgba(255,255,255,0.85)',
+                backgroundColor: on ? colors.primary : 'rgba(0,0,0,0.28)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {on && <Icon name="check" size={13} color={colors.onPrimary} strong />}
+            </View>
+          )}
+        </Pressable>
     );
   };
 
   const days = useMemo(
-    () =>
-      groupByDay
-        ? intoDays(assets, (asset) => asset.localDateTime, columns)
-        : [],
+    () => (groupByDay ? intoDays(assets, (asset) => asset.localDateTime, columns) : []),
     [groupByDay, assets, columns],
   );
 
@@ -229,10 +228,7 @@ export function AssetGrid({
   }, [assets]);
 
   const shared = {
-    contentContainerStyle: {
-      paddingTop: topInset,
-      paddingBottom: TAB_BAR_CLEARANCE,
-    },
+    contentContainerStyle: { paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
       <RefreshControl
@@ -272,7 +268,7 @@ export function AssetGrid({
             />
           )}
           renderItem={({ item: row }) => (
-            <View style={{ flexDirection: "row" }}>
+            <View style={{ flexDirection: 'row' }}>
               {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
               {/* Keeps a short last row aligned with the ones above it rather
                   than spreading its tiles across the width. */}
@@ -299,52 +295,49 @@ export function AssetGrid({
 
   return (
     <>
-      <FlatList
-        data={assets}
-        keyExtractor={(item) => item.id}
-        numColumns={columns}
-        // Remounts the rows rather than reflowing them: FlatList cannot change
-        // numColumns on a live list.
-        key={columns}
-        contentContainerStyle={{
-          paddingTop: topInset,
-          paddingBottom: TAB_BAR_CLEARANCE,
-        }}
-        ListHeaderComponent={header}
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-              progressBackgroundColor={colors.surface}
-              // Otherwise the spinner appears underneath the glass header.
-              progressViewOffset={topInset}
-            />
-          ) : undefined
-        }
-        renderItem={({ item, index }) => renderTile(item, index)}
-        ListEmptyComponent={
-          !showEmptyState ? null : loading ? (
-            // The shape of the grid that is arriving, not a spinner over a void.
-            <GridSkeleton columns={columns} />
-          ) : (
-            <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
-              {emptyExtra}
-            </Empty>
-          )
-        }
-      />
+    <FlatList
+      data={assets}
+      keyExtractor={(item) => item.id}
+      numColumns={columns}
+      // Remounts the rows rather than reflowing them: FlatList cannot change
+      // numColumns on a live list.
+      key={columns}
+      contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
+      ListHeaderComponent={header}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
+            // Otherwise the spinner appears underneath the glass header.
+            progressViewOffset={topInset}
+          />
+        ) : undefined
+      }
+      renderItem={({ item, index }) => renderTile(item, index)}
+      ListEmptyComponent={
+        !showEmptyState ? null : loading ? (
+          // The shape of the grid that is arriving, not a spinner over a void.
+          <GridSkeleton columns={columns} />
+        ) : (
+          <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
+            {emptyExtra}
+          </Empty>
+        )
+      }
+    />
 
-      <AssetViewer
-        serverUrl={serverUrl}
-        token={token}
-        assets={assets}
-        index={viewing}
-        onClose={() => setViewing(null)}
-        onChanged={() => onChanged?.()}
-      />
+    <AssetViewer
+      serverUrl={serverUrl}
+      token={token}
+      assets={assets}
+      index={viewing}
+      onClose={() => setViewing(null)}
+      onChanged={() => onChanged?.()}
+    />
     </>
   );
 }
@@ -362,17 +355,15 @@ export function Empty({
   children?: ReactNode;
 }) {
   return (
-    <View
-      style={{ alignItems: "center", paddingHorizontal: 44, paddingTop: 64 }}
-    >
+    <View style={{ alignItems: 'center', paddingHorizontal: 44, paddingTop: 64 }}>
       <View
         style={{
           width: 74,
           height: 74,
           borderRadius: 37,
           backgroundColor: colors.surface,
-          alignItems: "center",
-          justifyContent: "center",
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
         <Icon name={icon} size={32} color={colors.faint} />
@@ -381,9 +372,9 @@ export function Empty({
         style={{
           color: colors.text,
           fontSize: 17.5,
-          fontWeight: "700",
+          fontWeight: '700',
           marginTop: 18,
-          textAlign: "center",
+          textAlign: 'center',
           letterSpacing: -0.3,
         }}
       >
@@ -395,7 +386,7 @@ export function Empty({
           fontSize: 14.5,
           lineHeight: 21,
           marginTop: 7,
-          textAlign: "center",
+          textAlign: 'center',
         }}
       >
         {body}
@@ -412,17 +403,24 @@ export function Empty({
  * which is the convention on both platforms — an explicit "select" mode button
  * would be a third thing to find before any of the actions could be reached.
  */
+/** The circle's size, and the room it takes once it is there. */
+const DAY_MARK = 24;
+const DAY_SLOT = DAY_MARK + 10;
+
 /**
- * A day's date, and a way to take the whole of it.
+ * A day's date, and — once a selection is live — a way to take the whole of it.
  *
- * The control is a circle rather than the words "Select all" on a plate. Every
- * photo library draws this as a circle beside the date — it is the same mark
- * that appears on each tile when a selection is live, at the size of a heading
- * — and a row of dates each carrying a small grey button read as a toolbar
- * stuck to every day rather than as the library's own spine.
+ * Hidden until then. A circle beside every date on a library scrolled for
+ * minutes is a column of controls down a screen meant to be photographs, and
+ * there is nothing to select yet; the way in is the long press that starts a
+ * selection everywhere else in the app.
  *
- * It fills with the accent once the whole day is in, so the day says what it is
- * rather than what pressing it would do.
+ * It arrives from the left, where a checkbox belongs — ahead of the thing it
+ * governs rather than stranded at the far edge — and the date steps aside to
+ * let it in rather than the two swapping places between one frame and the next.
+ *
+ * Filled with the accent once the whole day is in, a dash while part of it is,
+ * so the day says what it is rather than what pressing it would do.
  */
 export function DayHeader({
   title,
@@ -435,73 +433,89 @@ export function DayHeader({
   selected?: string[];
   onToggleDay?: (ids: string[]) => void;
 }) {
-  const all =
-    ids.length > 0 &&
-    selected !== undefined &&
-    ids.every((id) => selected.includes(id));
-  const some =
-    !all && selected !== undefined && ids.some((id) => selected.includes(id));
+  const showing = !!onToggleDay && !!selected && selected.length > 0;
+  const all = ids.length > 0 && !!selected && ids.every((id) => selected.includes(id));
+  const some = !all && !!selected && ids.some((id) => selected.includes(id));
+
+  const enter = useRef(new Animated.Value(showing ? 1 : 0)).current;
+
+  useEffect(() => {
+    const animation = Animated.timing(enter, {
+      toValue: showing ? 1 : 0,
+      duration: showing ? 220 : 160,
+      easing: Easing.out(Easing.cubic),
+      // Width is what moves the date along, and width is not a property the
+      // native driver can carry.
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [showing, enter]);
 
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "center",
-        // Flush with the tiles, which sit at the screen edge with only their
-        // gutter.
-        paddingLeft: 2,
-        paddingRight: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+        // Inset from the edge, unlike the tiles below it. The date used to sit
+        // flush with them so it read as belonging to the photographs rather
+        // than floating above them — but flush against the screen edge is not
+        // the same as flush with a grid, and the words ended up against the
+        // bezel with nothing to breathe into.
+        paddingLeft: 16,
+        paddingRight: 16,
         paddingTop: 18,
-        paddingBottom: 5,
+        paddingBottom: 6,
       }}
     >
+      <Animated.View
+        pointerEvents={showing ? 'auto' : 'none'}
+        style={{
+          width: enter.interpolate({ inputRange: [0, 1], outputRange: [0, DAY_SLOT] }),
+          opacity: enter,
+          overflow: 'hidden',
+          justifyContent: 'center',
+        }}
+      >
+        <Touchable
+          onPress={() => onToggleDay?.(ids)}
+          radius={radius.pill}
+          label={all ? `Deselect ${title}` : `Select all of ${title}`}
+        >
+          <View
+            style={{
+              width: DAY_MARK,
+              height: DAY_MARK,
+              borderRadius: DAY_MARK / 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: all ? 0 : 2,
+              borderColor: colors.primary,
+              backgroundColor: all ? colors.primary : 'transparent',
+            }}
+          >
+            {all ? (
+              <Icon name="check" size={14} color={colors.onPrimary} strong />
+            ) : some ? (
+              <View
+                style={{ width: 10, height: 2.5, borderRadius: 2, backgroundColor: colors.primary }}
+              />
+            ) : null}
+          </View>
+        </Touchable>
+      </Animated.View>
+
       <Text
         style={{
           flex: 1,
           color: colors.text,
           fontSize: 15,
-          fontWeight: "700",
+          fontWeight: '700',
           letterSpacing: -0.3,
         }}
       >
         {title}
       </Text>
-
-      {onToggleDay && (
-        <Touchable
-          onPress={() => onToggleDay(ids)}
-          radius={radius.pill}
-          label={all ? `Deselect ${title}` : `Select all of ${title}`}
-        >
-          <View style={{ padding: 6 }}>
-            <View
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 11,
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: all ? 0 : 1.5,
-                borderColor: some ? colors.primary : colors.border,
-                backgroundColor: all ? colors.primary : "transparent",
-              }}
-            >
-              {all ? (
-                <Icon name="check" size={13} color={colors.onPrimary} strong />
-              ) : some ? (
-                <View
-                  style={{
-                    width: 9,
-                    height: 2.5,
-                    borderRadius: 2,
-                    backgroundColor: colors.primary,
-                  }}
-                />
-              ) : null}
-            </View>
-          </View>
-        </Touchable>
-      )}
     </View>
   );
 }
@@ -511,9 +525,7 @@ export function useSelection() {
 
   const toggle = useCallback((id: string) => {
     setIds((current) =>
-      current.includes(id)
-        ? current.filter((other) => other !== id)
-        : [...current, id],
+      current.includes(id) ? current.filter((other) => other !== id) : [...current, id],
     );
   }, []);
 
@@ -525,8 +537,7 @@ export function useSelection() {
    * A whole day at once.
    *
    * Adds them all unless they are already all in, in which case the press means
-   * the opposite — the same rule a checkbox at the head of a list follows
-   * everywhere else.
+   * the opposite — the rule a checkbox at the head of a list follows everywhere.
    */
   const toggleMany = useCallback((many: string[]) => {
     setIds((current) => {

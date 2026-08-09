@@ -1,25 +1,19 @@
-import { useCallback, useState } from "react";
-import { Text, View } from "react-native";
-import { AssetGrid, useSelection } from "../components/AssetGrid";
-import { AlbumCard, FolderCard, Section } from "../components/Cards";
-import { Header, HeaderAction, useHeaderClearance } from "../components/Header";
-import type { IconName } from "../components/Icon";
-import { useHeaderSlot } from "../header";
-import { PhotoActions } from "../components/PhotoActions";
-import { Segmented } from "../components/Segmented";
-import { PlacesBody } from "./PlacesScreen";
-import { ConfirmSheet, MoveSheet, PromptSheet } from "../components/sheets";
-import { Sheet, SheetRow } from "../components/ui";
-import { actions } from "../lib/actions";
-import {
-  useResource,
-  type Album,
-  type Asset,
-  type FolderContents,
-  type Paged,
-} from "../lib/api";
-import { useRouter } from "expo-router";
-import { colors } from "../theme";
+import { useCallback, useState } from 'react';
+import { Text, View } from 'react-native';
+import { AssetGrid, useSelection } from '../components/AssetGrid';
+import { AlbumCard, FolderCard, Section } from '../components/Cards';
+import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import type { IconName } from '../components/Icon';
+import { useHeaderSlot } from '../header';
+import { PhotoActions } from '../components/PhotoActions';
+import { Segmented } from '../components/Segmented';
+import { PlacesBody } from './PlacesScreen';
+import { ConfirmSheet, MoveSheet, PromptSheet } from '../components/sheets';
+import { Sheet, SheetRow } from '../components/ui';
+import { actions } from '../lib/actions';
+import { useResource, type Album, type Asset, type FolderContents, type Paged } from '../lib/api';
+import { useRouter } from 'expo-router';
+import { colors } from '../theme';
 
 interface Props {
   /** Where this screen publishes its bar; unset when it is the Browse tab. */
@@ -31,10 +25,10 @@ interface Props {
   onBack?: () => void;
 }
 
-type Shelf = "photos" | "folders" | "albums" | "places";
+type Shelf = 'photos' | 'folders' | 'albums' | 'places';
 
 /** Whatever a long press landed on. */
-type Target = { kind: "folder" | "album"; id: string; name: string };
+type Target = { kind: 'folder' | 'album'; id: string; name: string };
 
 /**
  * Everything on the server: the whole timeline, the folder tree, the albums.
@@ -48,27 +42,21 @@ type Target = { kind: "folder" | "album"; id: string; name: string };
  * already the bottom half of the screen, and a shelf that showed the entire
  * library from within one folder would be lying about where you are.
  */
-export function BrowseScreen({
-  serverUrl,
-  folderId,
-  title,
-  slot,
-  onBack,
-}: Props) {
+export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props) {
   const router = useRouter();
   const atRoot = folderId === null;
 
-  const [shelf, setShelf] = useState<Shelf>("photos");
+  const [shelf, setShelf] = useState<Shelf>('photos');
   const selection = useSelection();
 
-  const [creating, setCreating] = useState<"folder" | "album" | null>(null);
+  const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
   const [menuFor, setMenuFor] = useState<Target | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const showing: Shelf = atRoot ? shelf : "folders";
+  const showing: Shelf = atRoot ? shelf : 'folders';
 
   // Three questions, one of which is live at a time. The other two are handed a
   // null path, which `useResource` treats as "do not ask".
@@ -82,13 +70,11 @@ export function BrowseScreen({
      * fresh backup of an old camera roll somewhere in the middle, so a backup
      * that had just finished looked as though nothing had happened.
      */
-    atRoot && showing === "photos"
-      ? "/assets?size=300&sortBy=date&order=desc"
-      : null,
+    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=date&order=desc' : null,
   );
   const allAlbums = useResource<Album[]>(
     serverUrl,
-    atRoot && showing === "albums" ? "/albums" : null,
+    atRoot && showing === 'albums' ? '/albums' : null,
   );
   /**
    * At the top level this asks for a single asset it will not draw.
@@ -101,19 +87,11 @@ export function BrowseScreen({
    */
   const contents = useResource<FolderContents>(
     serverUrl,
-    showing !== "folders"
-      ? null
-      : atRoot
-        ? "/folders/root?size=1"
-        : `/folders/${folderId}/contents`,
+    showing !== 'folders' ? null : atRoot ? '/folders/root?size=1' : `/folders/${folderId}/contents`,
   );
 
   const active =
-    showing === "photos"
-      ? timeline
-      : showing === "albums"
-        ? allAlbums
-        : contents;
+    showing === 'photos' ? timeline : showing === 'albums' ? allAlbums : contents;
   const { token, error, loading } = active;
 
   const reload = useCallback(() => {
@@ -122,32 +100,25 @@ export function BrowseScreen({
     contents.reload();
   }, [timeline.reload, allAlbums.reload, contents.reload]);
 
-  const folders = showing === "folders" ? (contents.data?.folders ?? []) : [];
+  const folders = showing === 'folders' ? contents.data?.folders ?? [] : [];
   const albums =
-    showing === "albums"
-      ? (allAlbums.data ?? [])
-      : showing === "folders"
-        ? (contents.data?.albums ?? [])
-        : [];
+    showing === 'albums' ? allAlbums.data ?? [] : showing === 'folders' ? contents.data?.albums ?? [] : [];
   const assets =
-    showing === "photos"
-      ? (timeline.data?.items ?? [])
-      : showing === "folders" && !atRoot
-        ? (contents.data?.assets ?? [])
+    showing === 'photos'
+      ? timeline.data?.items ?? []
+      : showing === 'folders' && !atRoot
+        ? contents.data?.assets ?? []
         : [];
 
   const total =
-    showing === "photos"
-      ? (timeline.data?.pagination?.total ?? null)
-      : (contents.data?.pagination?.total ?? null);
+    showing === 'photos'
+      ? timeline.data?.pagination?.total ?? null
+      : contents.data?.pagination?.total ?? null;
 
   const trail = contents.data?.breadcrumbs ?? [];
   const subtitle = onBack
-    ? trail
-        .slice(0, -1)
-        .map((crumb) => crumb.name)
-        .join(" / ") || "Browse"
-    : atRoot && total !== null && showing === "photos"
+    ? trail.slice(0, -1).map((crumb) => crumb.name).join(' / ') || 'Browse'
+    : atRoot && total !== null && showing === 'photos'
       ? `${total.toLocaleString()} on your server`
       : undefined;
 
@@ -160,31 +131,31 @@ export function BrowseScreen({
    * pushed folder this screen covers the shell entirely and draws it itself.
    */
   const bar = {
-    title: title ?? "Browse",
+    title: title ?? 'Browse',
     subtitle,
     icon: (onBack
-      ? "folder"
-      : showing === "photos"
-        ? "library"
-        : showing === "albums"
-          ? "album"
-          : "browse") as IconName,
+      ? 'folder'
+      : showing === 'photos'
+        ? 'library'
+        : showing === 'albums'
+          ? 'album'
+          : 'browse') as IconName,
     action:
-      showing === "photos" ? undefined : (
+      showing === 'photos' ? undefined : (
         <HeaderAction
           label="New"
           icon="plus"
-          onPress={() => setCreating(showing === "albums" ? "album" : "folder")}
+          onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
         />
       ),
     below: atRoot ? (
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
         <Segmented
           segments={[
-            { id: "photos", label: "Photos", icon: "library" },
-            { id: "folders", label: "Folders", icon: "folder" },
-            { id: "albums", label: "Albums", icon: "album" },
-            { id: "places", label: "Places", icon: "pin" },
+            { id: 'photos', label: 'Photos', icon: 'library' },
+            { id: 'folders', label: 'Folders', icon: 'folder' },
+            { id: 'albums', label: 'Albums', icon: 'album' },
+            { id: 'places', label: 'Places', icon: 'pin' },
           ]}
           active={shelf}
           onChange={(next) => {
@@ -199,16 +170,12 @@ export function BrowseScreen({
   // One slot or the other: `browse` as a tab, the stack's own key as a folder.
   // Either way the shell draws it, and this screen never carries a bar of its
   // own across the top of the one already there.
-  useHeaderSlot(slot ?? "browse", { ...bar, onBack }, [
-    title,
-    subtitle,
-    showing,
-    shelf,
-    atRoot,
-    onBack,
-  ]);
-  const nothing =
-    folders.length === 0 && albums.length === 0 && assets.length === 0;
+  useHeaderSlot(
+    slot ?? 'browse',
+    { ...bar, onBack },
+    [title, subtitle, showing, shelf, atRoot, onBack],
+  );
+  const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0;
 
   /** Runs a write, then refetches whichever shelf is showing. */
   const run = async (work: () => Promise<unknown>) => {
@@ -217,7 +184,7 @@ export function BrowseScreen({
       await work();
       reload();
     } catch (e) {
-      setFailure(e instanceof Error ? e.message : "That did not work.");
+      setFailure(e instanceof Error ? e.message : 'That did not work.');
     }
   };
 
@@ -244,18 +211,9 @@ export function BrowseScreen({
               <FolderCard
                 key={folder.id}
                 folder={folder}
-                onPress={() =>
-                  router.push({
-                    pathname: "/folder/[id]",
-                    params: { id: folder.id, title: folder.name },
-                  })
-                }
+                onPress={() => router.push({ pathname: '/folder/[id]', params: { id: folder.id, title: folder.name } })}
                 onLongPress={() =>
-                  setMenuFor({
-                    kind: "folder",
-                    id: folder.id,
-                    name: folder.name,
-                  })
+                  setMenuFor({ kind: 'folder', id: folder.id, name: folder.name })
                 }
               />
             ))}
@@ -265,34 +223,16 @@ export function BrowseScreen({
 
       {albums.length > 0 && (
         <Section title="Albums" trailing={`${albums.length}`}>
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              paddingHorizontal: 16,
-              gap: 12,
-            }}
-          >
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 }}>
             {albums.map((album) => (
               // Two to a row, with the gap taken out of each card's share.
-              <View key={album.id} style={{ width: "47.5%" }}>
+              <View key={album.id} style={{ width: '47.5%' }}>
                 <AlbumCard
                   serverUrl={serverUrl}
                   album={album}
                   token={token}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/album/[id]",
-                      params: { id: album.id, title: album.name },
-                    })
-                  }
-                  onLongPress={() =>
-                    setMenuFor({
-                      kind: "album",
-                      id: album.id,
-                      name: album.name,
-                    })
-                  }
+                  onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
+                  onLongPress={() => setMenuFor({ kind: 'album', id: album.id, name: album.name })}
                 />
               </View>
             ))}
@@ -302,11 +242,8 @@ export function BrowseScreen({
 
       {/* Labels the grid the list draws below this header, so loose photos are
           not mistaken for the contents of the album above them. */}
-      {assets.length > 0 && showing === "folders" && (
-        <Section
-          title="Photos"
-          trailing={total ? total.toLocaleString() : undefined}
-        />
+      {assets.length > 0 && showing === 'folders' && (
+        <Section title="Photos" trailing={total ? total.toLocaleString() : undefined} />
       )}
     </View>
   );
@@ -320,57 +257,51 @@ export function BrowseScreen({
         no grid for it to share — the shelf is a different shape from the other
         three and pretending otherwise would mean an empty grid under a map.
       */}
-      {showing === "places" ? (
+      {showing === 'places' ? (
         <PlacesBody serverUrl={serverUrl} topInset={clearance} />
       ) : (
-        <AssetGrid
-          /*
-           * The library scrolled for minutes is nothing but days, so it says so.
-           *
-           * A folder and a set of search results are photographs that answer one
-           * question, and when each was taken is beside the point there — they
-           * keep the plain grid.
-           */
-          groupByDay={atRoot && showing === "photos"}
-          serverUrl={serverUrl}
-          assets={assets}
-          token={token}
-          loading={loading}
-          onRefresh={reload}
-          topInset={clearance}
-          header={nothing ? null : header}
-          showEmptyState={nothing}
-          selected={selection.ids}
-          onToggle={selection.toggle}
-          onToggleDay={selection.toggleMany}
-          onStartSelecting={selection.start}
-          onChanged={reload}
-          emptyIcon={
-            showing === "albums"
-              ? "album"
-              : showing === "photos"
-                ? "library"
-                : "folder"
-          }
-          emptyTitle={
-            loading
-              ? "Loading…"
-              : showing === "albums"
-                ? "No albums yet"
-                : showing === "photos"
-                  ? "Nothing on your server yet"
-                  : atRoot
-                    ? "Nothing filed yet"
-                    : "This folder is empty"
-          }
-          emptyBody={
-            showing === "albums"
-              ? "Albums group photos without moving them out of their folders. Tap New to make one."
-              : showing === "photos"
-                ? "Back up some photos from the Library tab and they will appear here."
-                : "Folders and albums you create appear here, along with anything not filed into one."
-          }
-        />
+      <AssetGrid
+        /*
+         * The library scrolled for minutes is nothing but days, so it says so.
+         *
+         * A folder and a set of search results are photographs that answer one
+         * question, and when each was taken is beside the point there — they
+         * keep the plain grid.
+         */
+        groupByDay={atRoot && showing === 'photos'}
+        serverUrl={serverUrl}
+        assets={assets}
+        token={token}
+        loading={loading}
+        onRefresh={reload}
+        topInset={clearance}
+        header={nothing ? null : header}
+        showEmptyState={nothing}
+        selected={selection.ids}
+        onToggle={selection.toggle}
+        onToggleDay={selection.toggleMany}
+        onStartSelecting={selection.start}
+        onChanged={reload}
+        emptyIcon={showing === 'albums' ? 'album' : showing === 'photos' ? 'library' : 'folder'}
+        emptyTitle={
+          loading
+            ? 'Loading…'
+            : showing === 'albums'
+              ? 'No albums yet'
+              : showing === 'photos'
+                ? 'Nothing on your server yet'
+                : atRoot
+                  ? 'Nothing filed yet'
+                  : 'This folder is empty'
+        }
+        emptyBody={
+          showing === 'albums'
+            ? 'Albums group photos without moving them out of their folders. Tap New to make one.'
+            : showing === 'photos'
+              ? 'Back up some photos from the Library tab and they will appear here.'
+              : 'Folders and albums you create appear here, along with anything not filed into one.'
+        }
+      />
       )}
 
       <PhotoActions
@@ -378,9 +309,7 @@ export function BrowseScreen({
         ids={selection.ids}
         allFavorite={
           selection.ids.length > 0 &&
-          selection.ids.every(
-            (id) => assets.find((a) => a.id === id)?.isFavorite,
-          )
+          selection.ids.every((id) => assets.find((a) => a.id === id)?.isFavorite)
         }
         onClear={selection.clear}
         onDone={() => {
@@ -393,8 +322,8 @@ export function BrowseScreen({
 
       <Sheet
         open={menuFor !== null}
-        title={menuFor?.name ?? ""}
-        description={menuFor?.kind === "folder" ? "Folder" : "Album"}
+        title={menuFor?.name ?? ''}
+        description={menuFor?.kind === 'folder' ? 'Folder' : 'Album'}
         onClose={() => setMenuFor(null)}
       >
         <SheetRow
@@ -416,7 +345,7 @@ export function BrowseScreen({
         />
         <SheetRow
           icon="trash"
-          label={menuFor?.kind === "folder" ? "Delete folder" : "Delete album"}
+          label={menuFor?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
           danger
           onPress={() => {
             setDeleting(menuFor);
@@ -427,18 +356,18 @@ export function BrowseScreen({
 
       <PromptSheet
         open={creating !== null}
-        title={creating === "album" ? "New album" : "New folder"}
+        title={creating === 'album' ? 'New album' : 'New folder'}
         description={
-          creating === "album"
-            ? "Albums group photos without moving them out of their folders."
+          creating === 'album'
+            ? 'Albums group photos without moving them out of their folders.'
             : undefined
         }
-        placeholder={creating === "album" ? "Best of the trip" : "Holidays"}
+        placeholder={creating === 'album' ? 'Best of the trip' : 'Holidays'}
         confirmLabel="Create"
         onClose={() => setCreating(null)}
         onSubmit={(name) =>
           run(() =>
-            creating === "album"
+            creating === 'album'
               ? actions.createAlbum(serverUrl, name, folderId)
               : actions.createFolder(serverUrl, name, folderId),
           )
@@ -447,14 +376,14 @@ export function BrowseScreen({
 
       <PromptSheet
         open={renaming !== null}
-        title={renaming?.kind === "folder" ? "Rename folder" : "Rename album"}
+        title={renaming?.kind === 'folder' ? 'Rename folder' : 'Rename album'}
         placeholder="Name"
-        initial={renaming?.name ?? ""}
+        initial={renaming?.name ?? ''}
         confirmLabel="Rename"
         onClose={() => setRenaming(null)}
         onSubmit={(name) =>
           run(() =>
-            renaming?.kind === "folder"
+            renaming?.kind === 'folder'
               ? actions.renameFolder(serverUrl, renaming.id, name)
               : actions.renameAlbum(serverUrl, renaming!.id, name),
           )
@@ -468,11 +397,11 @@ export function BrowseScreen({
         // A folder or an album can only be filed under a folder, never inside
         // an album — an album holds photos, not containers.
         allowAlbums={false}
-        excludeFolderId={moving?.kind === "folder" ? moving.id : undefined}
+        excludeFolderId={moving?.kind === 'folder' ? moving.id : undefined}
         onClose={() => setMoving(null)}
         onFolder={(destination) =>
           run(() =>
-            moving?.kind === "folder"
+            moving?.kind === 'folder'
               ? actions.moveFolder(serverUrl, moving.id, destination)
               : actions.moveAlbum(serverUrl, moving!.id, destination),
           )
@@ -482,19 +411,17 @@ export function BrowseScreen({
 
       <ConfirmSheet
         open={deleting !== null}
-        title={`Delete “${deleting?.name ?? ""}”?`}
+        title={`Delete “${deleting?.name ?? ''}”?`}
         description={
-          deleting?.kind === "folder"
-            ? "Sub-folders go with it and the photos inside move to the trash, where they can be restored for 30 days."
-            : "The album is removed. The photos inside it stay in your library."
+          deleting?.kind === 'folder'
+            ? 'Sub-folders go with it and the photos inside move to the trash, where they can be restored for 30 days.'
+            : 'The album is removed. The photos inside it stay in your library.'
         }
-        confirmLabel={
-          deleting?.kind === "folder" ? "Delete folder" : "Delete album"
-        }
+        confirmLabel={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
         onClose={() => setDeleting(null)}
         onConfirm={() =>
           run(() =>
-            deleting?.kind === "folder"
+            deleting?.kind === 'folder'
               ? actions.deleteFolder(serverUrl, deleting.id)
               : actions.deleteAlbum(serverUrl, deleting!.id),
           )
