@@ -1,4 +1,4 @@
-import { Image } from 'expo-image';
+import { Image } from "expo-image";
 /*
  * The legacy entry, deliberately.
  *
@@ -9,8 +9,8 @@ import { Image } from 'expo-image';
  * belong in the middle of a navigation migration. `expo-file-system` is
  * imported the same way here for the same reason.
  */
-import * as MediaLibrary from 'expo-media-library/legacy';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import * as MediaLibrary from "expo-media-library/legacy";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   FlatList,
@@ -23,21 +23,27 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Empty } from '../components/AssetGrid';
-import { BackupProgressScreen } from './BackupProgressScreen';
-import { HeaderAction, useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
-import { intoDays } from '../lib/day';
-import { Icon } from '../components/Icon';
-import { DeviceActions } from '../components/PhotoActions';
-import { ConfirmSheet } from '../components/sheets';
-import { Button, Touchable } from '../components/ui';
-import { isEnabled } from '../lib/autobackup';
-import { backupInFlight, pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
-import { useSelectionBar } from '../selection';
-import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DayHeader, Empty } from "../components/AssetGrid";
+import { BackupProgressScreen } from "./BackupProgressScreen";
+import { HeaderAction, useHeaderClearance } from "../components/Header";
+import { useHeaderSlot } from "../header";
+import { intoDays } from "../lib/day";
+import { Icon } from "../components/Icon";
+import { DeviceActions } from "../components/PhotoActions";
+import { ConfirmSheet } from "../components/sheets";
+import { Button, Touchable } from "../components/ui";
+import { isEnabled } from "../lib/autobackup";
+import {
+  backupInFlight,
+  pendingCount,
+  runBackup,
+  uploadedIds,
+  type Progress,
+} from "../lib/backup";
+import { useSelectionBar } from "../selection";
+import { colors, radius, TAB_BAR_CLEARANCE } from "../theme";
 
 interface Props {
   serverUrl: string;
@@ -76,9 +82,10 @@ export function LibraryScreen({ serverUrl }: Props) {
    * a good reason to tap Deny — and on Android 13+ a denial covers the whole
    * request, so the audio prompt was taking photo access down with it.
    */
-  const [permission, requestPermission, checkPermission] = MediaLibrary.usePermissions({
-    granularPermissions: ['photo', 'video'],
-  });
+  const [permission, requestPermission, checkPermission] =
+    MediaLibrary.usePermissions({
+      granularPermissions: ["photo", "video"],
+    });
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -110,12 +117,13 @@ export function LibraryScreen({ serverUrl }: Props) {
 
   const load = useCallback(async () => {
     // Limited access still reads — of the subset that was shared.
-    if (!permission?.granted && permission?.accessPrivileges !== 'limited') return;
+    if (!permission?.granted && permission?.accessPrivileges !== "limited")
+      return;
     setLoading(true);
     try {
       const page = await MediaLibrary.getAssetsAsync({
         first: PAGE,
-        mediaType: ['photo', 'video'],
+        mediaType: ["photo", "video"],
         sortBy: [MediaLibrary.SortBy.creationTime],
       });
       setAssets(page.assets);
@@ -143,13 +151,14 @@ export function LibraryScreen({ serverUrl }: Props) {
    * just enabled. Imadeo can back up whatever it is shown; how much that is, is
    * their business, and the note further down says how much it turned out to be.
    */
-  const allowed = permission?.granted || permission?.accessPrivileges === 'limited';
+  const allowed =
+    permission?.granted || permission?.accessPrivileges === "limited";
 
   // A null permission means the check has not settled. It is treated as "not
   // granted" rather than shown as a spinner: on Android it can stay null
   // indefinitely, and an endless spinner is worse than a prompt that works.
   const backedUp = pending === 0;
-  const host = serverUrl.replace(/^https?:\/\//, '');
+  const host = serverUrl.replace(/^https?:\/\//, "");
 
   /** Start, or stop what is already running. */
   const backUp = async () => {
@@ -162,14 +171,23 @@ export function LibraryScreen({ serverUrl }: Props) {
     stop.current = false;
     setError(null);
     setRunning(true);
-    setProgress({ done: 0, total: 0, failed: 0, held: 0, queue: [], at: -1, sent: [], failures: [] });
+    setProgress({
+      done: 0,
+      total: 0,
+      failed: 0,
+      held: 0,
+      queue: [],
+      at: -1,
+      sent: [],
+      failures: [],
+    });
     try {
       await runBackup(serverUrl, setProgress, () => stop.current, only);
       setPending(await pendingCount(serverUrl));
       setUploaded(await uploadedIds(serverUrl));
       setPicked([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Backup failed.');
+      setError(e instanceof Error ? e.message : "Backup failed.");
     } finally {
       /**
        * The run stops; its record does not.
@@ -230,8 +248,8 @@ export function LibraryScreen({ serverUrl }: Props) {
      * not automatic backup is switched on.
      */
     void catchUp();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
       void loadRef.current().then(catchUp);
     });
 
@@ -243,7 +261,9 @@ export function LibraryScreen({ serverUrl }: Props) {
 
   const toggle = (id: string) =>
     setPicked((current) =>
-      current.includes(id) ? current.filter((one) => one !== id) : [...current, id],
+      current.includes(id)
+        ? current.filter((one) => one !== id)
+        : [...current, id],
     );
 
   /**
@@ -267,7 +287,11 @@ export function LibraryScreen({ serverUrl }: Props) {
       setPicked([]);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not remove those from this phone.",
+      );
     }
   };
 
@@ -279,22 +303,22 @@ export function LibraryScreen({ serverUrl }: Props) {
   // The bar is the shell's; this only says what goes in it, so a swipe between
   // tabs never moves it.
   useHeaderSlot(
-    'library',
+    "library",
     {
-      title: picked.length > 0 ? `${picked.length} selected` : 'Library',
-      icon: 'phone',
+      title: picked.length > 0 ? `${picked.length} selected` : "Library",
+      icon: "phone",
       subtitle:
         running && progress
           ? `${progress.done} of ${progress.total} sent to ${host}`
           : picked.length > 0
             ? pickedPending === 0
-              ? 'Already backed up · tap to change'
+              ? "Already backed up · tap to change"
               : `${pickedPending.toLocaleString()} to send to ${host}`
             : total === null
-              ? 'Reading this phone…'
+              ? "Reading this phone…"
               : backedUp
                 ? `${total.toLocaleString()} on this phone · all backed up`
-                : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`,
+                : `${total.toLocaleString()} on this phone · ${pending === null ? "checking" : `${pending.toLocaleString()} to back up`}`,
       /*
        * Nothing to send means no button. Re-reading the phone is what pulling
        * the grid down already does, so a control that only did that was
@@ -304,7 +328,11 @@ export function LibraryScreen({ serverUrl }: Props) {
       action: running ? (
         <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
       ) : picked.length > 0 || backedUp ? undefined : (
-        <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
+        <HeaderAction
+          label="Back up"
+          icon="backup"
+          onPress={() => void backUp()}
+        />
       ),
       below:
         running && progress && progress.total > 0 ? (
@@ -325,12 +353,12 @@ export function LibraryScreen({ serverUrl }: Props) {
               marginBottom: 12,
               borderRadius: radius.pill,
               backgroundColor: colors.border,
-              overflow: 'hidden',
+              overflow: "hidden",
             }}
           >
             <View
               style={{
-                height: '100%',
+                height: "100%",
                 width: `${Math.round((progress.done / progress.total) * 100)}%`,
                 borderRadius: radius.pill,
                 backgroundColor: colors.primary,
@@ -339,7 +367,16 @@ export function LibraryScreen({ serverUrl }: Props) {
           </Touchable>
         ) : undefined,
     },
-    [picked.length, pickedPending, running, progress, total, pending, backedUp, host],
+    [
+      picked.length,
+      pickedPending,
+      running,
+      progress,
+      total,
+      pending,
+      backedUp,
+      host,
+    ],
   );
 
   /*
@@ -359,7 +396,6 @@ export function LibraryScreen({ serverUrl }: Props) {
     );
   }
 
-
   /**
    * Every photo taken on one day, in one tap.
    *
@@ -368,10 +404,10 @@ export function LibraryScreen({ serverUrl }: Props) {
    * kind of thing that makes someone give up halfway. Tapping again lets the
    * day go, so it is a toggle rather than a one-way door.
    */
-  const idsOf = (rows: MediaLibrary.Asset[][]) => rows.flat().map((asset) => asset.id);
+  const idsOf = (rows: MediaLibrary.Asset[][]) =>
+    rows.flat().map((asset) => asset.id);
 
-  const toggleDay = (rows: MediaLibrary.Asset[][]) => {
-    const ids = idsOf(rows);
+  const toggleDay = (ids: string[]) => {
     setPicked((current) => {
       const chosen = new Set(current);
       const all = ids.every((id) => chosen.has(id));
@@ -395,73 +431,18 @@ export function LibraryScreen({ serverUrl }: Props) {
         sections={sections}
         keyExtractor={(row) => row[0].id}
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE }}
-        renderSectionHeader={({ section }) => {
-          const ids = idsOf(section.data);
-          const allPicked = ids.length > 0 && ids.every((id) => picked.includes(id));
-
-          return (
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                // Flush with the tiles below, which sit at the screen edge with
-                // only their 1px gutter. An inset here left the date floating
-                // away from the photos it belongs to.
-                paddingLeft: 2,
-                paddingRight: 2,
-                paddingTop: 16,
-                paddingBottom: 4,
-              }}
-            >
-              <Text
-                style={{
-                  flex: 1,
-                  color: colors.text,
-                  fontSize: 15,
-                  fontWeight: '700',
-                  letterSpacing: -0.3,
-                }}
-              >
-                {section.title}
-              </Text>
-
-              <Touchable
-                onPress={() => toggleDay(section.data)}
-                radius={radius.pill}
-                label={allPicked ? `Deselect ${section.title}` : `Select all of ${section.title}`}
-              >
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 5,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: radius.pill,
-                    backgroundColor: allPicked ? colors.primary : 'transparent',
-                  }}
-                >
-                  <Icon
-                    name={allPicked ? 'check' : 'done'}
-                    size={13}
-                    color={allPicked ? colors.bg : colors.muted}
-                    strong
-                  />
-                  <Text
-                    style={{
-                      color: allPicked ? colors.bg : colors.muted,
-                      fontSize: 12.5,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {allPicked ? 'Selected' : 'Select all'}
-                  </Text>
-                </View>
-              </Touchable>
-            </View>
-          );
+        contentContainerStyle={{
+          paddingTop: clearance,
+          paddingBottom: TAB_BAR_CLEARANCE,
         }}
+        renderSectionHeader={({ section }) => (
+          <DayHeader
+            title={section.title}
+            ids={idsOf(section.data)}
+            selected={picked}
+            onToggleDay={toggleDay}
+          />
+        )}
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -473,9 +454,15 @@ export function LibraryScreen({ serverUrl }: Props) {
           />
         }
         ListHeaderComponent={
-          error || progress?.failed || permission.accessPrivileges === 'limited' ? (
+          error ||
+          progress?.failed ||
+          permission.accessPrivileges === "limited" ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 8 }}>
-              {error && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error}</Text>}
+              {error && (
+                <Text style={{ color: colors.danger, fontSize: 13.5 }}>
+                  {error}
+                </Text>
+              )}
 
               {/*
                 The way back into the run's account once it has finished.
@@ -490,9 +477,19 @@ export function LibraryScreen({ serverUrl }: Props) {
                   radius={radius.sm}
                   label="See which photos failed"
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}>
-                    <Text style={{ color: colors.faint, fontSize: 12.5, flex: 1 }}>
-                      {progress.failed} could not be sent. They stay queued for next time.
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingVertical: 2,
+                    }}
+                  >
+                    <Text
+                      style={{ color: colors.faint, fontSize: 12.5, flex: 1 }}
+                    >
+                      {progress.failed} could not be sent. They stay queued for
+                      next time.
                     </Text>
                     <Icon name="forward" size={13} color={colors.faint} />
                   </View>
@@ -502,17 +499,24 @@ export function LibraryScreen({ serverUrl }: Props) {
               {/* Both platforms allow granting a hand-picked subset. Someone in
                   that state sees a count far below what they expect, so it has
                   to be named rather than left looking like a bug. */}
-              {permission.accessPrivileges === 'limited' && (
-                <Text style={{ color: colors.faint, fontSize: 12.5, lineHeight: 19 }}>
+              {permission.accessPrivileges === "limited" && (
+                <Text
+                  style={{
+                    color: colors.faint,
+                    fontSize: 12.5,
+                    lineHeight: 19,
+                  }}
+                >
                   You have shared only selected photos with Imadeo. It can back
-                  up those, and nothing else, until you widen access in Settings.
+                  up those, and nothing else, until you widen access in
+                  Settings.
                 </Text>
               )}
             </View>
           ) : null
         }
         renderItem={({ item: row }) => (
-          <View style={{ flexDirection: 'row' }}>
+          <View style={{ flexDirection: "row" }}>
             {row.map((item) => (
               <Tile
                 key={item.id}
@@ -582,7 +586,10 @@ export function LibraryScreen({ serverUrl }: Props) {
         onRequestClose={() => setShowProgress(false)}
         statusBarTranslucent
       >
-        <BackupProgressScreen progress={progress} onBack={() => setShowProgress(false)} />
+        <BackupProgressScreen
+          progress={progress}
+          onBack={() => setShowProgress(false)}
+        />
       </Modal>
 
       {/* Selecting swaps the tabs for what can be done with what is picked,
@@ -601,7 +608,7 @@ export function LibraryScreen({ serverUrl }: Props) {
           needs to be sure that is what they are doing. */}
       <ConfirmSheet
         open={confirmDelete}
-        title={`Remove ${picked.length} ${picked.length === 1 ? 'item' : 'items'} from this phone?`}
+        title={`Remove ${picked.length} ${picked.length === 1 ? "item" : "items"} from this phone?`}
         description={
           pickedPending > 0
             ? `${pickedPending} of these have not been backed up yet — those copies would be gone for good. Everything already sent stays on ${host}; only the copy in this phone's gallery is removed.`
@@ -643,7 +650,7 @@ function DeviceViewer({
    * collapse, and the tab underneath showed through where the photograph
    * should have been.
    */
-  const { width, height } = Dimensions.get('window');
+  const { width, height } = Dimensions.get("window");
   const insets = useSafeAreaInsets();
   const [at, setAt] = useState(Math.max(0, start));
 
@@ -658,7 +665,11 @@ function DeviceViewer({
         initialScrollIndex={Math.max(0, start)}
         // Every page is exactly the screen's width, so the list never has to
         // measure anything to know where a given photo starts.
-        getItemLayout={(_data, index) => ({ length: width, offset: width * index, index })}
+        getItemLayout={(_data, index) => ({
+          length: width,
+          offset: width * index,
+          index,
+        })}
         onMomentumScrollEnd={(event) =>
           setAt(Math.round(event.nativeEvent.contentOffset.x / width))
         }
@@ -668,7 +679,7 @@ function DeviceViewer({
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Close photo"
-            style={{ width, height, justifyContent: 'center' }}
+            style={{ width, height, justifyContent: "center" }}
           >
             <Image
               source={item.uri}
@@ -684,24 +695,24 @@ function DeviceViewer({
       {/* Where you are in the roll, which a paged viewer otherwise never says. */}
       <View
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: insets.top + 8,
           left: 0,
           right: 0,
-          alignItems: 'center',
+          alignItems: "center",
         }}
         pointerEvents="none"
       >
         <Text
           style={{
-            color: '#fff',
+            color: "#fff",
             fontSize: 13,
-            fontWeight: '700',
+            fontWeight: "700",
             paddingHorizontal: 12,
             paddingVertical: 5,
             borderRadius: radius.pill,
             backgroundColor: colors.overlay,
-            overflow: 'hidden',
+            overflow: "hidden",
           }}
         >
           {at + 1} of {assets.length}
@@ -728,93 +739,93 @@ function Tile({
   onOpen: (asset: MediaLibrary.Asset) => void;
 }) {
   return (
-          <Pressable
-            // Long-press opens selection, exactly as it does in the server grid;
-            // once anything is picked a plain tap adds to it rather than needing
-            // the gesture again.
-            onPress={() => (selecting ? onToggle(item.id) : onOpen(item))}
-            onLongPress={() => onToggle(item.id)}
-            delayLongPress={280}
-            accessibilityRole={selecting ? 'checkbox' : 'image'}
-            accessibilityLabel={`${item.filename}${sent ? ', backed up' : ''}`}
-            accessibilityState={selecting ? { checked: on } : undefined}
-            style={{ flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 }}
-          >
-            {/* Inset while selected, matching the server grid so the two read as
+    <Pressable
+      // Long-press opens selection, exactly as it does in the server grid;
+      // once anything is picked a plain tap adds to it rather than needing
+      // the gesture again.
+      onPress={() => (selecting ? onToggle(item.id) : onOpen(item))}
+      onLongPress={() => onToggle(item.id)}
+      delayLongPress={280}
+      accessibilityRole={selecting ? "checkbox" : "image"}
+      accessibilityLabel={`${item.filename}${sent ? ", backed up" : ""}`}
+      accessibilityState={selecting ? { checked: on } : undefined}
+      style={{ flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 }}
+    >
+      {/* Inset while selected, matching the server grid so the two read as
                 the same gesture. */}
-            <View
-              style={{
-                flex: 1,
-                padding: on ? 5 : 0,
-                backgroundColor: on ? colors.primary : 'transparent',
-                borderRadius: on ? radius.sm : 0,
-              }}
-            >
-              {/* One image for everything. expo-image reads a ph:// asset
+      <View
+        style={{
+          flex: 1,
+          padding: on ? 5 : 0,
+          backgroundColor: on ? colors.primary : "transparent",
+          borderRadius: on ? radius.sm : 0,
+        }}
+      >
+        {/* One image for everything. expo-image reads a ph:// asset
                   directly and asks the Photos framework for the thumbnail iOS
                   has already generated — including for videos, which is why no
                   decoding is needed here at all. */}
-              <Image
-                source={item.uri}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: colors.surface,
-                  borderRadius: on ? 4 : 0,
-                }}
-                contentFit="cover"
-                recyclingKey={item.id}
-                transition={120}
-              />
-            </View>
+        <Image
+          source={item.uri}
+          style={{
+            width: "100%",
+            height: "100%",
+            backgroundColor: colors.surface,
+            borderRadius: on ? 4 : 0,
+          }}
+          contentFit="cover"
+          recyclingKey={item.id}
+          transition={120}
+        />
+      </View>
 
-            {/* Already on the server. A mark rather than a dimmed tile: these
+      {/* Already on the server. A mark rather than a dimmed tile: these
                 are the photos that are safe, and fading them would read as the
                 opposite. Drawn white with a shadow like the video marker,
                 because it sits directly on the photograph. */}
-            {sent && !on && (
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 5,
-                  bottom: 5,
-                  shadowColor: '#000',
-                  shadowOpacity: 0.6,
-                  shadowRadius: 3,
-                  shadowOffset: { width: 0, height: 0 },
-                }}
-              >
-                <Icon name="cloud-done" size={15} color="#fff" strong />
-              </View>
-            )}
+      {sent && !on && (
+        <View
+          style={{
+            position: "absolute",
+            right: 5,
+            bottom: 5,
+            shadowColor: "#000",
+            shadowOpacity: 0.6,
+            shadowRadius: 3,
+            shadowOffset: { width: 0, height: 0 },
+          }}
+        >
+          <Icon name="cloud-done" size={15} color="#fff" strong />
+        </View>
+      )}
 
-            {/* Bottom left, out of the cloud's corner. */}
-            {item.mediaType === 'video' && !on && (
-              <View
-                style={{
-                  position: 'absolute',
-                  left: 5,
-                  bottom: 5,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <Icon name="play" size={11} color="#fff" />
-                <Text
-                  style={{
-                    color: '#fff',
-                    fontSize: 11,
-                    fontWeight: '600',
-                    textShadowColor: 'rgba(0,0,0,0.6)',
-                    textShadowRadius: 3,
-                  }}
-                >
-                  {Math.round(item.duration)}s
-                </Text>
-              </View>
-            )}
-          </Pressable>
+      {/* Bottom left, out of the cloud's corner. */}
+      {item.mediaType === "video" && !on && (
+        <View
+          style={{
+            position: "absolute",
+            left: 5,
+            bottom: 5,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <Icon name="play" size={11} color="#fff" />
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 11,
+              fontWeight: "600",
+              textShadowColor: "rgba(0,0,0,0.6)",
+              textShadowRadius: 3,
+            }}
+          >
+            {Math.round(item.duration)}s
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -849,8 +860,8 @@ function AskForAccess({
    * the thing it was describing.
    */
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
       setRefused(false);
       void onRecheck();
     });
@@ -886,35 +897,57 @@ function AskForAccess({
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.bg,
+        justifyContent: "center",
+        padding: 28,
+      }}
+    >
       <View
         style={{
           width: 72,
           height: 72,
           borderRadius: 36,
           backgroundColor: colors.surface,
-          alignItems: 'center',
-          justifyContent: 'center',
+          alignItems: "center",
+          justifyContent: "center",
           marginBottom: 22,
         }}
       >
         <Icon name="phone" size={32} color={colors.primary} />
       </View>
 
-      <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.6 }}>
-        {settled ? 'Imadeo cannot see your photos' : 'Let Imadeo see your photos'}
-      </Text>
       <Text
-        style={{ color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 12, marginBottom: 28 }}
+        style={{
+          color: colors.text,
+          fontSize: 26,
+          fontWeight: "700",
+          letterSpacing: -0.6,
+        }}
       >
         {settled
-          ? 'Nothing on this phone can be backed up until photo access is switched on. You can turn it on for Imadeo in your phone’s settings.'
-          : 'Nothing is uploaded until you ask for it. Access is only used to work out which photos your server does not have yet.'}
+          ? "Imadeo cannot see your photos"
+          : "Let Imadeo see your photos"}
+      </Text>
+      <Text
+        style={{
+          color: colors.muted,
+          fontSize: 16,
+          lineHeight: 24,
+          marginTop: 12,
+          marginBottom: 28,
+        }}
+      >
+        {settled
+          ? "Nothing on this phone can be backed up until photo access is switched on. You can turn it on for Imadeo in your phone’s settings."
+          : "Nothing is uploaded until you ask for it. Access is only used to work out which photos your server does not have yet."}
       </Text>
 
       <Button
-        label={settled ? 'Open Settings' : 'Allow access'}
-        icon={settled ? 'settings' : 'check'}
+        label={settled ? "Open Settings" : "Allow access"}
+        icon={settled ? "settings" : "check"}
         busy={asking}
         onPress={() => (settled ? void Linking.openSettings() : void ask())}
       />
