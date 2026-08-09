@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, PanResponder, Text, View } from 'react-native';
 import { colors, radius, shadow } from '../theme';
 
@@ -172,6 +172,31 @@ function Chevron({ up = false }: { up?: boolean }) {
 }
 
 /**
+ * Whether the list is moving, and the handler that says so.
+ *
+ * There is no "stopped scrolling" event that covers every way a list can come
+ * to rest — a fling that decays, a finger held still, a seek from the rail — so
+ * this is a timer that every scroll event pushes back. Cheap, and it is the
+ * only thing the label needs to know.
+ */
+export function useScrolling(): [boolean, () => void] {
+  const [scrolling, setScrolling] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mark = useCallback(() => {
+    setScrolling(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setScrolling(false), 900);
+  }, []);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  return [scrolling, mark];
+}
+
+/**
  * The date of whatever is at the top of the screen, under the bar.
  *
  * Google Photos does this and it is the right trade for a dense grid: a heading
@@ -179,13 +204,27 @@ function Chevron({ up = false }: { up?: boolean }) {
  * label that keeps up with the scroll answers the same question — when am I? —
  * and costs no room in the grid at all.
  */
-export function DateLabel({ children }: { children: ReactNode }) {
+export function DateLabel({ children, visible }: { children: ReactNode; visible: boolean }) {
+  const showing = visible && !!children;
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.timing(fade, {
+      toValue: showing ? 1 : 0,
+      duration: showing ? 140 : 260,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [showing, fade]);
+
   if (!children) return null;
 
   return (
-    <View
+    <Animated.View
       pointerEvents="none"
       style={{
+        opacity: fade,
         position: 'absolute',
         left: 16,
         borderRadius: radius.pill,
@@ -196,6 +235,6 @@ export function DateLabel({ children }: { children: ReactNode }) {
       }}
     >
       <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{children}</Text>
-    </View>
+    </Animated.View>
   );
 }

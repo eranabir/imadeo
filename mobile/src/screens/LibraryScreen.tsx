@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayHeader, Empty } from '../components/AssetGrid';
-import { DateLabel, Scrubber } from '../components/Scrubber';
+import { DateLabel, Scrubber, useScrolling } from '../components/Scrubber';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
@@ -351,6 +351,7 @@ export function LibraryScreen({ serverUrl }: Props) {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
+  const [scrolling, markScrolling] = useScrolling();
 
   const onViewable = useRef(
     ({ viewableItems }: { viewableItems: { section?: { title?: string } }[] }) => {
@@ -418,6 +419,7 @@ export function LibraryScreen({ serverUrl }: Props) {
         ref={list}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: false,
+          listener: markScrolling,
         })}
         scrollEventThrottle={16}
         onContentSizeChange={(_, height) => setContentHeight(height)}
@@ -525,7 +527,7 @@ export function LibraryScreen({ serverUrl }: Props) {
           pointerEvents="none"
           style={{ position: 'absolute', top: clearance + 6, left: 0, right: 0 }}
         >
-          <DateLabel>{day}</DateLabel>
+          <DateLabel visible={scrolling}>{day}</DateLabel>
         </View>
       )}
 

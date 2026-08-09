@@ -24,7 +24,7 @@ import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton } from './Loading';
-import { DateLabel, Scrubber } from './Scrubber';
+import { DateLabel, Scrubber, useScrolling } from './Scrubber';
 import { Touchable } from './ui';
 
 interface Props {
@@ -254,6 +254,7 @@ export function AssetGrid({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
+  const [scrolling, markScrolling] = useScrolling();
 
   const seek = useCallback((offset: number) => {
     // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
@@ -268,6 +269,7 @@ export function AssetGrid({
     ref: list as never,
     onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
       useNativeDriver: false,
+      listener: markScrolling,
     }),
     scrollEventThrottle: 16,
     onContentSizeChange: (_: number, height: number) => setContentHeight(height),
@@ -350,11 +352,14 @@ export function AssetGrid({
             // same label, and it reads as belonging to the photographs.
             style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}
           >
-            <DateLabel>{day}</DateLabel>
+            <DateLabel visible={scrolling}>{day}</DateLabel>
           </View>
         )}
 
-        {groupByDay && (
+        {/* On every grid, not only the ones cut into days: a folder of two
+            thousand photographs is as hard to get through as a timeline, and
+            the rail hides itself when there is nowhere to go. */}
+        {(
           <Scrubber
             scrollY={scrollY}
             contentHeight={contentHeight}
