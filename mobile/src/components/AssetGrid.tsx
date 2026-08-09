@@ -281,7 +281,19 @@ export function AssetGrid({
       setViewportHeight(event.nativeEvent.layout.height),
     onViewableItemsChanged: onViewable,
     viewabilityConfig: { itemVisiblePercentThreshold: 10 },
-    contentContainerStyle: { paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE },
+    /*
+     * Room under the last row for it to be scrolled up to.
+     *
+     * The label names whatever is at the top of the screen, and without this
+     * the final day can never get there — the list runs out first, so the last
+     * photographs in a library are the one stretch it cannot name. The tail is
+     * what is left of a screen once the bar and a row of tiles are taken out of
+     * it, which is exactly far enough and no further.
+     */
+    contentContainerStyle: {
+      paddingTop: topInset,
+      paddingBottom: TAB_BAR_CLEARANCE + Math.max(0, viewportHeight - topInset - 180),
+    },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
       <RefreshControl

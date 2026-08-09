@@ -428,7 +428,12 @@ export function LibraryScreen({ serverUrl }: Props) {
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onViewableItemsChanged={onViewable}
         viewabilityConfig={{ itemVisiblePercentThreshold: 10 }}
-        contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE }}
+        // Room under the last row for it to be scrolled up to, so the label
+        // can name the final day the way it names every other one.
+        contentContainerStyle={{
+          paddingTop: clearance,
+          paddingBottom: TAB_BAR_CLEARANCE + Math.max(0, viewportHeight - clearance - 180),
+        }}
         // Nothing above a day until a selection gives it a reason; the label
         // under the bar answers "when am I" the rest of the time.
         renderSectionHeader={({ section }) =>
