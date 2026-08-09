@@ -44,7 +44,9 @@ export class FaceDetectionProcessor extends WorkerHost {
     const source = asset.previewPath ?? asset.originalPath;
     if (!source) return { skipped: 'no preview yet' };
 
-    if (!(await this.ml.isReady())) {
+    if (!this.ml.faceRecognitionEnabled) return { skipped: 'face recognition disabled' };
+
+    if (!(await this.ml.isFaceRecognitionReady())) {
       // Fail loudly so BullMQ retries with backoff rather than silently
       // marking the asset as processed.
       throw new Error('The machine-learning service is not ready');

@@ -61,13 +61,18 @@ export function People() {
    * Latched on the press rather than read from the queue: the server has no
    * "scanning" flag, only a count of what is left, and that count is just as
    * high the moment before the button is pressed as the moment after. Cleared
-   * when the count reaches zero, or when the page is left.
+   * when the count reaches zero, or when the page is left. Completion also
+   * refreshes the groups: the worker has written new results, but the grid's
+   * query would otherwise still hold the empty response from before the scan.
    */
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (scanning && status && status.pendingAssets === 0) setScanning(false);
-  }, [scanning, status]);
+    if (scanning && status && status.pendingAssets === 0) {
+      setScanning(false);
+      void queryClient.invalidateQueries({ queryKey: ['people'] });
+    }
+  }, [queryClient, scanning, status]);
 
   const scanned = status ? status.totalAssets - status.pendingAssets : 0;
 
@@ -154,13 +159,22 @@ export function People() {
   const visible = people;
 
 
-  const toggle = (person: Person) =>
+  const toggle = (person: Person) => {
+    const hasDifferentKindSelected = visible.some(
+      (selectedPerson) => selected.has(selectedPerson.id) && selectedPerson.kind !== person.kind,
+    );
+    if (!selected.has(person.id) && hasDifferentKindSelected) {
+      setError('People and pets cannot be merged. Select groups of the same type.');
+      return;
+    }
+
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(person.id)) next.delete(person.id);
       else next.add(person.id);
       return next;
     });
+  };
 
   /**
    * Merging keeps the person who already has a name, so folding an unnamed
@@ -206,7 +220,7 @@ export function People() {
                   size="sm"
                   variant="primary"
                   icon={<Merge size={14} />}
-                  disabled={selected.size < 2}
+                  disabled={selected.size < 2 || mergeSources.length === 0}
                   onClick={() => setConfirmMerge(true)}
                 >
                   Merge {selected.size > 0 ? selected.size : ''}
@@ -287,8 +301,8 @@ export function People() {
       {/* Face recognition needs its own service, so say plainly when it is off. */}
       {status && !status.enabled && (
         <p className="mx-5 mt-4 rounded-control bg-surface-sunken px-3.5 py-2.5 text-sm text-content-muted">
-          Face recognition is switched off on this server. Set <code>ML_ENABLED=true</code> and
-          start the machine-learning service to use it.
+          Face recognition is switched off on this server. An administrator can turn it on in
+          Settings → Recognition.
         </p>
       )}
 
@@ -331,7 +345,7 @@ export function People() {
               // Indeterminate until the first count comes back, because the
               // queue is still filling and the fraction would jump backwards.
               value={scan.isPending ? undefined : scanned / Math.max(1, status.totalAssets)}
-              label="Scanning photos for faces"
+              label="Scanning photos for people and pets"
               className="mt-2.5"
             />
           )}
@@ -341,11 +355,11 @@ export function People() {
       {!isLoading && visible.length === 0 ? (
         <EmptyState
           icon={UserRound}
-          title="No people found yet"
+          title="No people or pets found yet"
           description={
             status?.ready
-              ? 'Faces are grouped as photos are scanned. Once a group has a few photos in it, it shows up here.'
-              : 'Once the machine-learning service is running, faces in your photos are grouped here automatically.'
+              ? 'People and pets are grouped as photos are scanned. Once a group has a few photos in it, it shows up here.'
+              : 'Once the machine-learning service is running, people and pets in your photos are grouped here automatically.'
           }
           action={
             status?.ready && status.pendingAssets > 0 ? (
@@ -355,7 +369,7 @@ export function People() {
                 disabled={scanning}
                 onClick={() => scan.mutate()}
               >
-                {scanning ? 'Scanning…' : 'Scan for faces'}
+                {scanning ? 'Scanning…' : 'Scan photos'}
               </Button>
             ) : undefined
           }
@@ -395,7 +409,7 @@ export function People() {
                     {person.thumbnailPath ? (
                       <img
                         src={`/api/people/${person.id}/thumbnail.jpg`}
-                        alt={person.name || 'Unnamed person'}
+                        alt={person.name || `Unnamed ${person.kind === 'PET' ? 'pet' : 'person'}`}
                         loading="lazy"
                         draggable={false}
                         className="h-full w-full object-cover"
@@ -477,7 +491,7 @@ export function People() {
 
       <ConfirmDialog
         open={confirmMerge}
-        title={`Merge ${selected.size} people into “${target?.name || 'one group'}”?`}
+        title={`Merge ${selected.size} groups into “${target?.name || 'one group'}”?`}
         description="Every photo moves into the one group. This cannot be undone automatically, though you can split faces out again afterwards."
         confirmLabel="Merge"
         onConfirm={() => {
@@ -489,7 +503,9 @@ export function People() {
 
       <ConfirmDialog
         open={Boolean(confirmForget)}
-        title={`Remove ${confirmForget?.name || (kind === 'PET' ? 'this pet' : 'this person')}?`}
+        title={`Remove ${
+          confirmForget?.name || (confirmForget?.kind === 'PET' ? 'this pet' : 'this person')
+        }?`}
         description="The grouping is discarded, but every photo stays exactly where it is. The faces may be regrouped the next time faces are scanned."
         confirmLabel="Remove"
         destructive
@@ -545,7 +561,7 @@ export function People() {
             },
             {
               id: 'hide',
-              label: menu.person.isHidden ? 'Show again' : 'Hide from People',
+              label: menu.person.isHidden ? 'Show again' : 'Hide from People & Pets',
               icon: menu.person.isHidden ? <Eye size={15} /> : <EyeOff size={15} />,
               separated: true,
               onSelect: () =>
@@ -553,7 +569,7 @@ export function People() {
             },
             {
               id: 'forget',
-              label: kind === 'PET' ? 'Remove this pet' : 'Remove this person',
+              label: menu.person.kind === 'PET' ? 'Remove this pet' : 'Remove this person',
               icon: <Trash2 size={15} />,
               hint: 'The photos are kept',
               danger: true,

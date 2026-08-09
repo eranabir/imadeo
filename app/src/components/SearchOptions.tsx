@@ -124,7 +124,7 @@ export function SearchOptions({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-sm font-semibold">People &amp; pets</h3>
               <Input
-                placeholder="Filter people"
+                placeholder="Filter people and pets"
                 adornment={<SearchIcon size={14} />}
                 size="sm"
                 value={peopleFilter}

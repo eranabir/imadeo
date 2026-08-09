@@ -269,9 +269,9 @@ export function PersonDetail() {
                 <Pencil size={14} />
               </IconButton>
             </Tooltip>
-            <Tooltip label="Hide from People">
+            <Tooltip label="Hide from People & Pets">
               <IconButton
-                label="Hide from People"
+                label="Hide from People & Pets"
                 variant="secondary"
                 size="sm"
                 round={false}
@@ -294,7 +294,7 @@ export function PersonDetail() {
         <EmptyState
           icon={UserRound}
           title="No photos yet"
-          description="Faces for this person have not finished processing."
+          description={`Photos of this ${subject} have not finished processing.`}
           action={
             <Button variant="primary" onClick={() => navigate('/people')}>
               Back to People &amp; Pets

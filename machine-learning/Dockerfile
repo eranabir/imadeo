@@ -1,31 +1,22 @@
-# The model weights are several hundred megabytes and are downloaded on first
-# run into /cache, which is a volume — so the image stays small and a rebuild
-# does not re-download them.
+# Model weights are downloaded on first run into /cache, which is a volume — so
+# the image stays small and a rebuild does not re-download them.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    INSIGHTFACE_HOME=/cache/insightface \
-    # Both pet models download on first use; point them at the same volume the
-    # face models use so a rebuild does not re-fetch them.
-    YOLO_CONFIG_DIR=/cache/ultralytics \
+    ML_MODEL_CACHE=/cache/imadeo-models \
     TORCH_HOME=/cache/torch \
     HF_HOME=/cache
 
 WORKDIR /app
 
-# InsightFace compiles a Cython extension at install time, so a compiler is
-# needed here even though it is not needed at runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential \
       libglib2.0-0 \
       libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && apt-get purge -y build-essential \
-    && apt-get autoremove -y
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 

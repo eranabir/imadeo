@@ -14,6 +14,7 @@ import {
   MailWarning,
   Palette,
   Save,
+  ScanFace,
   ShieldCheck,
   Smartphone,
   Sun,
@@ -55,6 +56,7 @@ const SECTIONS = [
   { id: 'account', label: 'Account', icon: UserCog },
   { id: 'security', label: 'Security', icon: ShieldCheck },
   { id: 'people', label: 'People', icon: Users, adminOnly: true },
+  { id: 'recognition', label: 'Recognition', icon: ScanFace, adminOnly: true },
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'storage', label: 'Storage', icon: HardDrive },
@@ -131,6 +133,7 @@ export function Settings() {
           {section === 'account' && <Account />}
           {section === 'security' && <Security />}
           {section === 'people' && <People />}
+          {section === 'recognition' && <FaceRecognition />}
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
           {section === 'storage' && <Storage />}
@@ -606,6 +609,58 @@ function ConnectedAccount() {
       })}
 
       {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+    </Card>
+  );
+}
+
+interface FaceRecognitionSettings {
+  enabled: boolean;
+  fromEnv: boolean;
+}
+
+function FaceRecognition() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin', 'face-recognition'],
+    queryFn: async () => (await api.get<FaceRecognitionSettings>('/admin/face-recognition')).data,
+  });
+
+  const save = useMutation({
+    mutationFn: async (enabled: boolean) =>
+      (await api.put<FaceRecognitionSettings>('/admin/face-recognition', { enabled })).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'face-recognition'] });
+      void queryClient.invalidateQueries({ queryKey: ['people', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['server', 'about'] });
+    },
+  });
+
+  return (
+    <Card
+      title="Face recognition"
+      description="Find people and pets in new photos, or scan the library from People & Pets."
+    >
+      <Row
+        label="Recognise faces and pets"
+        hint={
+          data?.enabled
+            ? 'New photos are queued for recognition. Turn this off to pause future scans.'
+            : 'No new face or pet scans will run until you turn this back on.'
+        }
+      >
+        <Checkbox
+          label=""
+          checked={data?.enabled ?? false}
+          disabled={isLoading || save.isPending}
+          onChange={(enabled) => save.mutate(enabled)}
+        />
+      </Row>
+      {data?.fromEnv && (
+        <p className="mt-3 text-xs text-content-muted">
+          Currently using the server’s startup default. Changing this saves a server setting.
+        </p>
+      )}
+      {save.isError && <p className="mt-3 text-xs text-danger">{errorMessage(save.error)}</p>}
     </Card>
   );
 }

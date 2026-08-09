@@ -90,7 +90,6 @@ services:
     environment:
       TRANSFORMERS_CACHE: /cache
       HF_HOME: /cache
-      INSIGHTFACE_HOME: /cache/insightface
     volumes:
       - ${MODEL_CACHE_LOCATION}:/cache
     ports:

@@ -1,9 +1,10 @@
 """
 Imadeo machine-learning service.
 
-A deliberately small HTTP surface in front of InsightFace. Face detection and
-recognition are the only things Python is doing here: the Node server owns all
-the data, and this process holds no state beyond the loaded model.
+A deliberately small HTTP surface in front of local, permissively licensed
+models. Face detection and recognition are the only things Python is doing
+here: the Node server owns all the data, and this process holds no state beyond
+the loaded model.
 
 Kept as a separate service because the models are large, slow to load and
 CPU-hungry. Running them in-process would make the API server's memory profile
@@ -44,9 +45,7 @@ async def lifespan(_: FastAPI):
     """Load the models once, at startup, rather than on the first request."""
     global engine, pets, clip
     engine = FaceEngine(
-        model_name=os.getenv("ML_FACE_MODEL", "buffalo_l"),
         min_score=float(os.getenv("ML_FACE_MIN_SCORE", "0.7")),
-        det_size=int(os.getenv("ML_FACE_DET_SIZE", "640")),
     )
     engine.load()
     log.info("face engine ready")
@@ -56,10 +55,7 @@ async def lifespan(_: FastAPI):
     # endpoint simply reports itself unavailable.
     if os.getenv("ML_PETS_ENABLED", "true").lower() in {"1", "true", "yes", "on"}:
         try:
-            pets = PetEngine(
-                detector_name=os.getenv("ML_PET_MODEL", "yolov8n.pt"),
-                min_score=float(os.getenv("ML_PET_MIN_SCORE", "0.4")),
-            )
+            pets = PetEngine(min_score=float(os.getenv("ML_PET_MIN_SCORE", "0.4")))
             pets.load()
             log.info("pet engine ready")
         except Exception:
@@ -115,9 +111,9 @@ async def predict_faces(image: UploadFile = File(...)) -> JSONResponse:
     Detects faces in one image.
 
     Returns a bounding box in the coordinate space of the image that was sent,
-    plus a normalised 512-dimension embedding per face. The caller compares
-    embeddings with cosine distance; normalising here means the caller can treat
-    a dot product as that distance.
+    plus a normalised 512-dimension embedding per face. SFace's native 128-d
+    vector is zero-padded without changing cosine distance, so the existing
+    server schema remains compatible.
     """
     if not engine or not engine.is_loaded:
         raise HTTPException(status_code=503, detail="The face model is still loading")

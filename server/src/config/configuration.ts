@@ -152,7 +152,7 @@ export const configuration = () => {
       url: process.env.ML_URL ?? 'http://localhost:3003',
       timeoutMs: int(process.env.ML_TIMEOUT_MS, 120_000),
       clipModel: process.env.ML_CLIP_MODEL ?? 'clip-ViT-B-32',
-      faceModel: process.env.ML_FACE_MODEL ?? 'buffalo_l',
+      faceModel: process.env.ML_FACE_MODEL ?? 'yunet+sface',
       faceMinScore: num(process.env.ML_FACE_MIN_SCORE, 0.7),
       faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.5),
       /// Tighter than faces on purpose. Pets are matched on how they look rather

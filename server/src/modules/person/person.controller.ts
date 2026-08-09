@@ -71,7 +71,7 @@ export class PersonController {
     };
 
     const [ready, pending, total] = await Promise.all([
-      this.ml.isReady(),
+      this.ml.isFaceRecognitionReady(),
       this.prisma.asset.count({
         where: { ...eligible, jobStatus: { facesRecognizedAt: null } },
       }),
@@ -81,7 +81,12 @@ export class PersonController {
       this.prisma.asset.count({ where: eligible }),
     ]);
 
-    return { enabled: this.ml.enabled, ready, pendingAssets: pending, totalAssets: total };
+    return {
+      enabled: this.ml.faceRecognitionEnabled,
+      ready,
+      pendingAssets: pending,
+      totalAssets: total,
+    };
   }
 
   @Post('scan')
@@ -89,7 +94,7 @@ export class PersonController {
     summary: 'Queue face detection for every photo that has not been scanned yet',
   })
   async scan(@AuthedUserId() userId: string) {
-    if (!(await this.ml.isReady())) {
+    if (!(await this.ml.isFaceRecognitionReady())) {
       // Better to say so than to queue work that will fail one job at a time.
       throw new ServiceUnavailableException(
         'The machine-learning service is not ready yet. It downloads its models on first start; try again in a minute.',

@@ -1,35 +1,16 @@
-# Pinned rather than floating: InsightFace and onnxruntime break on each other
-# fairly regularly, and a model service that silently changes behaviour after a
-# rebuild is worse than one that is a few versions behind.
 fastapi==0.121.2
 uvicorn[standard]==0.38.0
 python-multipart==0.0.20
 
-insightface==0.7.3
-onnxruntime==1.23.2
-
-# InsightFace needs these but does not pin them itself.
-#
-# A range rather than an exact pin: torchvision and insightface each constrain
-# numpy, and no single version satisfies both exact pins. The band is narrow
-# enough to keep the ABI stable for the compiled extensions.
-numpy>=2.1,<2.3
+# The local recognition stack uses OpenCV Zoo's MIT/Apache-2.0 YuNet, SFace and
+# NanoDet ONNX files. Their exact bytes are verified by app/model_store.py.
+numpy==2.2.6
 opencv-python-headless==4.11.0.86
-scikit-image==0.25.2
 pillow==11.3.0
 
-# -- pets -------------------------------------------------------------------
-# Detection finds cats and dogs; CLIP embeds the crop so individuals can be told
-# apart. These are much heavier than the face stack — the CPU torch wheel alone
-# is several hundred megabytes — so the index URL below keeps the CUDA build out
-# of a self-hosted image that will never have a GPU.
-#
-# NOTE ON LICENSING: ultralytics is AGPL-3.0. That is fine for running Imadeo
-# yourself, which is what this project is for, but it would place obligations on
-# anyone redistributing it. Set ML_PETS_ENABLED=false to leave it out entirely;
-# faces keep working without it.
+# CLIP supplies visual search plus a second-stage embedding for individual pet
+# grouping. The CPU wheel avoids pulling CUDA into a self-hosted image.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.6.0
 torchvision==0.21.0
-ultralytics==8.3.70
 open_clip_torch==2.30.0

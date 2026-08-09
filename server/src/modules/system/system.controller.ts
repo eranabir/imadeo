@@ -6,8 +6,9 @@ import { JobService } from '../../infra/job/job.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
 import { MailSettingsService } from '../../infra/mail/mail-settings.service';
+import { FaceRecognitionSettingsService } from '../../infra/ml/face-recognition-settings.service';
 import { StorageLocationService } from './storage-location.service';
-import { UpdateMailDto } from './system.dto';
+import { UpdateFaceRecognitionDto, UpdateMailDto } from './system.dto';
 
 @ApiTags('System')
 @Controller()
@@ -17,6 +18,7 @@ export class SystemController {
     private readonly config: ConfigService<AppConfig, true>,
     private readonly storageLocation: StorageLocationService,
     private readonly mailSettings: MailSettingsService,
+    private readonly faceRecognition: FaceRecognitionSettingsService,
     private readonly jobs: JobService,
   ) {}
 
@@ -70,6 +72,20 @@ export class SystemController {
       },
       trashRetentionDays: this.config.get('trash.retentionDays', { infer: true }),
     };
+  }
+
+  @Auth({ admin: true })
+  @Get('admin/face-recognition')
+  @ApiOperation({ summary: 'Face and pet recognition setting for this server' })
+  faceRecognitionSettings() {
+    return this.faceRecognition.view();
+  }
+
+  @Auth({ admin: true })
+  @Put('admin/face-recognition')
+  @ApiOperation({ summary: 'Enable or disable face and pet recognition immediately' })
+  saveFaceRecognitionSettings(@Body() dto: UpdateFaceRecognitionDto) {
+    return this.faceRecognition.save(dto.enabled);
   }
 
   @Auth({ admin: true })

@@ -150,11 +150,15 @@ export class PersonService {
    */
   async merge(userId: string, targetId: string, sourceIds: string[]) {
     const target = await this.get(userId, targetId);
+    const requestedSourceIds = sourceIds.filter((id) => id !== targetId);
 
     const sources = await this.prisma.person.findMany({
-      where: { id: { in: sourceIds.filter((id) => id !== targetId) }, ownerId: userId },
+      where: { id: { in: requestedSourceIds }, ownerId: userId },
     });
     if (sources.length === 0) throw new BadRequestException('Nothing to merge');
+    if (sources.some((person) => person.kind !== target.kind)) {
+      throw new BadRequestException('People and pets cannot be merged');
+    }
 
     const namedSource = sources.find((person) => person.name !== '');
 

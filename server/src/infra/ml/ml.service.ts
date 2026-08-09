@@ -4,6 +4,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
 import type { AppConfig } from '../../config/configuration';
+import { FaceRecognitionSettingsService } from './face-recognition-settings.service';
 
 export interface DetectedFace {
   boundingBox: { x1: number; y1: number; x2: number; y2: number };
@@ -37,7 +38,10 @@ export class MachineLearningService {
   private readonly logger = new Logger(MachineLearningService.name);
   private readonly http: AxiosInstance;
 
-  constructor(private readonly config: ConfigService<AppConfig, true>) {
+  constructor(
+    private readonly config: ConfigService<AppConfig, true>,
+    private readonly faceRecognition: FaceRecognitionSettingsService,
+  ) {
     this.http = axios.create({
       baseURL: this.config.get('machineLearning.url', { infer: true }),
       timeout: this.config.get('machineLearning.timeoutMs', { infer: true }),
@@ -51,9 +55,24 @@ export class MachineLearningService {
     return this.config.get('machineLearning.enabled', { infer: true });
   }
 
+  /** Face and pet scans can be paused without disabling visual search. */
+  get faceRecognitionEnabled() {
+    return this.faceRecognition.enabled;
+  }
+
   /** Whether the service is up and has finished loading its model. */
   async isReady(): Promise<boolean> {
     if (!this.enabled) return false;
+    try {
+      const { data } = await this.http.get<{ status: string }>('/health', { timeout: 5_000 });
+      return data.status === 'ok';
+    } catch {
+      return false;
+    }
+  }
+
+  async isFaceRecognitionReady(): Promise<boolean> {
+    if (!this.faceRecognitionEnabled) return false;
     try {
       const { data } = await this.http.get<{ status: string }>('/health', { timeout: 5_000 });
       return data.status === 'ok';
@@ -71,7 +90,7 @@ export class MachineLearningService {
    * preview's coordinate space, which is why that space is stored alongside them.
    */
   async detectFaces(path: string): Promise<FaceDetectionResult | null> {
-    if (!this.enabled) return null;
+    if (!this.faceRecognitionEnabled) return null;
 
     const stream = createReadStream(path);
 
@@ -99,7 +118,7 @@ export class MachineLearningService {
    * models are large and not everyone wants them.
    */
   async detectPets(path: string): Promise<PetDetectionResult | null> {
-    if (!this.enabled) return null;
+    if (!this.faceRecognitionEnabled) return null;
 
     const stream = createReadStream(path);
 

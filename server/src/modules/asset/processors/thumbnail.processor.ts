@@ -9,6 +9,7 @@ import { AssetType } from '../../../db';
 import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
 import { JobService } from '../../../infra/job/job.service';
 import { MediaService } from '../../../infra/media/media.service';
+import { MachineLearningService } from '../../../infra/ml/ml.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { StorageService } from '../../../infra/storage/storage.service';
 
@@ -26,6 +27,7 @@ export class ThumbnailProcessor extends WorkerHost {
     private readonly storage: StorageService,
     private readonly jobs: JobService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly ml: MachineLearningService,
   ) {
     super();
   }
@@ -119,6 +121,8 @@ export class ThumbnailProcessor extends WorkerHost {
       }
       if (this.config.get('machineLearning.enabled', { infer: true })) {
         await this.jobs.enqueue(QUEUE.SMART_SEARCH, JOB.ENCODE_CLIP, { assetId: asset.id });
+      }
+      if (this.ml.faceRecognitionEnabled) {
         await this.jobs.enqueue(QUEUE.FACE_DETECTION, JOB.DETECT_FACES, { assetId: asset.id });
       }
 
