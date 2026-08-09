@@ -24,7 +24,7 @@ import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton } from './Loading';
-import { DateLabel, Scrubber, useScrolling } from './Scrubber';
+import { DateLabel, Scrubber, useScrolledAway } from './Scrubber';
 import { Touchable } from './ui';
 
 interface Props {
@@ -254,7 +254,7 @@ export function AssetGrid({
   const [viewportHeight, setViewportHeight] = useState(0);
   const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
-  const [scrolling, markScrolling] = useScrolling();
+  const [away, markAway] = useScrolledAway();
 
   const seek = useCallback((offset: number) => {
     // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
@@ -269,7 +269,8 @@ export function AssetGrid({
     ref: list as never,
     onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
       useNativeDriver: false,
-      listener: markScrolling,
+      listener: (event: { nativeEvent: { contentOffset: { y: number } } }) =>
+        markAway(event.nativeEvent.contentOffset.y),
     }),
     scrollEventThrottle: 16,
     // The platform's own indicator would sit right beside the handle saying the
@@ -355,7 +356,7 @@ export function AssetGrid({
             // same label, and it reads as belonging to the photographs.
             style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}
           >
-            <DateLabel visible={scrolling}>{day}</DateLabel>
+            <DateLabel visible={away}>{day}</DateLabel>
           </View>
         )}
 
@@ -369,7 +370,7 @@ export function AssetGrid({
             viewportHeight={viewportHeight}
             topInset={topInset}
             label={seeking ? day : undefined}
-            visible={scrolling || seeking}
+            visible={away || seeking}
             onSeek={seek}
             onDrag={setSeeking}
           />

@@ -187,29 +187,32 @@ function Chevron({ up = false }: { up?: boolean }) {
   );
 }
 
+/** How far off the top counts as having scrolled. */
+const AWAY = 12;
+
 /**
- * Whether the list is moving, and the handler that says so.
+ * Whether the list has been scrolled off the top, and the handler that says so.
  *
- * There is no "stopped scrolling" event that covers every way a list can come
- * to rest — a fling that decays, a finger held still, a seek from the rail — so
- * this is a timer that every scroll event pushes back. Cheap, and it is the
- * only thing the label needs to know.
+ * Not "is it moving". Both the date and the handle used to come and go with the
+ * movement, which meant they blinked out every time a finger paused mid-flick —
+ * and the date is the answer to "where am I", which does not stop being worth
+ * knowing the moment the list is still. So they appear once the top of the list
+ * has been left behind and stay for as long as it has.
+ *
+ * At the very top there is nothing to say: the newest photographs are where the
+ * list opens, and neither a date nor a rail earns its place over them.
  */
-export function useScrolling(): [boolean, () => void] {
-  const [scrolling, setScrolling] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function useScrolledAway(): [boolean, (offset: number) => void] {
+  const [away, setAway] = useState(false);
 
-  const mark = useCallback(() => {
-    setScrolling(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setScrolling(false), 900);
+  const mark = useCallback((offset: number) => {
+    setAway((was) => {
+      const now = offset > AWAY;
+      return now === was ? was : now;
+    });
   }, []);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-
-  return [scrolling, mark];
+  return [away, mark];
 }
 
 /**

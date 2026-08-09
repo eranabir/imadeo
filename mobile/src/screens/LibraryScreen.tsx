@@ -27,7 +27,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayHeader, Empty } from '../components/AssetGrid';
-import { DateLabel, Scrubber, useScrolling } from '../components/Scrubber';
+import { DateLabel, Scrubber, useScrolledAway } from '../components/Scrubber';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
@@ -351,7 +351,7 @@ export function LibraryScreen({ serverUrl }: Props) {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [day, setDay] = useState<string | undefined>(undefined);
   const [seeking, setSeeking] = useState(false);
-  const [scrolling, markScrolling] = useScrolling();
+  const [away, markAway] = useScrolledAway();
 
   const onViewable = useRef(
     ({ viewableItems }: { viewableItems: { section?: { title?: string } }[] }) => {
@@ -419,7 +419,8 @@ export function LibraryScreen({ serverUrl }: Props) {
         ref={list}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
           useNativeDriver: false,
-          listener: markScrolling,
+          listener: (event: { nativeEvent: { contentOffset: { y: number } } }) =>
+        markAway(event.nativeEvent.contentOffset.y),
         })}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
@@ -528,7 +529,7 @@ export function LibraryScreen({ serverUrl }: Props) {
           pointerEvents="none"
           style={{ position: 'absolute', top: clearance + 6, left: 0, right: 0 }}
         >
-          <DateLabel visible={scrolling}>{day}</DateLabel>
+          <DateLabel visible={away}>{day}</DateLabel>
         </View>
       )}
 
@@ -538,7 +539,7 @@ export function LibraryScreen({ serverUrl }: Props) {
         viewportHeight={viewportHeight}
         topInset={clearance}
         label={seeking ? day : undefined}
-        visible={scrolling || seeking}
+        visible={away || seeking}
         onSeek={seek}
         onDrag={setSeeking}
       />
