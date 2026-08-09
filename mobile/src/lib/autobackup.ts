@@ -22,6 +22,11 @@ const EVERY_MINUTES = 15;
 /**
  * The background run.
  *
+ * One of two halves of the same setting: this is the one the system schedules,
+ * and `LibraryScreen` runs the other when the app comes to the front. Both go
+ * through `runBackup`, which refuses to start a second run while one is in
+ * flight, so an unlock that fires both loses nothing.
+ *
  * Defined at module scope, not inside a component: the OS starts the app in the
  * background with no UI mounted and looks the task up by name, so it has to
  * exist the moment the JS bundle is evaluated.
@@ -73,21 +78,33 @@ export async function isAvailable(): Promise<boolean> {
   return (await BackgroundTask.getStatusAsync()) === BackgroundTask.BackgroundTaskStatus.Available;
 }
 
+/**
+ * What was chosen, not what the system agreed to.
+ *
+ * This used to require the scheduled work to exist as well, which was right
+ * when the setting only governed background runs. It governs two things now —
+ * the schedule, and a run when the app comes to the front — and a phone with
+ * background activity switched off can still do the second. Reading the
+ * registration here meant that phone silently got neither.
+ *
+ * `restore` reconciles the schedule against this on every launch, and Settings
+ * reports the system's refusal separately.
+ */
 export async function isEnabled(): Promise<boolean> {
-  // The stored preference and the actual registration can disagree — a restore
-  // to a new phone carries the setting but not the scheduled work — so both
-  // have to agree before this claims to be on.
-  const [wanted, registered] = await Promise.all([
-    getItem(ENABLED),
-    TaskManager.isTaskRegisteredAsync(TASK),
-  ]);
-  return wanted === 'yes' && registered;
+  return (await getItem(ENABLED)) === 'yes';
 }
 
 export async function setEnabled(on: boolean): Promise<void> {
   if (on) {
-    await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: EVERY_MINUTES });
+    // Stored first, and whatever the system says. The choice is the user's; the
+    // schedule is the platform's to refuse, and refusing it must not also throw
+    // away the half that does not need it.
     await setItem(ENABLED, 'yes');
+    try {
+      await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: EVERY_MINUTES });
+    } catch {
+      // Reported by the Settings row, which asks `isAvailable` separately.
+    }
     return;
   }
 

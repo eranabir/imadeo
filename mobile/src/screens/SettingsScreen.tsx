@@ -147,14 +147,14 @@ export function SettingsScreen({ serverUrl, onChangeServer }: Props) {
         <Group title="Backup">
           <SwitchRow
             icon="backup"
-            label="Back up in the background"
+            label="Back up automatically"
             hint={
               auto.available === false
-                ? 'Your phone has background activity switched off for Imadeo.'
-                : 'Keep sending while Imadeo is closed'
+                ? 'Runs when you open Imadeo. Your phone has background activity switched off, so it cannot also run on its own.'
+                : 'When you open Imadeo, and in the background'
             }
             on={auto.on}
-            disabled={auto.available === false || auto.busy}
+            disabled={auto.busy}
             onChange={auto.toggle}
           />
 

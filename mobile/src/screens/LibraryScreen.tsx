@@ -34,7 +34,8 @@ import { Icon } from '../components/Icon';
 import { DeviceActions } from '../components/PhotoActions';
 import { ConfirmSheet } from '../components/sheets';
 import { Button, Touchable } from '../components/ui';
-import { pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
+import { isEnabled } from '../lib/autobackup';
+import { backupInFlight, pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
@@ -181,6 +182,51 @@ export function LibraryScreen({ serverUrl }: Props) {
       setRunning(false);
     }
   };
+
+  /*
+   * Kept in refs because the listener below is registered once and would
+   * otherwise be holding the first render's `backUp` and the first render's
+   * idea of whether anything was running.
+   */
+  const backUpRef = useRef(backUp);
+  backUpRef.current = backUp;
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  /**
+   * A run when the app arrives at the front, if automatic backup is on.
+   *
+   * Neither platform will wake an app because a photo was taken, so the moment
+   * someone opens Imadeo is the best chance the phone has had in hours to catch
+   * up — and it is also the moment they are most likely to be wondering whether
+   * it did. The background task keeps its own schedule; this is the other half
+   * of the same setting.
+   *
+   * Not while one is already going: `backUp` reads a second press as a stop, so
+   * calling it on resume mid-run would cancel the very thing it is there to
+   * finish.
+   */
+  useEffect(() => {
+    if (!allowed) return;
+
+    let alive = true;
+    const catchUp = async () => {
+      if (!alive || runningRef.current || backupInFlight()) return;
+      if (!(await isEnabled())) return;
+      if (!alive || runningRef.current || backupInFlight()) return;
+      void backUpRef.current();
+    };
+
+    void catchUp();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void catchUp();
+    });
+
+    return () => {
+      alive = false;
+      subscription.remove();
+    };
+  }, [allowed]);
 
   const toggle = (id: string) =>
     setPicked((current) =>
