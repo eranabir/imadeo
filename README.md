@@ -13,7 +13,7 @@ Your originals stay on storage you choose.
 - A timeline with albums, folders, places, people and favourites.
 - Visual search, face grouping, duplicate detection and EXIF-aware dates.
 - Private album and link sharing without handing over the whole library.
-- One server container for the browser app and API.
+- Separate web and API containers, with one public port for both.
 
 ## Install
 
@@ -46,7 +46,7 @@ Then start Imadeo:
 docker compose up -d --build
 ```
 
-Open `http://your-server:3001` and create the first account. It becomes the
+Open `http://your-server:6666` and create the first account. It becomes the
 administrator. The server applies database migrations automatically on startup.
 
 ```bash
@@ -89,9 +89,8 @@ git pull
 docker compose up -d --build
 ```
 
-Imadeo releases server and machine-learning images from version tags. The web
-app ships inside the server image, so there is only one application service to
-update.
+Imadeo releases the web, server, and machine-learning images from version
+tags. Docker Compose updates the whole stack together.
 
 ## Project
 

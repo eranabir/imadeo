@@ -12,6 +12,7 @@
     "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
     "dev:server": "yarn workspace @imadeo/server dev",
     "dev:app": "yarn workspace @imadeo/app dev",
+    "docs": "npx serve docs",
     "build": "yarn workspace @imadeo/server build && yarn workspace @imadeo/app build",
     "start": "yarn workspace @imadeo/server start",
     "infra:up": "docker compose up -d database redis",

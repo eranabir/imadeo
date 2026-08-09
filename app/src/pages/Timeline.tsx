@@ -138,7 +138,11 @@ export function Timeline() {
           const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
 
           return (
-          <section key={day || 'all'} data-section={day || 'all'} className="mb-4 group/day">
+          <section
+            key={day || 'all'}
+            data-section={day || 'all'}
+            className="mb-4 group/day last:min-h-[calc(100vh-8rem)]"
+          >
             {/* Sticks below the page header rather than under it. The offset was
                 53px, less than the header's real height, so a date slid up
                 against the bottom edge with nothing between them. The negative

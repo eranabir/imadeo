@@ -25,7 +25,7 @@ export const configuration = () => {
   return {
     env: process.env.NODE_ENV ?? 'development',
     port: int(process.env.SERVER_PORT, 3001),
-    publicUrl: (process.env.PUBLIC_URL ?? 'http://localhost:2283').replace(/\/$/, ''),
+    publicUrl: (process.env.PUBLIC_URL ?? 'http://localhost:6666').replace(/\/$/, ''),
     logLevel: process.env.LOG_LEVEL ?? 'log',
 
     database: {

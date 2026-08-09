@@ -45,6 +45,8 @@
   /* A third state for "works, but you should know something" — neither the
      all-clear of success nor the stop of danger. */
   --color-warning: oklch(62% 0.15 68);
+  /* Sidebar destinations keep their identity even when selected. */
+  --color-nav-photos: oklch(71.5% 0.143 215.221);
 
   --radius-control: 0.625rem;
   --radius-panel: 1rem;
@@ -58,25 +60,27 @@
 
 :root.dark {
   color-scheme: dark;
-  --color-surface: oklch(17% 0.014 235);
-  --color-surface-raised: oklch(21.5% 0.016 235);
-  --color-surface-sunken: oklch(13% 0.013 235);
-  --color-surface-overlay: oklch(24.5% 0.018 235);
-  --color-border-subtle: oklch(29% 0.018 235);
+  /* Matches the app preview in docs/: a calm blue-black canvas with a slightly
+     deeper page behind it, rather than pure near-black chrome. */
+  --color-surface: oklch(22.8% 0.019 235);
+  --color-surface-raised: oklch(27% 0.02 235);
+  --color-surface-sunken: oklch(18.6% 0.013 233);
+  --color-surface-overlay: oklch(30% 0.021 235);
+  --color-border-subtle: oklch(31.2% 0.026 235);
   --color-border-strong: oklch(39% 0.022 230);
   --color-content: oklch(95% 0.006 225);
   --color-content-muted: oklch(69% 0.018 225);
-  /* Sky: #38bdf8 primary, #7dd3fc secondary. On a dark surface the pair can sit
-     at their real lightness — it is only on white that they need darkening. */
-  --color-primary: oklch(79% 0.145 233);
+  /* The docs preview's sky pair: #3fc9ff and #7cdbff. */
+  --color-primary: oklch(78.6% 0.137 229);
   --color-primary-hover: oklch(85% 0.11 230);
   --color-primary-soft: oklch(79% 0.145 233 / 0.21);
-  --color-secondary: oklch(82.8% 0.101 230);
+  --color-secondary: oklch(84.6% 0.103 225);
   --color-primary-deep: oklch(50% 0.119 243);
   --color-danger: oklch(69% 0.17 22);
   --color-danger-soft: oklch(69% 0.17 22 / 0.16);
   --color-success: oklch(74% 0.13 160);
   --color-warning: oklch(80% 0.13 72);
+  --color-nav-photos: oklch(71.5% 0.143 215.221);
 
   --shadow-popover: 0 10px 38px -10px oklch(0% 0 0 / 0.6), 0 8px 12px -8px oklch(0% 0 0 / 0.5);
 }

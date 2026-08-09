@@ -184,11 +184,9 @@ export function UploadButton({
   return (
     <>
       <div className="relative" ref={menuRef}>
-        {/* The gradient lives on the wrapper, not on the two buttons. Given to
-            each half separately it restarts at the divider and the seam shows.
-            Matches the account avatar in TopBar. */}
+        {/* One flat sky-blue upload control, matching the docs app preview. */}
         <div
-          className={`flex items-center rounded-full bg-gradient-to-br from-secondary to-primary-deep ${
+          className={`flex items-center rounded-full bg-primary ${
             compact ? '' : 'w-full'
           }`}
         >

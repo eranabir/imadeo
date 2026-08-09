@@ -26,3 +26,4 @@ android/
 ios/
 *.keystore
 .turbo/
+tmp/

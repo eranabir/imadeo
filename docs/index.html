@@ -13,12 +13,13 @@
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="canonical" href="https://imadeo.app/" />
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2334d399'/%3E%3Cstop offset='.5' stop-color='%2314b8a6'/%3E%3Cstop offset='1' stop-color='%230e7490'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='19' fill='url(%23g)'/%3E%3Crect x='12' y='14' width='26' height='24' rx='5' fill='%23fbbf24'/%3E%3Ccircle cx='19' cy='21' r='2.6' fill='white'/%3E%3Cpath d='M12 34l6-6 4 4 4-4 12 10H12z' fill='%23f97316'/%3E%3Crect x='26' y='27' width='26' height='24' rx='5' fill='%2338bdf8' stroke='%2314b8a6' stroke-width='3'/%3E%3Cpath d='M35 33.5l9 5.5-9 5.5z' fill='white'/%3E%3C/svg%3E" />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
 
 <style>
   :root {
     --primary: #0284c7;
     --secondary: #0ea5e9;
+    --primary-deep: #0369a1;
     --bg: #ffffff;
     --surface: #f6f8f9;
     --border: #e2e8ea;
@@ -31,6 +32,7 @@
     :root {
       --primary: #3fc9ff;
       --secondary: #7cdbff;
+      --primary-deep: #0369a1;
       --bg: #0d1418;
       --surface: #141e24;
       --border: #24333c;
@@ -157,72 +159,80 @@
   /* Runs past the container's right edge so the window reads as a real app
      continuing off-screen rather than a framed screenshot on a slide. */
   .shot {
-    border: 1px solid var(--border);
+    /* Scale the complete app window, so its proportions stay identical to the
+       full-size preview instead of reflowing into a narrower layout. */
+    zoom: .86;
+    border: 0;
     border-radius: 16px;
     overflow: hidden;
     background: var(--surface);
-    box-shadow: 0 24px 60px -30px rgba(0,0,0,.45);
+    box-shadow: none;
   }
-  .shot .chrome {
+  .browser-chrome {
     display: flex; align-items: center; gap: 7px;
-    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    height: 42px; padding: 0 14px; border-bottom: 1px solid var(--border);
   }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
-
+  .browser-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+  .browser-url {
+    flex: 1; margin-left: 10px; padding: 5px 11px; border-radius: 999px;
+    background: var(--bg); color: var(--muted); font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
   /* top bar of the mock — brand, search, upload, avatar */
   .app-top {
-    display: flex; align-items: center; gap: 12px;
-    padding: 9px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; height: 64px;
+    padding: 0 16px; border-bottom: 1px solid var(--border);
   }
-  .app-brand { display: flex; align-items: center; gap: 8px; font-weight: 640; font-size: 13.5px; letter-spacing: -.015em; }
-  .app-brand .mark { width: 21px; height: 21px; border-radius: 6px; }
+  .app-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; letter-spacing: -.015em; }
+  .app-brand .mark { width: 34px; height: 34px; border-radius: 10px; }
   .app-brand .mark svg { width: 100%; height: 100%; }
 
   .search {
-    flex: 1; max-width: 300px; margin-inline: auto;
+    flex: 1; max-width: 672px; height: 44px; margin-inline: auto;
     display: flex; align-items: center; gap: 7px;
-    padding: 5px 11px; border-radius: 999px;
+    padding: 0 14px; border-radius: 999px;
     border: 1px solid var(--border); background: var(--bg);
-    font-size: 11.5px; color: var(--muted); min-width: 0;
+    font-size: 14px; color: var(--muted); min-width: 0;
   }
   .search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .search svg { width: 12px; height: 12px; flex: none; }
+  .search svg { width: 17px; height: 17px; flex: none; }
   /* The advanced-search trigger that sits at the far end of the field. */
   .search .adv { margin-left: auto; opacity: .85; }
   @media (max-width: 560px) { .search { display: none; } }
 
   .up {
-    display: inline-flex; align-items: center; gap: 6px; flex: none;
-    background: var(--primary); color: #fff;
-    padding: 5px 12px; border-radius: 999px;
-    font-size: 11.5px; font-weight: 570;
+    display: inline-flex; align-items: center; gap: 8px; flex: none; height: 40px;
+    background: var(--primary); color: #fff; padding: 0 12px 0 16px;
+    border-radius: 999px; font-size: 14px; font-weight: 500;
   }
-  .up svg { width: 12px; height: 12px; }
+  .up svg { width: 16px; height: 16px; }
+  .theme { width: 40px; height: 40px; display: grid; place-items: center; color: var(--muted); }
+  .theme svg { width: 18px; height: 18px; }
 
   .avatar {
-    width: 23px; height: 23px; border-radius: 50%; flex: none;
+    width: 40px; height: 40px; border-radius: 50%; flex: none;
     background: linear-gradient(135deg, var(--primary), var(--secondary));
-    color: #fff; font-size: 9.5px; font-weight: 640;
+    color: #fff; font-size: 13px; font-weight: 600;
     display: grid; place-items: center; letter-spacing: .02em;
   }
 
-  .shot-body { display: flex; min-height: 330px; text-align: left; }
+  .shot-body { display: flex; min-height: 510px; text-align: left; }
 
   /* No rule between the sidebar and the content — the app runs them into one
      surface, and a divider here made the mock read as two panes. */
   .side {
-    width: 178px; flex: none;
-    padding: 12px 10px; display: flex; flex-direction: column;
+    width: 240px; flex: none;
+    padding: 16px 12px; display: flex; flex-direction: column;
   }
-  @media (max-width: 640px) { .side { display: none; } }
+  @media (max-width: 767px) { .side { display: none; } }
 
   .side-item {
-    display: flex; align-items: center; gap: 9px;
-    padding: 6px 10px; border-radius: 9px;
-    font-size: 12.5px; color: var(--muted);
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 999px;
+    font-size: 14px; color: var(--muted);
   }
-  .side-item.on { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); font-weight: 570; }
-  .side-item svg { width: 14px; height: 14px; flex: none; color: var(--ic, currentColor); }
+  .side-item.on { background: color-mix(in srgb, var(--primary) 21%, transparent); color: var(--primary); font-weight: 600; }
+  .side-item svg { width: 18px; height: 18px; flex: none; color: var(--ic, currentColor); }
 
   /* The same per-destination tints the app uses, so the sidebar is
      recognisable at a glance rather than a column of grey glyphs. */
@@ -230,53 +240,58 @@
   .side-item:nth-child(2)  { --ic: #f59e0b; } /* Albums        — amber  */
   .side-item:nth-child(3)  { --ic: #8b5cf6; } /* Folders       — violet */
   .side-item:nth-child(4)  { --ic: #8b5cf6; } /* nested folder         */
-  .side-item:nth-child(5)  { --ic: #0ea5e9; } /* People & Pets — sky    */
-  .side-item:nth-child(6)  { --ic: #f43f5e; } /* Favorites     — rose   */
-  .side-item:nth-child(7)  { --ic: #818cf8; } /* Locked        — indigo */
-  .side-item:nth-child(8)  { --ic: #f97316; } /* Duplicates    — orange */
-  .side-item:nth-child(9)  { --ic: #94a3b8; } /* Trash         — slate  */
-  .side-item:nth-child(10) { --ic: #10b981; } /* Settings      — emerald*/
+  .side-item:nth-child(5)  { --ic: #7cdbff; } /* Places        — sky    */
+  .side-item:nth-child(6)  { --ic: #0ea5e9; } /* People & Pets — sky    */
+  .side-item:nth-child(7)  { --ic: #f43f5e; } /* Favorites     — rose   */
+  .side-item:nth-child(8)  { --ic: #818cf8; } /* Locked        — indigo */
+  .side-item:nth-child(9)  { --ic: #f97316; } /* Duplicates    — orange */
+  .side-item:nth-child(10) { --ic: #94a3b8; } /* Trash         — slate  */
+  .side-item:nth-child(11) { --ic: #10b981; } /* Settings      — emerald*/
   .side-item b { margin-left: auto; font-weight: 500; font-size: 11px; opacity: .8; font-variant-numeric: tabular-nums; }
-  .side-item.nest { padding-left: 22px; font-size: 12px; }
+  .side-item.nest { padding-left: 26px; font-size: 14px; }
 
   /* storage widget, pinned to the bottom of the sidebar like the app */
   .storage {
     margin-top: auto; border: 1px solid var(--border); border-radius: 10px;
-    padding: 9px 11px; font-size: 10.5px; color: var(--muted);
+    padding: 10px 12px; font-size: 11px; color: var(--muted);
   }
   .storage .row { display: flex; justify-content: space-between; font-weight: 570; color: var(--text); margin-bottom: 6px; }
   .storage .track { height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; margin-bottom: 6px; }
-  .storage .fill { height: 100%; width: 55%; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--secondary)); }
+  .storage .fill { height: 100%; width: 55%; border-radius: 999px; background: linear-gradient(90deg, var(--secondary), var(--primary-deep)); }
 
-  .canvas { flex: 1; padding: 0 0 16px; min-width: 0; }
+  .canvas { flex: 1; padding: 0 0 24px; min-width: 0; }
 
   .page-head {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 11px 16px; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+    padding: 12px 20px; border-bottom: 1px solid var(--border); margin-bottom: 16px;
   }
-  .page-head .t { font-size: 14px; font-weight: 650; letter-spacing: -.015em; }
-  .page-head .n { font-size: 11px; color: var(--muted); margin-left: 7px; font-weight: 400; }
+  .page-head .t { font-size: 18px; font-weight: 600; letter-spacing: -.015em; }
+  .page-head .n { font-size: 12px; color: var(--muted); margin-left: 9px; font-weight: 400; }
   .sort {
     display: inline-flex; align-items: center; gap: 6px;
     border: 1px solid var(--border); border-radius: 8px;
-    padding: 4px 9px; font-size: 11px; color: var(--muted); white-space: nowrap;
+    padding: 6px 10px; font-size: 12px; color: var(--muted); white-space: nowrap;
   }
   .sort b { color: var(--text); font-weight: 570; }
   @media (max-width: 560px) { .sort { display: none; } }
 
-  .canvas .tiles, .canvas .day { margin-inline: 16px; }
-  .day { font-size: 12.5px; font-weight: 640; margin: 0 16px 7px; }
+  .canvas .tiles, .canvas .day { margin-inline: 20px; }
+  .day { font-size: 15px; font-weight: 600; margin: 0 20px 5px; }
   .day:not(:first-of-type) { margin-top: 18px; }
 
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
-  .tile { aspect-ratio: 1; border-radius: 7px; background: var(--border); }
-  .tile:nth-child(3n)   { background: linear-gradient(140deg, #2f7d8c, #17323d); }
-  .tile:nth-child(3n+1) { background: linear-gradient(140deg, #3f5f7a, #1b2b38); }
-  .tile:nth-child(3n+2) { background: linear-gradient(140deg, #63788a, #202f3a); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 56px)); gap: 5px; }
+  .tile {
+    aspect-ratio: 1;
+    border-radius: 7px;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 
   /* No rule on the year rail either — like the sidebar, it sits on the same
      surface as the grid rather than in a pane of its own. */
-  .rail { width: 46px; flex: none; padding: 18px 0; font-size: 10px; color: var(--muted); }
+  .rail { width: 46px; flex: none; padding: 64px 0 18px; font-size: 10px; color: var(--muted); }
   .rail div { display: flex; align-items: center; justify-content: flex-end; gap: 5px; padding-right: 8px; margin-bottom: 30px; font-variant-numeric: tabular-nums; }
   .rail div::after { content: ""; width: 6px; height: 1px; background: var(--border); }
   .rail div.on { color: var(--primary); font-weight: 640; }
@@ -404,8 +419,10 @@
   </div>
 
   <div class="shot">
-    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-
+    <div class="browser-chrome">
+      <span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span>
+      <span class="browser-url">http://localhost:6666</span>
+    </div>
     <div class="app-top">
       <span class="app-brand">
         <span class="mark">
@@ -423,7 +440,9 @@
       <span class="up">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 17V5"/><path d="m6.5 10.5 5.5-5.5 5.5 5.5"/><path d="M4 19h16"/></svg>
         Upload
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 10 5 5 5-5"/></svg>
       </span>
+      <span class="theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
       <span class="avatar">EA</span>
     </div>
 
@@ -444,6 +463,10 @@
         <div class="side-item nest">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           Travel <b>17</b>
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          Places
         </div>
         <div class="side-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
@@ -485,15 +508,24 @@
 
         <p class="day">Aug 5, 2026</p>
         <div class="tiles">
-          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
-          <div class="tile"></div><div class="tile"></div>
+          <img class="tile" src="assets/demo-photos/01.webp" alt="Golden retriever running on a beach" />
+          <img class="tile" src="assets/demo-photos/02.webp" alt="Tabby cat on a windowsill" />
+          <img class="tile" src="assets/demo-photos/03.webp" alt="Friends at an outdoor café" />
+          <img class="tile" src="assets/demo-photos/04.webp" alt="Parent and child hiking in the mountains" />
+          <img class="tile" src="assets/demo-photos/05.webp" alt="Colorful street market" />
         </div>
         <p class="day">Nov 21, 2025</p>
         <div class="tiles">
-          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
-          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
-          <div class="tile"></div><div class="tile"></div><div class="tile"></div>
-          <div class="tile"></div>
+          <img class="tile" src="assets/demo-photos/06.webp" alt="Mountain lake" />
+          <img class="tile" src="assets/demo-photos/07.webp" alt="Wildflowers in a meadow" />
+          <img class="tile" src="assets/demo-photos/08.webp" alt="City skyline at blue hour" />
+          <img class="tile" src="assets/demo-photos/09.webp" alt="Cooking pasta" />
+          <img class="tile" src="assets/demo-photos/10.webp" alt="Sailboat on bright water" />
+          <img class="tile" src="assets/demo-photos/11.webp" alt="Snowy cabin" />
+          <img class="tile" src="assets/demo-photos/12.webp" alt="Cyclist on a country road" />
+          <img class="tile" src="assets/demo-photos/13.webp" alt="Dog and owner in autumn leaves" />
+          <img class="tile" src="assets/demo-photos/14.webp" alt="Family picnic in a park" />
+          <img class="tile" src="assets/demo-photos/15.webp" alt="Sunset over the sea" />
         </div>
       </div>
       <div class="rail">

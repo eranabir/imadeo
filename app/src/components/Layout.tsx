@@ -1,17 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
-  CopyCheck,
   FolderPlus,
-  FolderTree as FolderTreeIcon,
-  Heart,
-  Images,
-  LayoutGrid,
-  Lock,
   MapPin,
-  ScanFace,
-  Settings as SettingsIcon,
-  Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
@@ -23,21 +14,29 @@ import type { FolderNode, UserStatistics } from '../types';
 import { isDragging, readDrag } from '../lib/dnd';
 import { PromptDialog } from '../ui';
 import { FolderTree } from './FolderTree';
+import {
+  AlbumsIcon,
+  DuplicatesIcon,
+  FavoritesIcon,
+  FoldersIcon,
+  LockedIcon,
+  PeopleIcon,
+  PhotosIcon,
+  SettingsIcon,
+  TrashIcon,
+} from './NavigationIcons';
 import { TopBar } from './TopBar';
 import { useLibraryActions } from './useLibraryActions';
 
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
 export const NAV = [
-  // The primary token rather than a Tailwind cyan: this row's colour and the
-  // selected pill's label are the same colour, and a hand-picked cyan next to
-  // the primary is two cyans that nearly match, which looks like a mistake.
-  { to: '/', label: 'Photos', icon: Images, tint: 'text-primary', end: true },
-  { to: '/albums', label: 'Albums', icon: LayoutGrid, tint: 'text-amber-500', end: false },
+  { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
+  { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
   // Folders is an ordinary destination like the rest; the tree below it is
   // just a shortcut into that page, not a separate concept.
   // `end: false` so viewing any folder keeps this entry marked, the way an
   // album keeps Albums marked.
-  { to: '/folders', label: 'Folders', icon: FolderTreeIcon, tint: 'text-violet-500', end: false },
+  { to: '/folders', label: 'Folders', icon: FoldersIcon, tint: 'text-violet-500', end: false },
   // ScanFace rather than a group-of-people glyph: the section is about
   // recognition, and any icon showing people would quietly imply pets are a
   // lesser guest there.
@@ -46,11 +45,11 @@ export const NAV = [
   // exactly this — somewhere that needs to read as ours without being the
   // primary.
   { to: '/places', label: 'Places', icon: MapPin, tint: 'text-secondary', end: false },
-  { to: '/people', label: 'People & Pets', icon: ScanFace, tint: 'text-sky-500', end: false },
-  { to: '/favorites', label: 'Favorites', icon: Heart, tint: 'text-rose-500', end: false },
-  { to: '/locked', label: 'Locked', icon: Lock, tint: 'text-indigo-400', end: false },
-  { to: '/duplicates', label: 'Duplicates', icon: CopyCheck, tint: 'text-orange-500', end: false },
-  { to: '/trash', label: 'Trash', icon: Trash2, tint: 'text-slate-400', end: false },
+  { to: '/people', label: 'People & Pets', icon: PeopleIcon, tint: 'text-sky-500', end: false },
+  { to: '/favorites', label: 'Favorites', icon: FavoritesIcon, tint: 'text-rose-500', end: false },
+  { to: '/locked', label: 'Locked', icon: LockedIcon, tint: 'text-indigo-400', end: false },
+  { to: '/duplicates', label: 'Duplicates', icon: DuplicatesIcon, tint: 'text-orange-500', end: false },
+  { to: '/trash', label: 'Trash', icon: TrashIcon, tint: 'text-slate-400', end: false },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, tint: 'text-emerald-500', end: false },
 ] as const;
 
@@ -283,7 +282,7 @@ export function Layout() {
               however long the folder tree grows. */}
           <NavLink
             to="/settings?section=storage"
-            className="mt-3 block shrink-0 rounded-panel bg-surface-sunken px-4 py-3 transition hover:bg-border-subtle/60"
+            className="mt-3 block shrink-0 rounded-control border border-border-subtle bg-surface px-3 py-2.5 transition hover:bg-surface-raised"
           >
             <div className="mb-2 flex items-baseline justify-between gap-2">
               <span className="text-xs font-medium">Storage</span>
@@ -292,7 +291,7 @@ export function Layout() {
               </span>
             </div>
 
-            <div className="h-1.5 overflow-hidden rounded-full bg-border-subtle">
+            <div className="h-1 overflow-hidden rounded-full bg-border-subtle">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-secondary to-primary-deep transition-[width]"
                 style={{ width: `${percent ?? 6}%` }}

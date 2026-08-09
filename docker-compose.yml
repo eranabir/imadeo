@@ -53,8 +53,8 @@ services:
     volumes:
       - ${UPLOAD_LOCATION}:/data
       - /etc/localtime:/etc/localtime:ro
-    ports:
-      - ${IMADEO_SERVER_PORT}:3001
+    expose:
+      - "3001"
     depends_on:
       database:
         condition: service_healthy
@@ -66,6 +66,18 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  web:
+    container_name: imadeo_web
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    restart: unless-stopped
+    ports:
+      - ${IMADEO_PORT:-6666}:80
+    depends_on:
+      server:
+        condition: service_healthy
 
   machine-learning:
     container_name: imadeo_ml
@@ -93,10 +105,8 @@ services:
       retries: 5
       start_period: 180s
 
-  # There is no separate client container: the server image carries the built
-  # client and serves it itself, so ${IMADEO_SERVER_PORT} is the address users
-  # open. One container to start and one port to forward, which is what a NAS
-  # install needs.
+  # The web proxy is the only public service. It serves the built client and
+  # forwards /api to the private server container over Docker's network.
 
 volumes:
   model-cache:

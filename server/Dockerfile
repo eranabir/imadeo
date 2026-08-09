@@ -1,6 +1,6 @@
-# The application image: API, workers, and the built web client, in one
-# container. Built from the repository root, not from server/, because the Yarn
-# workspace root holds the lockfile that pins every package.
+# The API and worker image. The web client builds into its own Nginx container.
+# Built from the repository root, not from server/, because the Yarn workspace
+# root holds the lockfile that pins every package.
 #
 #   docker build -f server/Dockerfile .
 
@@ -20,6 +20,7 @@ COPY .yarn/releases .yarn/releases
 # Manifests only, so editing a source file does not invalidate the install layer.
 COPY server/package.json server/
 COPY app/package.json app/
+COPY mobile/package.json mobile/
 
 # Prisma's engines are built against glibc and need OpenSSL present even on
 # Alpine; without these the client fails at generate time, not at runtime,
@@ -47,24 +48,10 @@ WORKDIR /src/server
 
 # `build` runs `prisma generate` first, emitting the client into
 # src/generated/prisma before nest compiles against it.
-RUN yarn build
-
-# ------------------------------------------------------------------ web build
-
-FROM node:22-alpine AS client
-
-WORKDIR /src
-
-RUN corepack enable
-
-COPY --from=deps /src/node_modules node_modules
-COPY .yarnrc.yml package.json yarn.lock ./
-COPY .yarn/releases .yarn/releases
-COPY app app
-
-WORKDIR /src/app
-
-RUN yarn build
+# Prisma validates its connection string while generating the client, although
+# it never connects during this stage. Runtime configuration still comes from
+# the Compose environment.
+RUN DATABASE_URL=postgresql://imadeo:imadeo@postgres:5432/imadeo yarn build
 
 # -------------------------------------------------------------------- runtime
 
@@ -87,11 +74,6 @@ COPY --from=build /src/server/prisma ./prisma
 COPY --from=build /src/server/src/generated ./src/generated
 COPY --from=build /src/server/package.json ./package.json
 COPY package.json /src/package.json
-
-# The client is served by the app itself, from dist/../www — one container
-# rather than an app image plus a separate web server. main.ts mounts this
-# directory only when it exists, so a source checkout still uses Vite.
-COPY --from=client /src/app/dist ./www
 
 # The library lives here by default. It is a mount point, not storage baked
 # into the image: point MEDIA_LOCATION elsewhere and bind that path in, and
