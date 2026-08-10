@@ -7,25 +7,27 @@ export interface ServerInfo {
   version: string;
 }
 
+function isLocalAddress(value: string): boolean {
+  const host = value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  return (
+    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) ||
+    /^localhost(:\d+)?$/i.test(host) ||
+    /\.local(:\d+)?$/i.test(host)
+  );
+}
+
 /**
  * Fills in what someone typing an address on a phone will leave out.
  *
- * Self-hosters reach their server as `192.168.1.40:3001` or `photos.example.com`
- * far more often than as a full URL, and a bare host is not something `fetch`
- * will accept. Plain http is assumed for anything that looks like a LAN
- * address, because a home server rarely has a certificate.
+ * A bare host is not something `fetch` accepts, so default to HTTPS. Sensitive
+ * media must never be sent to a public server over plain HTTP. Development can
+ * still opt into a LAN address explicitly while using a debug build.
  */
 export function normalize(input: string): string {
   const trimmed = input.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-
-  const isLan =
-    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(trimmed) ||
-    /^localhost(:\d+)?$/i.test(trimmed) ||
-    /\.local(:\d+)?$/i.test(trimmed);
-
-  return `${isLan ? 'http' : 'https'}://${trimmed}`;
+  return `https://${trimmed}`;
 }
 
 /**
@@ -38,6 +40,9 @@ export function normalize(input: string): string {
 export async function probe(input: string): Promise<ServerInfo> {
   const url = normalize(input);
   if (!url) throw new Error('Enter your server address.');
+  if (!__DEV__ && url.startsWith('http://')) {
+    throw new Error('Imadeo requires an HTTPS server to protect your private media.');
+  }
 
   let response: Response;
   try {
@@ -46,7 +51,10 @@ export async function probe(input: string): Promise<ServerInfo> {
     response = await fetch(`${url}/api`, { signal: controller.signal });
     clearTimeout(timer);
   } catch {
-    throw new Error(`Could not reach ${url}. Check the address and that you are on the same network.`);
+    const help = isLocalAddress(url)
+      ? 'Check the address and that your phone is on the same network.'
+      : 'Check the public address and port forwarding.';
+    throw new Error(`Could not reach ${url}. ${help}`);
   }
 
   if (!response.ok) {

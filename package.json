@@ -9,7 +9,8 @@
     "mobile"
   ],
   "scripts": {
-    "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
+    "dev": "yarn dev:cert && yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
+    "dev:cert": "bash scripts/dev-cert.sh",
     "dev:server": "yarn workspace @imadeo/server dev",
     "dev:app": "yarn workspace @imadeo/app dev",
     "docs": "npx serve docs",

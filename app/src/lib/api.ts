@@ -3,56 +3,44 @@ import axios, { AxiosError, type AxiosInstance } from 'axios';
 export const api: AxiosInstance = axios.create({
   baseURL: '/api',
   withCredentials: true,
+  // The browser authenticates only with HttpOnly cookies. This marker lets
+  // the API avoid returning bearer tokens to JavaScript while mobile clients
+  // continue to receive the tokens they store in the device keychain.
+  headers: { 'X-Imadeo-Client': 'web' },
 });
 
 const ACCESS_KEY = 'imadeo.accessToken';
 const REFRESH_KEY = 'imadeo.refreshToken';
 
-export const tokens = {
-  get access() {
-    return localStorage.getItem(ACCESS_KEY);
-  },
-  get refresh() {
-    return localStorage.getItem(REFRESH_KEY);
-  },
-  set(access: string, refresh: string) {
-    localStorage.setItem(ACCESS_KEY, access);
-    localStorage.setItem(REFRESH_KEY, refresh);
-  },
-  clear() {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
-  },
+/** Removes tokens written by pre-cookie-only releases. Never store new ones. */
+export const clearLegacyTokens = () => {
+  localStorage.removeItem(ACCESS_KEY);
+  localStorage.removeItem(REFRESH_KEY);
 };
 
-api.interceptors.request.use((config) => {
-  const token = tokens.access;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
 // A single in-flight refresh, shared by every request that got a 401 at once.
-let refreshing: Promise<string> | null = null;
+let refreshing: Promise<void> | null = null;
 
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const request = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
 
-    if (error.response?.status !== 401 || !request || request._retried || !tokens.refresh) {
+    const isAuthRequest = request?.url?.startsWith('/auth/');
+    if (error.response?.status !== 401 || !request || request._retried || isAuthRequest) {
       throw error;
     }
 
     request._retried = true;
 
     refreshing ??= axios
-      .post('/api/auth/refresh', { refreshToken: tokens.refresh })
-      .then(({ data }) => {
-        tokens.set(data.accessToken, data.refreshToken);
-        return data.accessToken as string;
+      .post('/api/auth/refresh', undefined, {
+        withCredentials: true,
+        headers: { 'X-Imadeo-Client': 'web' },
       })
+      .then(() => undefined)
       .catch((refreshError) => {
-        tokens.clear();
+        clearLegacyTokens();
         window.location.href = '/login';
         throw refreshError;
       })
@@ -60,8 +48,7 @@ api.interceptors.response.use(
         refreshing = null;
       });
 
-    const fresh = await refreshing;
-    request.headers = { ...request.headers, Authorization: `Bearer ${fresh}` } as never;
+    await refreshing;
     return api.request(request);
   },
 );

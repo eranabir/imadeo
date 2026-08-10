@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "prisma generate && nest build",
-    "dev": "prisma generate && nest start --watch",
+    "dev": "bash ../../scripts/dev-cert.sh && prisma generate && nest start --watch",
     "start": "node dist/main",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",

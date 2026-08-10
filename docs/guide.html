@@ -136,6 +136,7 @@
   <aside class="toc">
     <p>Contents</p>
     <a href="#docker">Install with Docker</a>
+    <a href="#https">HTTPS</a>
     <a href="#truenas">TrueNAS SCALE</a>
     <a href="#library">Where the library lives</a>
     <a href="#first-run">First run</a>
@@ -173,8 +174,27 @@ curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.examp
 docker compose up -d</code></pre>
 
       <p>
-        The web container serves the interface and proxies API requests to the
-        private API container. Only port <code>6666</code> is public.
+        Caddy serves the interface and proxies API requests to the private API
+        container. It is the only public service and always uses HTTPS.
+      </p>
+
+      <h3 id="https">HTTPS</h3>
+      <p>
+        Caddy obtains and renews a Let's Encrypt certificate automatically.
+        Point a domain at this host, forward TCP ports <code>80</code> and
+        <code>443</code>, then add this to <code>.env</code>:
+      </p>
+
+<pre><code>IMADEO_DOMAIN=photos.example.com
+PUBLIC_URL=https://photos.example.com</code></pre>
+
+      <p>Start Imadeo with:</p>
+
+<pre><code>docker compose up -d --build</code></pre>
+
+      <p>
+        Connect the mobile app to <code>https://photos.example.com</code>.
+        Plain HTTP is intentionally not supported for private media.
       </p>
 
       <div class="note warn">

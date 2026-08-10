@@ -417,19 +417,24 @@ export class OAuthService {
       );
     }
 
-    const isFirstUser = (await this.prisma.user.count()) === 0;
+    return this.prisma.$transaction(async (tx) => {
+      // See password registration: exactly one concurrent request may claim
+      // the initial administrator role.
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
+      const isFirstUser = (await tx.user.count()) === 0;
 
-    return this.prisma.user.create({
-      data: {
-        email: profile.email,
-        name: profile.name,
-        oauthProvider: provider,
-        oauthId: profile.subject,
-        // The very first person to sign in owns the server.
-        isAdmin: isFirstUser,
-        shouldChangePassword: false,
-        storageLabel: this.storageLabelFor(profile.email),
-      },
+      return tx.user.create({
+        data: {
+          email: profile.email,
+          name: profile.name,
+          oauthProvider: provider,
+          oauthId: profile.subject,
+          // The very first person to sign in owns the server.
+          isAdmin: isFirstUser,
+          shouldChangePassword: false,
+          storageLabel: this.storageLabelFor(profile.email),
+        },
+      });
     });
   }
 

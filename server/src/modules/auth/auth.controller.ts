@@ -13,6 +13,7 @@ import {
   Res,
   ServiceUnavailableException,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,7 +22,7 @@ import { UAParser } from 'ua-parser-js';
 import { AUTH_COOKIE, type AuthDto } from '../../common/auth.types';
 import { Auth, Authed, AuthedUserId } from '../../common/decorators';
 import type { AppConfig } from '../../config/configuration';
-import { AuthService } from './auth.service';
+import { AuthService, type LoginResult } from './auth.service';
 import {
   AcceptInviteDto,
   ChangePasswordDto,
@@ -39,9 +40,11 @@ import { OAuthSettingsService } from './oauth-settings.service';
 import { InvitationService } from './invitation.service';
 import { OAuthService, type OAuthProvider } from './oauth.service';
 import { VaultService } from './vault.service';
+import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
+@UseGuards(AuthRateLimitGuard)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -52,9 +55,13 @@ export class AuthController {
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
-  private setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-    const secure = this.config.get('publicUrl', { infer: true }).startsWith('https');
-    const base = { httpOnly: true, sameSite: 'lax', secure, path: '/' } as const;
+  private setAuthCookies(req: Request, res: Response, accessToken: string, refreshToken: string) {
+    const secure =
+      this.config.get('env', { infer: true }) === 'production' ||
+      this.config.get('publicUrl', { infer: true }).startsWith('https') ||
+      req.secure ||
+      req.header('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
+    const base = { httpOnly: true, sameSite: 'strict', secure, path: '/' } as const;
 
     // The access cookie is what authenticates <img> and <video> requests, so in
     // development it has to last as long as the non-expiring token does —
@@ -63,7 +70,38 @@ export class AuthController {
     const accessMaxAge = persistent ? 400 * 86_400_000 : 30 * 60 * 1000;
 
     res.cookie(AUTH_COOKIE.ACCESS, accessToken, { ...base, maxAge: accessMaxAge });
-    res.cookie(AUTH_COOKIE.REFRESH, refreshToken, { ...base, maxAge: 400 * 86_400_000 });
+    res.cookie(AUTH_COOKIE.REFRESH, refreshToken, {
+      ...base,
+      maxAge: persistent ? 400 * 86_400_000 : this.ttlMilliseconds('auth.refreshTtl', 60 * 86_400_000),
+    });
+  }
+
+  private ttlMilliseconds(path: 'auth.refreshTtl', fallback: number) {
+    const match = /^(\d+)(s|m|h|d)$/.exec(this.config.get(path, { infer: true }));
+    if (!match) return fallback;
+    const multiplier = ({ s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as Record<string, number>)[
+      match[2]
+    ];
+    return Number(match[1]) * multiplier;
+  }
+
+  /** Browser credentials stay in HttpOnly cookies; native clients receive tokens for SecureStore. */
+  private isBrowserRequest(req: Request) {
+    // Fetch Metadata and the browser's User-Agent cannot be forged by page
+    // JavaScript. The marker keeps older browsers on the cookie-only path.
+    return (
+      Boolean(req.header('sec-fetch-mode')) ||
+      req.header('user-agent')?.includes('Mozilla/') === true ||
+      req.header('x-imadeo-client') === 'web'
+    );
+  }
+
+  private sessionResponse(req: Request, session: LoginResult) {
+    return this.isBrowserRequest(req) ? { user: session.user } : session;
+  }
+
+  private internalReturnTo(value: string | undefined, fallback: string) {
+    return value && /^\/(?!\/)/.test(value) && !value.includes('\\') ? value : fallback;
   }
 
   private deviceInfo(req: Request) {
@@ -71,7 +109,7 @@ export class AuthController {
     return {
       type: ua.getDevice().type ?? ua.getBrowser().name ?? 'unknown',
       os: ua.getOS().name ?? 'unknown',
-      ip: (req.header('x-forwarded-for') ?? req.ip ?? '').split(',')[0].trim(),
+      ip: req.ip ?? '',
     };
   }
 
@@ -81,8 +119,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange email and password for a session' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(dto.email, dto.password, this.deviceInfo(req));
-    this.setAuthCookies(res, result.accessToken, result.refreshToken);
-    return result;
+    this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    return this.sessionResponse(req, result);
   }
 
   @Auth({ public: true })
@@ -112,8 +150,8 @@ export class AuthController {
     // Sign them straight in — asking someone to retype what they just entered
     // is pure friction.
     const session = await this.authService.loginWithUserId(user.id, this.deviceInfo(req));
-    this.setAuthCookies(res, session.accessToken, session.refreshToken);
-    return session;
+    this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    return this.sessionResponse(req, session);
   }
 
   // -- invitations ----------------------------------------------------------
@@ -145,8 +183,8 @@ export class AuthController {
     });
 
     const session = await this.authService.loginWithUserId(user.id, this.deviceInfo(req));
-    this.setAuthCookies(res, session.accessToken, session.refreshToken);
-    return session;
+    this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    return this.sessionResponse(req, session);
   }
 
   @Auth({ admin: true })
@@ -194,8 +232,8 @@ export class AuthController {
     if (!token) throw new UnauthorizedException('No refresh token supplied');
 
     const result = await this.authService.refresh(token);
-    this.setAuthCookies(res, result.accessToken, result.refreshToken);
-    return result;
+    this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    return this.isBrowserRequest(req) ? { successful: true } : result;
   }
 
   @Auth()
@@ -249,7 +287,7 @@ export class AuthController {
     @Res() res: Response,
   ) {
     this.assertProvider(provider);
-    const { url } = this.oauthService.buildAuthorizeUrl(provider, returnTo ?? '/');
+    const { url } = this.oauthService.buildAuthorizeUrl(provider, this.internalReturnTo(returnTo, '/'));
     return res.redirect(url);
   }
 
@@ -265,7 +303,7 @@ export class AuthController {
     this.assertProvider(provider);
     const { url } = this.oauthService.buildAuthorizeUrl(
       provider,
-      returnTo ?? '/settings?section=account',
+      this.internalReturnTo(returnTo, '/settings?section=account'),
       userId,
     );
     return res.redirect(url);
@@ -350,13 +388,9 @@ export class AuthController {
       }
 
       const session = await this.authService.loginWithUserId(user.id, this.deviceInfo(req));
-      this.setAuthCookies(res, session.accessToken, session.refreshToken);
+      this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
 
-      const fragment = new URLSearchParams({
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-        returnTo,
-      });
+      const fragment = new URLSearchParams({ returnTo: this.internalReturnTo(returnTo, '/') });
       return res.redirect(`${appUrl}/auth/callback#${fragment}`);
     } catch (error) {
       const message =

@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { AppleMark, GoogleMark } from '../components/ProviderMarks';
-import { api, errorMessage, tokens } from '../lib/api';
+import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { useTheme } from '../store/theme';
 import { Button, IconButton, Input } from '../ui';
@@ -129,12 +129,9 @@ export function Register() {
     try {
       // An invited person completes their own details; everyone else is
       // creating the very first account on the server.
-      const { data } = inviteToken
+      await (inviteToken
         ? await api.post(`/auth/invitations/${inviteToken}/accept`, { name, password })
-        : await api.post('/auth/sign-up', { name, email, password });
-
-      // The server signs the new account in, so go straight to the library.
-      tokens.set(data.accessToken, data.refreshToken);
+        : await api.post('/auth/sign-up', { name, email, password }));
 
       // Set the private password now that there is a session to set it against. A
       // failure here must not lose the account that was just created, so it is

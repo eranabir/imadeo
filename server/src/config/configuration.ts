@@ -49,7 +49,9 @@ export const configuration = () => {
       vaultUnlockMinutes: int(process.env.VAULT_UNLOCK_MINUTES, 15),
       /// Create an account the first time an unknown identity signs in. When
       /// false only people who already have an account can use OAuth.
-      oauthAutoRegister: bool(process.env.OAUTH_AUTO_REGISTER, true),
+      // A configured identity provider proves an email address, not that the
+      // person has been invited to this private server.
+      oauthAutoRegister: bool(process.env.OAUTH_AUTO_REGISTER, false),
 
       /// Development convenience: issue access tokens with no `exp` claim and
       /// sessions that do not lapse, so a long day of work is never interrupted

@@ -1,0 +1,8 @@
+# Caddy obtains and renews the Let's Encrypt certificate, redirects HTTP to
+# HTTPS, and forwards both the web app and API to the private web service.
+{$IMADEO_DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+	reverse_proxy web:80
+}

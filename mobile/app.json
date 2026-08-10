@@ -2,6 +2,7 @@
   "expo": {
     "name": "Imadeo",
     "slug": "imadeo",
+    "scheme": "imadeo",
     "owner": "eranabir",
     "version": "1.0.0",
     "extra": {

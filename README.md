@@ -7,6 +7,13 @@ place to browse the timeline, organise albums and folders, share selected
 moments, search by what is in a photograph, and find people and duplicates.
 Your originals stay on storage you choose.
 
+## Development
+
+`yarn dev` generates a local certificate and serves the full stack at
+`https://localhost:5173`; the development API is also HTTPS on port `3001`.
+For a phone, install and fully trust `.dev/certs/localhost.pem`, then use the
+shown LAN address such as `https://192.168.0.130:5173`.
+
 ## Built for your library
 
 - Automatic photo and video backup from iOS and Android.
@@ -46,8 +53,8 @@ Then start Imadeo:
 docker compose up -d --build
 ```
 
-Open `http://your-server:6666` and create the first account. It becomes the
-administrator. The server applies database migrations automatically on startup.
+Set `IMADEO_DOMAIN` and `PUBLIC_URL` in `.env`, then open your HTTPS address
+and create the first account. It becomes the administrator.
 
 ```bash
 docker compose logs -f
@@ -60,8 +67,26 @@ Install Imadeo on your phone, enter your server’s address, and sign in with th
 account you created. The app can back up your camera roll and show which items
 are safely stored on the server.
 
-Your phone must be able to reach the address you enter. For access away from
-home, put Imadeo behind HTTPS with a reverse proxy and use a domain name.
+Your phone must be able to reach the HTTPS address you enter. Do not expose the
+service directly over HTTP: it would reveal account credentials and private media.
+
+## HTTPS
+
+The included Caddy proxy obtains and renews a Let's Encrypt certificate. Set an
+A/AAAA record for your domain and forward TCP ports 80 and 443 to the host.
+
+```dotenv
+IMADEO_DOMAIN=photos.example.com
+PUBLIC_URL=https://photos.example.com
+```
+
+Start Imadeo:
+
+```bash
+docker compose up -d --build
+```
+
+Connect the mobile app to `https://photos.example.com`.
 
 ## Configuration
 

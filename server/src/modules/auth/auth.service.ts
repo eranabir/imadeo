@@ -89,24 +89,34 @@ export class AuthService {
 
   async register(email: string, password: string, name: string) {
     const normalised = email.toLowerCase().trim();
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const existing = await this.prisma.user.findUnique({ where: { email: normalised } });
-    if (existing) {
-      throw new BadRequestException('An account with that email already exists');
-    }
+    return this.prisma.$transaction(async (tx) => {
+      // Only one request may decide who owns a newly installed server. A plain
+      // count followed by create allows two simultaneous first sign-ups to both
+      // become administrators.
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
 
-    // Whoever sets the server up owns it.
-    const isFirstUser = (await this.prisma.user.count()) === 0;
+      const existing = await tx.user.findUnique({ where: { email: normalised } });
+      if (existing) {
+        throw new BadRequestException('An account with that email already exists');
+      }
 
-    return this.prisma.user.create({
-      data: {
-        email: normalised,
-        name: name.trim() || normalised.split('@')[0],
-        password: await bcrypt.hash(password, SALT_ROUNDS),
-        isAdmin: isFirstUser,
-        shouldChangePassword: false,
-        storageLabel: this.storageLabelFor(normalised),
-      },
+      const isFirstUser = (await tx.user.count()) === 0;
+      if (!isFirstUser && !this.config.get('auth.publicRegistration', { infer: true })) {
+        throw new BadRequestException('This server is invitation only. Ask an administrator to invite you.');
+      }
+
+      return tx.user.create({
+        data: {
+          email: normalised,
+          name: name.trim() || normalised.split('@')[0],
+          password: passwordHash,
+          isAdmin: isFirstUser,
+          shouldChangePassword: false,
+          storageLabel: this.storageLabelFor(normalised),
+        },
+      });
     });
   }
 

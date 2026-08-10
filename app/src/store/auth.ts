@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, tokens } from '../lib/api';
+import { api, clearLegacyTokens } from '../lib/api';
 
 export interface CurrentUser {
   id: string;
@@ -42,28 +42,23 @@ export const useAuth = create<AuthState>((set) => ({
   status: 'unknown',
 
   async login(email, password) {
-    const { data } = await api.post('/auth/login', { email, password });
-    tokens.set(data.accessToken, data.refreshToken);
+    await api.post('/auth/login', { email, password });
     const { data: user } = await api.get<CurrentUser>('/users/me');
     set({ user, status: 'authenticated' });
   },
 
   async logout() {
     await api.post('/auth/logout').catch(() => undefined);
-    tokens.clear();
+    clearLegacyTokens();
     set({ user: null, status: 'anonymous' });
   },
 
   async restore() {
-    if (!tokens.access && !tokens.refresh) {
-      set({ status: 'anonymous' });
-      return;
-    }
     try {
       const { data } = await api.get<CurrentUser>('/users/me');
       set({ user: data, status: 'authenticated' });
     } catch {
-      tokens.clear();
+      clearLegacyTokens();
       set({ user: null, status: 'anonymous' });
     }
   },
