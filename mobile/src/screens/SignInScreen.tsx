@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -9,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { login, type Session } from '../lib/auth';
+import { login, registrationStatus, type Session } from '../lib/auth';
 import { LogoLockup } from '../components/Logo';
 import { colors } from '../theme';
 
@@ -24,6 +25,19 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsAdminSetup, setNeedsAdminSetup] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setNeedsAdminSetup(false);
+    void registrationStatus(serverUrl)
+      .then((status) => {
+        if (active) setNeedsAdminSetup(status.isFirstUser);
+      })
+      // A server version without this endpoint should still allow a normal sign-in.
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [serverUrl]);
 
   const submit = async () => {
     setBusy(true);
@@ -72,6 +86,33 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
             <Text style={{ color: colors.primary }}>  Change</Text>
           </Text>
         </Pressable>
+
+        {needsAdminSetup ? (
+          <View
+            style={{
+              backgroundColor: colors.raised,
+              borderColor: colors.border,
+              borderRadius: 12,
+              borderWidth: 1,
+              marginBottom: 24,
+              padding: 16,
+            }}
+          >
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
+              Set up the first administrator
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6 }}>
+              No accounts exist on this server. Create its first administrator in the web app, then sign in here.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void Linking.openURL(serverUrl)}
+              style={({ pressed }) => ({ alignSelf: 'flex-start', marginTop: 14, opacity: pressed ? 0.75 : 1 })}
+            >
+              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>Open web setup</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '600', marginBottom: 8 }}>EMAIL</Text>
         <TextInput

@@ -12,7 +12,7 @@ export { Chip } from './Chip';
 export { ConfirmDialog, Dialog } from './Dialog';
 export { EmptyState } from './EmptyState';
 export { Input } from './Input';
-export { GridSkeleton, Loading } from './Loading';
+export { GridSkeleton, Loading, Opening } from './Loading';
 export { Menu, type MenuItem } from './Menu';
 export { Popover, anchorFromElement, anchorFromPoint, type Anchor } from './Popover';
 export { Progress } from './Progress';

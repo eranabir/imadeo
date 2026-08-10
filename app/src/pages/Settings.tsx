@@ -1423,25 +1423,25 @@ function Security() {
 
   const setUpPin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin', { pin })).data,
-    onSuccess: after('Private password set. Locked items now need it.'),
+    onSuccess: after('Password for locked folders set.'),
     onError,
   });
 
   const changePin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin/change', { pin, newPin })).data,
-    onSuccess: after('Private password changed. Every device must unlock again.'),
+    onSuccess: after('Password for locked folders changed. Every device must unlock again.'),
     onError,
   });
 
   const unlock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/unlock', { pin })).data,
-    onSuccess: after('Private items unlocked.'),
+    onSuccess: after('Locked folders unlocked.'),
     onError,
   });
 
   const lock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/lock')).data,
-    onSuccess: after('Private items locked.'),
+    onSuccess: after('Locked folders locked.'),
     onError,
   });
 
@@ -1455,13 +1455,13 @@ function Security() {
   return (
     <>
       <Card
-        title="Private password"
+        title="Locked folders"
         description="Folders and albums you lock are hidden until this password is entered. It is separate from your account password."
       >
         {!vault?.isConfigured ? (
           <div className="space-y-3">
             <Input
-              label="Choose a private password"
+              label="Password for locked folders"
               type="password"
               autoComplete="new-password"
               value={pin}
@@ -1479,7 +1479,7 @@ function Security() {
                 disabled={pin.length < 8 || busy}
                 onClick={() => setUpPin.mutate()}
               >
-                Set private password
+                Set password
               </Button>
             </div>
           </div>
@@ -1505,9 +1505,8 @@ function Security() {
             </Row>
 
             <Input
-              label="Current private password"
+              label="Current locked-folders password"
               type="password"
-              inputMode="numeric"
               autoComplete="current-password"
               value={pin}
               onChange={(e) => {
@@ -1516,9 +1515,8 @@ function Security() {
               }}
             />
             <Input
-              label="New private password"
+              label="New locked-folders password"
               type="password"
-              inputMode="numeric"
               autoComplete="new-password"
               value={newPin}
               onChange={(e) => {
@@ -1710,7 +1708,7 @@ function StorageLocationCard() {
               label={
                 { originals: 'Originals', incoming: 'Incoming uploads', thumbnails: 'Thumbnails',
                   encodedVideo: 'Encoded video', profile: 'Profile images', backups: 'Backups',
-                  vault: 'Private items' }[key] ?? key
+                  vault: 'Locked folders' }[key] ?? key
               }
               path={path}
             />
@@ -1880,7 +1878,7 @@ function About() {
         ['Machine learning', data.features.machineLearning],
         ['Duplicate detection', data.features.duplicateDetection],
         ['Trash', data.features.trash],
-        ['Private lock', data.features.vault],
+        ['Locked folders', data.features.vault],
         ['Public registration', data.features.publicRegistration],
       ]
     : [];

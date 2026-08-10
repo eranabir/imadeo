@@ -43,8 +43,8 @@ export function FavoritesIcon(props: NavigationIconProps) {
   return <Glyph {...props}><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6c0 4.8-7 9.4-7 9.4z" /></Glyph>;
 }
 
-export function LockedIcon(props: NavigationIconProps) {
-  return <Glyph {...props}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></Glyph>;
+export function LockedIcon({ unlocked = false, ...props }: NavigationIconProps & { unlocked?: boolean }) {
+  return <Glyph {...props}><rect x="4" y="10" width="16" height="11" rx="2" />{unlocked ? <path d="M16 10V7a4 4 0 0 0-7.5-2" /> : <path d="M8 10V7a4 4 0 0 1 8 0v3" />}</Glyph>;
 }
 
 export function DuplicatesIcon(props: NavigationIconProps) {

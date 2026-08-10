@@ -37,8 +37,8 @@ log() {
 
 docker_up()   { docker info >/dev/null 2>&1; }
 container_up() { docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^$1$"; }
-api_up()      { curl -ksf -m 5 https://127.0.0.1:3001/api >/dev/null 2>&1; }
-web_up()      { curl -ksf -o /dev/null -m 5 https://localhost:5173/ 2>/dev/null; }
+api_up()      { curl -sf -m 5 http://127.0.0.1:3001/api >/dev/null 2>&1; }
+web_up()      { curl -sf -o /dev/null -m 5 http://localhost:5173/ 2>/dev/null; }
 
 start_dev() {
   # `yarn dev` owns both the API and the web server, so one relaunch covers both.

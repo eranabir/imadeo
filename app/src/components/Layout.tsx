@@ -14,6 +14,7 @@ import type { FolderNode, UserStatistics } from '../types';
 import { isDragging, readDrag } from '../lib/dnd';
 import { PromptDialog } from '../ui';
 import { FolderTree } from './FolderTree';
+import { useVaultStatus } from './VaultGate';
 import {
   AlbumsIcon,
   DuplicatesIcon,
@@ -58,6 +59,7 @@ export function Layout() {
   const params = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { data: vault } = useVaultStatus();
   const [error, setError] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
 
@@ -187,7 +189,15 @@ export function Layout() {
                           Albums went amber to blue on the way in, so the one
                           row you were looking at was the one that lost its
                           colour. The pill and the label carry the state. */}
-                      <Icon size={18} className={clsx('shrink-0 transition', tint)} />
+                      {to === '/locked' ? (
+                        <LockedIcon
+                          size={18}
+                          unlocked={vault?.isUnlocked}
+                          className={clsx('shrink-0 transition', tint)}
+                        />
+                      ) : (
+                        <Icon size={18} className={clsx('shrink-0 transition', tint)} />
+                      )}
                       <span className="flex-1">{label}</span>
 
                       {/* Creating a folder belongs on the Folders row rather

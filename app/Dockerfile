@@ -20,6 +20,7 @@ WORKDIR /src
 RUN corepack enable
 
 COPY --from=deps /src/node_modules node_modules
+COPY --from=deps /src/app/node_modules app/node_modules
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
 COPY app app

@@ -274,7 +274,7 @@ export class AssetService {
       if (asset.visibility === AssetVisibility.LOCKED) {
         const until = auth.session?.vaultUnlockedUntil;
         if (!until || until.getTime() < Date.now()) {
-          throw new ForbiddenException({ message: 'Vault is locked', code: 'VAULT_LOCKED' });
+          throw new ForbiddenException({ message: 'Locked folders are locked', code: 'VAULT_LOCKED' });
         }
       }
       return;

@@ -9,7 +9,7 @@ import type { Album, FolderNode } from '../types';
 import { Button, EmptyState } from '../ui';
 
 /**
- * The vault: everything filed as locked, behind a PIN.
+ * Everything filed as locked, behind a private password.
  *
  * Nothing here is fetched until the session is unlocked, so a locked library
  * stays invisible rather than merely hidden by the UI.
@@ -56,7 +56,7 @@ export function Locked() {
       <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <Lock size={16} className="text-content-muted" />
-          <h1 className="text-lg font-semibold tracking-tight">Locked</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Locked folders</h1>
           {unlocked && (
             <span className="text-xs text-content-muted">
               {lockedFolders.length} folders · {lockedAlbums.length} albums
@@ -80,11 +80,11 @@ export function Locked() {
       {!unlocked ? (
         <EmptyState
           icon={Lock}
-          title={vault?.isConfigured ? 'The vault is locked' : 'Set up your vault'}
+          title={vault?.isConfigured ? 'Locked folders are locked' : 'Set up locked folders'}
           description={
             vault?.isConfigured
               ? 'Enter your private password to see the folders and albums you have locked away. They stay out of the timeline, search results and share links.'
-              : 'Choose a PIN to start locking folders and albums. Locked items are hidden from the timeline, search and every share link.'
+              : 'Choose a private password to start locking folders and albums. Locked items are hidden from the timeline, search and every share link.'
           }
           action={
             <Button
@@ -92,7 +92,7 @@ export function Locked() {
               icon={vault?.isConfigured ? <LockOpen size={15} /> : <ShieldCheck size={15} />}
               onClick={() => setAskPin(true)}
             >
-              {vault?.isConfigured ? 'Unlock' : 'Set a PIN'}
+              {vault?.isConfigured ? 'Unlock' : 'Set a private password'}
             </Button>
           }
         />

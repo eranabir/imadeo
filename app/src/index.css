@@ -161,12 +161,45 @@ body {
   50% { transform: translateY(-14px) scale(1.03); }
 }
 
+/* The opening mark assembles from four corners, then keeps a restrained pulse
+   and turn while a slow server is still starting — the same motion as mobile. */
+@keyframes imadeo-opening-piece {
+  from { opacity: 0; transform: translate(var(--opening-x), var(--opening-y)); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
+
+@keyframes imadeo-opening-breathe {
+  0%, 100% { opacity: 0.86; transform: translateY(2px) scale(1); }
+  50% { opacity: 1; transform: translateY(-4px) scale(1.07); }
+}
+
+@keyframes imadeo-opening-turn {
+  0%, 16% { transform: rotate(0deg); }
+  65% { transform: rotate(360deg); }
+  66%, 100% { transform: rotate(0deg); }
+}
+
+.imadeo-opening-piece {
+  animation: imadeo-opening-piece 520ms cubic-bezier(0.16, 1, 0.3, 1) var(--opening-delay) both;
+}
+
+.imadeo-opening-breathe {
+  animation: imadeo-opening-breathe 1.9s ease-in-out 490ms infinite;
+}
+
+.imadeo-opening-turn {
+  animation: imadeo-opening-turn 2.62s cubic-bezier(0.65, 0, 0.35, 1) 420ms infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .pop-in,
   [style*='imadeo-drift'],
   [style*='imadeo-shimmer'],
-  [style*='imadeo-pulse'] {
+  [style*='imadeo-pulse'],
+  .imadeo-opening-piece,
+  .imadeo-opening-breathe,
+  .imadeo-opening-turn {
     animation: none !important;
   }
 }

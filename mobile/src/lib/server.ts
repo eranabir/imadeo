@@ -7,27 +7,48 @@ export interface ServerInfo {
   version: string;
 }
 
+function hostOf(value: string): string {
+  return value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
+}
+
 function isLocalAddress(value: string): boolean {
-  const host = value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  const host = hostOf(value);
   return (
-    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) ||
-    /^localhost(:\d+)?$/i.test(host) ||
-    /\.local(:\d+)?$/i.test(host)
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
+    /^localhost$/i.test(host) ||
+    /\.local$/i.test(host)
+  );
+}
+
+/** RFC 1918, loopback, and CGNAT addresses used by LANs and common VPNs. */
+function isPrivateNetworkAddress(value: string): boolean {
+  const parts = hostOf(value).split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return /^localhost$/i.test(hostOf(value)) || /\.local$/i.test(hostOf(value));
+  }
+
+  const [first, second] = parts;
+  return (
+    first === 10 ||
+    first === 127 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168) ||
+    (first === 100 && second >= 64 && second <= 127)
   );
 }
 
 /**
  * Fills in what someone typing an address on a phone will leave out.
  *
- * A bare host is not something `fetch` accepts, so default to HTTPS. Sensitive
- * media must never be sent to a public server over plain HTTP. Development can
- * still opt into a LAN address explicitly while using a debug build.
+ * A bare host is not something `fetch` accepts. Private LAN/VPN addresses use
+ * HTTP by default; public hosts use HTTPS so private media is never sent over
+ * an unencrypted internet connection.
  */
 export function normalize(input: string): string {
   const trimmed = input.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  return `${isPrivateNetworkAddress(trimmed) ? 'http' : 'https'}://${trimmed}`;
 }
 
 /**
@@ -40,8 +61,8 @@ export function normalize(input: string): string {
 export async function probe(input: string): Promise<ServerInfo> {
   const url = normalize(input);
   if (!url) throw new Error('Enter your server address.');
-  if (!__DEV__ && url.startsWith('http://')) {
-    throw new Error('Imadeo requires an HTTPS server to protect your private media.');
+  if (!__DEV__ && url.startsWith('http://') && !isPrivateNetworkAddress(url)) {
+    throw new Error('Use HTTPS for a public server. HTTP is only allowed on a private LAN or VPN.');
   }
 
   let response: Response;

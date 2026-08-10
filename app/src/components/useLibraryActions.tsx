@@ -192,7 +192,7 @@ export function useLibraryActions({
 
   /**
    * A locked vault answers with VAULT_LOCKED rather than a plain error, so ask
-   * for the PIN and replay the action instead of surfacing a dead end.
+   * for the private password and replay the action instead of surfacing a dead end.
    */
   function handleVaultError(error: unknown) {
     const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code;

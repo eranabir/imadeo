@@ -116,7 +116,7 @@ export class AlbumController {
 
   @Auth({ vault: true })
   @Put(':id/lock')
-  @ApiOperation({ summary: 'Move an album into or out of the vault' })
+  @ApiOperation({ summary: 'Lock or unlock an album' })
   setLock(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: SetAlbumLockDto) {
     return this.albumService.setLock(auth, id, dto.isLocked);
   }

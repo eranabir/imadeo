@@ -21,6 +21,21 @@ export interface Session {
   user: { id: string; email: string; name?: string };
 }
 
+export interface RegistrationStatus {
+  allowed: boolean;
+  isFirstUser: boolean;
+}
+
+/** Returns whether this empty server still needs its first administrator. */
+export async function registrationStatus(baseUrl: string): Promise<RegistrationStatus> {
+  const response = await fetch(`${baseUrl}/api/auth/registration`);
+  if (!response.ok) throw new Error(`Could not check registration (${response.status}).`);
+
+  const body = await response.json().catch(() => null);
+  if (typeof body?.isFirstUser !== 'boolean') throw new Error('Invalid registration response.');
+  return body as RegistrationStatus;
+}
+
 /**
  * Exchanges credentials for a session against whichever server was configured.
  *

@@ -1,4 +1,51 @@
 import clsx from 'clsx';
+import type { CSSProperties } from 'react';
+import { Logo } from '../components/Logo';
+
+const openingPieces = [
+  { left: 0, top: 0, x: -18, y: -18, delay: 0 },
+  { left: 64, top: 0, x: 18, y: -18, delay: 70 },
+  { left: 0, top: 64, x: -18, y: 18, delay: 140 },
+  { left: 64, top: 64, x: 18, y: 18, delay: 210 },
+];
+
+/** The same four-piece mark assembly used while the native app opens. */
+export function Opening() {
+  return (
+    <div
+      role="status"
+      aria-label="Opening Imadeo"
+      className="grid h-full min-h-dvh place-items-center bg-surface"
+    >
+      <div className="imadeo-opening-breathe">
+        <div className="imadeo-opening-turn relative h-32 w-32">
+          {openingPieces.map((piece) => (
+            <span
+              key={`${piece.left}-${piece.top}`}
+              className="absolute h-16 w-16 overflow-hidden"
+              style={{ left: piece.left, top: piece.top }}
+            >
+              <span
+                className="imadeo-opening-piece absolute block"
+                style={
+                  {
+                    left: piece.left,
+                    top: piece.top,
+                    '--opening-x': `${piece.x}px`,
+                    '--opening-y': `${piece.y}px`,
+                    '--opening-delay': `${piece.delay}ms`,
+                  } as CSSProperties
+                }
+              >
+                <Logo size={128} />
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The app's loading state.

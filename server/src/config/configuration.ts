@@ -25,7 +25,7 @@ export const configuration = () => {
   return {
     env: process.env.NODE_ENV ?? 'development',
     port: int(process.env.SERVER_PORT, 3001),
-    publicUrl: (process.env.PUBLIC_URL ?? 'http://localhost:6666').replace(/\/$/, ''),
+    publicUrl: (process.env.PUBLIC_URL ?? 'http://localhost:1111').replace(/\/$/, ''),
     logLevel: process.env.LOG_LEVEL ?? 'log',
 
     database: {
@@ -44,8 +44,12 @@ export const configuration = () => {
       accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
       refreshTtl: process.env.JWT_REFRESH_TTL ?? '60d',
       publicRegistration: bool(process.env.PUBLIC_REGISTRATION, false),
+      // Local-only installations can use HTTP between devices on the same LAN
+      // or a VPN. Never enable this when the API port is forwarded to the
+      // internet: HTTP exposes account credentials and media in transit.
+      localHttpEnabled: bool(process.env.LOCAL_HTTP_ENABLED, false),
       vaultMasterKey: process.env.VAULT_MASTER_KEY ?? '',
-      /// How long a vault stays unlocked on a device after the PIN is entered.
+      /// How long a vault stays unlocked on a device after the private password is entered.
       vaultUnlockMinutes: int(process.env.VAULT_UNLOCK_MINUTES, 15),
       /// Create an account the first time an unknown identity signs in. When
       /// false only people who already have an account can use OAuth.

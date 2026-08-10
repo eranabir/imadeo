@@ -184,7 +184,7 @@ export function Register() {
               {invite
                 ? 'Complete your account'
                 : registration?.isFirstUser
-                  ? 'Create admin account'
+                  ? 'Set up Imadeo'
                   : 'Create your account'}
             </h1>
             <p className="mt-1 text-sm text-content-muted">
@@ -194,7 +194,7 @@ export function Register() {
                   {invite.album ? ` to “${invite.album.name}”` : ''}.
                 </>
               ) : registration?.isFirstUser ? (
-                'The first account on this server is its administrator.'
+                'Create the administrator account for this server.'
               ) : (
                 'Your photos stay on this server.'
               )}
@@ -324,7 +324,7 @@ export function Register() {
                   <div className="mb-2 flex items-start gap-2.5">
                     <ShieldCheck size={16} className="mt-0.5 shrink-0 text-primary" />
                     <div>
-                      <p className="text-sm font-medium">Private password</p>
+                      <p className="text-sm font-medium">Password for locked folders</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
                         Locks your private folders and albums.
                       </p>
@@ -336,7 +336,7 @@ export function Register() {
                       mb-1.5) and the card keeps its rhythm. */}
                   <Input
                     containerClassName="mt-[1.375rem] w-full"
-                    aria-label="Private password"
+                    aria-label="Password for locked folders"
                     type="password"
                     autoComplete="new-password"
                     value={pin}
@@ -369,7 +369,7 @@ export function Register() {
                     : invite
                       ? 'Join'
                       : registration?.isFirstUser
-                        ? 'Create admin account'
+                        ? 'Create administrator account'
                         : 'Create account'}
                 </Button>
               </form>

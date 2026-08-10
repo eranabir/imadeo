@@ -50,11 +50,16 @@ services:
       # Overrides the .env value, which points at localhost for host-run
       # development. Inside the network the service is reached by its name.
       ML_URL: http://machine-learning:3003
+      REDIS_PORT: 6379
     volumes:
       - ${UPLOAD_LOCATION}:/data
       - /etc/localtime:/etc/localtime:ro
     expose:
       - "3001"
+    ports:
+      # Direct HTTP access for the LAN/VPN mode. A remote reverse proxy may
+      # forward HTTPS traffic here, but never expose this port directly.
+      - ${SERVER_HOST_PORT:-6666}:3001
     depends_on:
       database:
         condition: service_healthy
@@ -75,25 +80,13 @@ services:
     restart: unless-stopped
     expose:
       - "80"
+    ports:
+      # Direct HTTP access for the LAN/VPN mode. A remote reverse proxy may
+      # forward HTTPS traffic here, but never expose this port directly.
+      - ${WEB_HOST_PORT:-1111}:80
     depends_on:
       server:
         condition: service_healthy
-
-  proxy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      IMADEO_DOMAIN: ${IMADEO_DOMAIN:-}
-    ports:
-      - '${HTTPS_HTTP_PORT:-80}:80'
-      - '${HTTPS_HTTPS_PORT:-443}:443'
-      - '${HTTPS_HTTPS_PORT:-443}:443/udp'
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - web
 
   machine-learning:
     container_name: imadeo_ml
@@ -120,10 +113,5 @@ services:
       retries: 5
       start_period: 180s
 
-  # Caddy is the only public service. It terminates HTTPS then sends both the
-  # web app and API through the private Docker network.
-
 volumes:
   model-cache:
-  caddy-data:
-  caddy-config:

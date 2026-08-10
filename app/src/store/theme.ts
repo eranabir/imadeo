@@ -9,7 +9,7 @@ const resolve = (theme: Theme) =>
   theme === 'dark' ||
   (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
-const apply = (theme: Theme) => {
+export const applyTheme = (theme: Theme) => {
   document.documentElement.classList.toggle('dark', resolve(theme));
 };
 
@@ -26,7 +26,7 @@ export const useTheme = create<ThemeState>((set, get) => {
   // Following the OS means reacting when the OS changes while the app is open.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (get().theme === 'system') {
-      apply('system');
+      applyTheme('system');
       set({ isDark: resolve('system') });
     }
   });
@@ -37,7 +37,7 @@ export const useTheme = create<ThemeState>((set, get) => {
 
     setTheme(theme, persistToServer = true) {
       localStorage.setItem(STORAGE_KEY, theme);
-      apply(theme);
+      applyTheme(theme);
       set({ theme, isDark: resolve(theme) });
       if (persistToServer) {
         // Best effort: the local setting already took effect.

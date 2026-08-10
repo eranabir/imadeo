@@ -56,11 +56,13 @@ export class AuthController {
   ) {}
 
   private setAuthCookies(req: Request, res: Response, accessToken: string, refreshToken: string) {
+    const requestIsHttps =
+      req.secure || req.header('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
     const secure =
-      this.config.get('env', { infer: true }) === 'production' ||
-      this.config.get('publicUrl', { infer: true }).startsWith('https') ||
-      req.secure ||
-      req.header('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
+      requestIsHttps ||
+      (!this.config.get('auth.localHttpEnabled', { infer: true }) &&
+        (this.config.get('env', { infer: true }) === 'production' ||
+          this.config.get('publicUrl', { infer: true }).startsWith('https')));
     const base = { httpOnly: true, sameSite: 'strict', secure, path: '/' } as const;
 
     // The access cookie is what authenticates <img> and <video> requests, so in
@@ -437,7 +439,7 @@ export class AuthController {
 
   @Auth()
   @Post('vault/pin')
-  @ApiOperation({ summary: 'Set the vault PIN for the first time' })
+  @ApiOperation({ summary: 'Set the password for locked folders for the first time' })
   async setVaultPin(@Authed() auth: AuthDto, @Body() dto: VaultPinDto) {
     await this.vaultService.setPin(auth.user.id, dto.pin);
     return { successful: true };
@@ -455,7 +457,7 @@ export class AuthController {
   @Post('vault/unlock')
   @HttpCode(200)
   unlockVault(@Authed() auth: AuthDto, @Body() dto: VaultPinDto) {
-    if (!auth.session) throw new BadRequestException('Vault unlock requires a device session');
+    if (!auth.session) throw new BadRequestException('Unlocking locked folders requires a device session');
     return this.vaultService.unlock(auth.user.id, auth.session.id, dto.pin);
   }
 

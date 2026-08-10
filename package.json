@@ -9,7 +9,7 @@
     "mobile"
   ],
   "scripts": {
-    "dev": "yarn dev:cert && yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
+    "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
     "dev:cert": "node scripts/dev-cert.mjs",
     "dev:server": "yarn workspace @imadeo/server dev",
     "dev:app": "yarn workspace @imadeo/app dev",

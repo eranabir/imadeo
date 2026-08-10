@@ -9,7 +9,7 @@ import type { AppConfig } from '../../config/configuration';
  * The vault protects "locked" folders and albums.
  *
  * A random 32-byte content key is generated once per user. It is wrapped with a
- * key derived from the server's VAULT_MASTER_KEY *and* the user's PIN, so
+ * key derived from the server's VAULT_MASTER_KEY *and* the user's private password, so
  * neither a database dump nor the server config alone is enough to unwrap it.
  * Unlocking is per-session and time limited.
  */
@@ -20,7 +20,7 @@ export class VaultService {
    *
    * This is what makes the vault meaningful at rest: the key exists nowhere on
    * disk in usable form, so a stolen database and a stolen .env together still
-   * cannot decrypt vault files without someone entering the PIN. A restart
+   * cannot decrypt vault files without someone entering the private password. A restart
    * clears every key, and the vault relocks.
    */
   private readonly unlockedKeys = new Map<string, { key: Buffer; expiresAt: number }>();
@@ -88,11 +88,11 @@ export class VaultService {
     };
   }
 
-  /** First-time setup. Fails if a PIN already exists — use `changePin` instead. */
+  /** First-time setup. Fails if a private password already exists — use `changePin` instead. */
   async setPin(userId: string, pin: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (user.vaultPinHash) {
-      throw new BadRequestException('A vault PIN is already set');
+      throw new BadRequestException('A password for locked folders is already set');
     }
 
     const contentKey = randomBytes(32);
@@ -108,10 +108,10 @@ export class VaultService {
   async changePin(userId: string, currentPin: string, newPin: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.vaultPinHash || !user.vaultWrappedKey) {
-      throw new BadRequestException('No vault PIN has been set');
+      throw new BadRequestException('No password for locked folders has been set');
     }
     if (!(await bcrypt.compare(currentPin, user.vaultPinHash))) {
-      throw new ForbiddenException('Incorrect PIN');
+      throw new ForbiddenException('Incorrect password for locked folders');
     }
 
     // Re-wrap the same content key so already-stored data stays readable.
@@ -134,10 +134,10 @@ export class VaultService {
   async unlock(userId: string, sessionId: string, pin: string) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.vaultPinHash) {
-      throw new BadRequestException('No vault PIN has been set');
+      throw new BadRequestException('No password for locked folders has been set');
     }
     if (!(await bcrypt.compare(pin, user.vaultPinHash))) {
-      throw new ForbiddenException('Incorrect PIN');
+      throw new ForbiddenException('Incorrect password for locked folders');
     }
 
     const minutes = this.config.get('auth.vaultUnlockMinutes', { infer: true });

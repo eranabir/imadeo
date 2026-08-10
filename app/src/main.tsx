@@ -22,7 +22,8 @@ import { Settings } from './pages/Settings';
 import { Timeline } from './pages/Timeline';
 import { Trash } from './pages/Trash';
 import { useAuth } from './store/auth';
-import { Loading } from './ui';
+import { applyTheme, useTheme } from './store/theme';
+import { Loading, Opening } from './ui';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,16 +48,21 @@ function Protected({ children }: { children: React.ReactNode }) {
 function App() {
   const restore = useAuth((s) => s.restore);
   const status = useAuth((s) => s.status);
+  const theme = useTheme((s) => s.theme);
   const location = useLocation();
 
   useEffect(() => {
     void restore();
   }, [restore]);
 
-  // isFetched, not isLoading: it turns true once the query has settled and stays
-  // true across later refetches. isLoading goes true again on every refetch, and
-  // because this gate unmounts the routes below, a child that refetches the same
-  // key on mount would unmount itself, refetch, remount, and never settle.
+  // The store owns the preference; the application root owns the document
+  // class. Keeping this sync here makes every route, including setup, update.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  // Do not let a new server show a sign-in form: there is nobody who can sign
+  // in until its first administrator has been created.
   const { data: registration, isFetched: setupChecked } = useQuery({
     queryKey: ['auth', 'registration'],
     queryFn: async () =>
@@ -65,23 +71,16 @@ function App() {
     staleTime: 60_000,
   });
 
-  /**
-   * A server with no accounts has nothing to sign in to, so the only screen
-   * that makes sense is the one that creates the first administrator.
-   */
-  const needsSetup = registration?.isFirstUser === true;
-
-  if (!setupChecked) {
-    return <Loading className="h-full" />;
+  if (status === 'unknown' || !setupChecked) {
+    return <Opening />;
   }
 
   const invited = new URLSearchParams(location.search).has('invite');
 
-  // Never bounce a signed-in person to setup. Their existence proves the server
-  // has an account, and this query's answer can still be the cached pre-sign-up
-  // one — which sent /register and / redirecting to each other forever.
-  if (needsSetup && status !== 'authenticated' && location.pathname !== '/register') {
-    return <Navigate to="/register" replace />;
+  // Wait for the session check above before routing. A 401 from that check is
+  // normal for first-run setup and must leave the Register page in place.
+  if (registration?.isFirstUser && status === 'anonymous' && location.pathname !== '/setup') {
+    return <Navigate to="/setup" replace />;
   }
 
   return (
@@ -98,6 +97,10 @@ function App() {
         element={
           status === 'authenticated' && !invited ? <Navigate to="/" replace /> : <Register />
         }
+      />
+      <Route
+        path="/setup"
+        element={status === 'authenticated' ? <Navigate to="/" replace /> : <Register />}
       />
       <Route path="/auth/callback" element={<OAuthCallback />} />
       <Route

@@ -8,9 +8,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import type { NextFunction, Request, Response } from 'express';
-import { existsSync, readFileSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { AUTH_COOKIE } from './common/auth.types';
 import type { AppConfig } from './config/configuration';
@@ -20,32 +18,41 @@ import type { AppConfig } from './config/configuration';
   return this.toString();
 };
 
+function isPrivateHttpUrl(value: string | undefined) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:') return false;
+    const parts = url.hostname.split('.').map(Number);
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+      return url.hostname === 'localhost' || url.hostname.endsWith('.local');
+    }
+    const [first, second] = parts;
+    return (
+      first === 10 ||
+      first === 127 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 100 && second >= 64 && second <= 127)
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const isProduction = process.env.NODE_ENV === 'production';
-  const certDirectory = [
-    resolve(process.cwd(), '.dev/certs'),
-    resolve(process.cwd(), '../.dev/certs'),
-  ].find((directory) => existsSync(resolve(directory, 'localhost-key.pem')));
-  const httpsOptions =
-    !isProduction && certDirectory
-      ? {
-          key: readFileSync(resolve(certDirectory, 'localhost-key.pem')),
-          cert: readFileSync(resolve(certDirectory, 'localhost.pem')),
-        }
-      : undefined;
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    bufferLogs: true,
-    ...(httpsOptions ? { httpsOptions } : {}),
-  });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService<AppConfig, true>);
   const publicUrl = config.get('publicUrl', { infer: true });
-  const developmentOrigins = ['https://localhost:5173', 'https://127.0.0.1:5173'];
+  const localHttpEnabled = config.get('auth.localHttpEnabled', { infer: true });
+  const developmentOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
   const browserOrigins =
     config.get('env', { infer: true }) === 'production' ? [publicUrl] : [publicUrl, ...developmentOrigins];
 
   if (config.get('env', { infer: true }) === 'production') {
-    if (!publicUrl.startsWith('https://')) {
+    if (!publicUrl.startsWith('https://') && !localHttpEnabled) {
       throw new Error('PUBLIC_URL must use https:// in production. Refusing to expose private media over HTTP.');
     }
     const jwtSecret = config.get('auth.jwtSecret', { infer: true });
@@ -68,10 +75,11 @@ async function bootstrap() {
 
     const origin = req.header('origin');
     const referer = req.header('referer');
-    if (
-      browserOrigins.includes(origin ?? '') ||
-      (!origin && browserOrigins.some((allowed) => referer?.startsWith(`${allowed}/`)))
-    ) {
+    const allowedOrigin = browserOrigins.includes(origin ?? '');
+    const allowedReferer = !origin && browserOrigins.some((allowed) => referer?.startsWith(`${allowed}/`));
+    const localOrigin = localHttpEnabled && isPrivateHttpUrl(origin);
+    const localReferer = !origin && localHttpEnabled && isPrivateHttpUrl(referer);
+    if (allowedOrigin || allowedReferer || localOrigin || localReferer) {
       return next();
     }
 

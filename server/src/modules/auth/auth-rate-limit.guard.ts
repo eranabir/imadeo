@@ -4,7 +4,7 @@ import type { Request } from 'express';
 interface Limit {
   limit: number;
   windowMs: number;
-  /** Include the submitted email/PIN target as well as the client address. */
+  /** Include the submitted email/password target as well as the client address. */
   subject?: 'email' | 'ip';
 }
 

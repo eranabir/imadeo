@@ -128,7 +128,7 @@ export class FolderController {
 
   @Put(':id/lock')
   @Auth({ vault: true })
-  @ApiOperation({ summary: 'Move a folder subtree into or out of the vault' })
+  @ApiOperation({ summary: 'Lock or unlock a folder subtree' })
   setLock(
     @AuthedUserId() userId: string,
     @Param('id') id: string,

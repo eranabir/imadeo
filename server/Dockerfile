@@ -71,6 +71,7 @@ RUN apk add --no-cache libc6-compat openssl ffmpeg exiftool tini
 COPY --from=build /src/node_modules /src/node_modules
 COPY --from=build /src/server/dist ./dist
 COPY --from=build /src/server/prisma ./prisma
+COPY --from=build /src/server/prisma.config.ts ./prisma.config.ts
 COPY --from=build /src/server/src/generated ./src/generated
 COPY --from=build /src/server/package.json ./package.json
 COPY package.json /src/package.json
@@ -86,4 +87,4 @@ EXPOSE 3001
 # Migrations run at boot rather than at build time, so an existing install
 # picks up its own schema changes when it pulls a newer tag.
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node dist/main"]
+CMD ["sh", "-c", "node /src/node_modules/prisma/build/index.js migrate deploy && node dist/main"]

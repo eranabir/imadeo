@@ -174,27 +174,34 @@ curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.examp
 docker compose up -d</code></pre>
 
       <p>
-        Caddy serves the interface and proxies API requests to the private API
-        container. It is the only public service and always uses HTTPS.
+        Imadeo exposes two LAN/VPN ports: web on <code>1111</code> and API on
+        <code>6666</code>. It does not ship a public reverse proxy.
       </p>
 
-      <h3 id="https">HTTPS</h3>
+      <h3 id="https">Remote access with a reverse proxy</h3>
       <p>
-        Caddy obtains and renews a Let's Encrypt certificate automatically.
-        Point a domain at this host, forward TCP ports <code>80</code> and
-        <code>443</code>, then add this to <code>.env</code>:
+        On a LAN or VPN, open <code>http://&lt;server-ip&gt;:1111</code> and connect
+        the mobile app to <code>http://&lt;server-ip&gt;:6666</code>. For internet
+        access, put a reverse proxy in front of web port <code>1111</code>.
+        The proxy terminates HTTPS and must preserve <code>Host</code>,
+        <code>X-Real-IP</code>, <code>X-Forwarded-For</code>, and
+        <code>X-Forwarded-Proto</code>; allow uploads as large as Imadeo permits.
       </p>
 
-<pre><code>IMADEO_DOMAIN=photos.example.com
-PUBLIC_URL=https://photos.example.com</code></pre>
+<pre><code>photos.example.com {
+  reverse_proxy http://192.168.1.20:1111
+}</code></pre>
 
-      <p>Start Imadeo with:</p>
+      <p>Set the public HTTPS address in <code>.env</code>:</p>
 
-<pre><code>docker compose up -d --build</code></pre>
+<pre><code>PUBLIC_URL=https://photos.example.com
+LOCAL_HTTP_ENABLED=true</code></pre>
 
       <p>
-        Connect the mobile app to <code>https://photos.example.com</code>.
-        Plain HTTP is intentionally not supported for private media.
+        Forward only the proxy’s HTTPS port through the router. Never expose
+        <code>1111</code> or <code>6666</code> directly. A raw WAN IP cannot use
+        a normally trusted certificate, so remote access needs a domain/DDNS name
+        or a VPN.
       </p>
 
       <div class="note warn">

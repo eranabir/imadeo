@@ -189,7 +189,6 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 1 }}>
                   {[
-                    `${current + 1} of ${assets.length}`,
                     asset.localDateTime
                       ? new Date(asset.localDateTime).toLocaleDateString()
                       : null,

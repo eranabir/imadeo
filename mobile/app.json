@@ -18,6 +18,9 @@
       "bundleIdentifier": "app.imadeo.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
         "NSLocationWhenInUseUsageDescription": "Imadeo can show where you are on the map of the places your photos were taken. Your location is never sent anywhere."
       }
     },

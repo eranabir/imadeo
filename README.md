@@ -9,10 +9,9 @@ Your originals stay on storage you choose.
 
 ## Development
 
-`yarn dev` generates a local certificate and serves the full stack at
-`https://localhost:5173`; the development API is also HTTPS on port `3001`.
-For a phone, install and fully trust `.dev/certs/localhost.pem`, then use the
-shown LAN address such as `https://192.168.0.130:5173`.
+`yarn dev` serves the full local stack at `http://localhost:5173`; the
+development API is on HTTP port `3001`. Production deployments should use an
+HTTPS reverse proxy for remote access.
 
 ## Built for your library
 
@@ -53,8 +52,8 @@ Then start Imadeo:
 docker compose up -d --build
 ```
 
-Set `IMADEO_DOMAIN` and `PUBLIC_URL` in `.env`, then open your HTTPS address
-and create the first account. It becomes the administrator.
+On your LAN or VPN, open `http://<server-ip>:1111` and create the first account.
+The mobile app connects to `http://<server-ip>:6666`.
 
 ```bash
 docker compose logs -f
@@ -67,26 +66,34 @@ Install Imadeo on your phone, enter your server’s address, and sign in with th
 account you created. The app can back up your camera roll and show which items
 are safely stored on the server.
 
-Your phone must be able to reach the HTTPS address you enter. Do not expose the
-service directly over HTTP: it would reveal account credentials and private media.
+On a LAN or VPN, enter the server IP and port `6666`; Imadeo selects HTTP for
+private addresses. For internet access, enter the HTTPS address of your reverse
+proxy instead.
 
-## HTTPS
+## Remote access with a reverse proxy
 
-The included Caddy proxy obtains and renews a Let's Encrypt certificate. Set an
-A/AAAA record for your domain and forward TCP ports 80 and 443 to the host.
+Imadeo does not ship a public proxy. Keep ports `1111` and `6666` private, then
+point a reverse proxy at the web port. It terminates HTTPS and forwards the
+original `Host`, `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto` headers.
+Allow uploads up to your Imadeo upload limit.
+
+```caddyfile
+photos.example.com {
+  reverse_proxy http://192.168.1.20:1111
+}
+```
+
+Set the public URL, then start Imadeo:
 
 ```dotenv
-IMADEO_DOMAIN=photos.example.com
 PUBLIC_URL=https://photos.example.com
+LOCAL_HTTP_ENABLED=true
 ```
 
-Start Imadeo:
-
-```bash
-docker compose up -d --build
-```
-
-Connect the mobile app to `https://photos.example.com`.
+Forward only the proxy’s HTTPS port from the router. Connect the mobile app to
+`https://photos.example.com`; never forward `1111` or `6666` directly. A bare
+WAN IP cannot have a normally trusted certificate, so use a domain/DDNS name or
+a VPN for remote access.
 
 ## Configuration
 
@@ -96,7 +103,8 @@ a first installation; the most common adjustments are:
 | Setting | What it controls |
 | --- | --- |
 | `UPLOAD_LOCATION` | Where originals, thumbnails and video previews are stored |
-| `PUBLIC_URL` | The public HTTPS address used in invitations and sign-in callbacks |
+| `PUBLIC_URL` | LAN URL or the public HTTPS proxy address used in links and callbacks |
+| `LOCAL_HTTP_ENABLED` | Allows HTTP sessions only for private LAN/VPN access |
 | `TRASH_RETENTION_DAYS` | How long deleted items remain recoverable |
 | `SMTP_*` | Email invitations; optional, with share links as the fallback |
 | `GOOGLE_*` / `APPLE_*` | Optional social sign-in |

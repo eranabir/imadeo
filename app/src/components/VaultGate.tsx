@@ -22,14 +22,14 @@ export function useVaultStatus() {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Runs once the vault is unlocked, e.g. the action that needed it. */
+  /** Runs once locked folders are unlocked, e.g. the action that needed it. */
   onUnlocked?: () => void;
 }
 
 /**
- * Sets the vault PIN the first time and unlocks it thereafter.
+ * Sets the locked-folders password the first time and unlocks it thereafter.
  *
- * The PIN never leaves this dialog: the server keeps it only as a bcrypt hash
+ * The private password never leaves this dialog: the server keeps it only as a bcrypt hash
  * and uses it to unwrap the vault's content key, so losing it means losing
  * access — which is why the setup step says so plainly.
  */
@@ -58,7 +58,7 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
 
   const setPinMutation = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin', { pin })).data,
-    // Setting a PIN does not unlock the session, so follow straight on.
+    // Setting a private password does not unlock the session, so follow straight on.
     onSuccess: async () => {
       await api.post('/auth/vault/unlock', { pin });
       done();
@@ -92,7 +92,7 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
         reset();
         onClose();
       }}
-      title={isSetup ? 'Set a private password' : 'Unlock private items'}
+      title={isSetup ? 'Set password for locked folders' : 'Unlock locked folders'}
       description={
         isSetup
           ? 'Locked folders and albums are hidden from the timeline, search and every share link. There is no way to recover this password, so keep it somewhere safe.'
