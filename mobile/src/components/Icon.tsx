@@ -142,13 +142,13 @@ function shapes(name: IconName, color: string) {
     case 'people':
       return (
         <>
-          <Path d="M3 7.5V6a3 3 0 0 1 3-3h1.5" />
-          <Path d="M16.5 3H18a3 3 0 0 1 3 3v1.5" />
-          <Path d="M21 16.5V18a3 3 0 0 1-3 3h-1.5" />
-          <Path d="M7.5 21H6a3 3 0 0 1-3-3v-1.5" />
+          <Path d="M3 7V5a2 2 0 0 1 2-2h2" />
+          <Path d="M17 3h2a2 2 0 0 1 2 2v2" />
+          <Path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+          <Path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+          <Path d="M8 14s1.5 2 4 2 4-2 4-2" />
           <Path d="M9 9h.01" />
           <Path d="M15 9h.01" />
-          <Path d="M8.8 15a4 4 0 0 0 6.4 0" />
         </>
       );
 

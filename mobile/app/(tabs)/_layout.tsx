@@ -75,13 +75,10 @@ export default function TabsLayout() {
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="people">
-        {/*
-          A face being recognised, not a crowd. The tab holds pets as well as
-          people, and the app's own icon set already made this choice for the
-          same reason the web client did — a group-of-people glyph reads as a
-          guest list, and the pets end up looking like an afterthought on it.
-        */}
-        <NativeTabs.Trigger.Icon sf="faceid" md="frame_person" />
+        <NativeTabs.Trigger.Icon
+          src={require('../../assets/people-scan.png')}
+          renderingMode="template"
+        />
         <NativeTabs.Trigger.Label>People &amp; Pets</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
