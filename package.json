@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "yarn dev:cert && yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
-    "dev:cert": "bash scripts/dev-cert.sh",
+    "dev:cert": "node scripts/dev-cert.mjs",
     "dev:server": "yarn workspace @imadeo/server dev",
     "dev:app": "yarn workspace @imadeo/app dev",
     "docs": "npx serve docs",
@@ -36,7 +36,8 @@
     "release:ios": "yarn workspace @imadeo/mobile release:ios"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "selfsigned": "^5.5.0"
   },
   "engines": {
     "node": ">=22"
