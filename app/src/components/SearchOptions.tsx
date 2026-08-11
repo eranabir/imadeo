@@ -45,6 +45,7 @@ interface Subject {
   id: string;
   name: string;
   thumbnailPath: string;
+  thumbnailUpdatedAt?: string;
   kind: 'PERSON' | 'PET';
 }
 
@@ -151,7 +152,7 @@ export function SearchOptions({
                     >
                       {subject.thumbnailPath ? (
                         <img
-                          src={`/api/people/${subject.id}/thumbnail.jpg`}
+                          src={`/api/people/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
                           alt=""
                           loading="lazy"
                           className="h-full w-full object-cover"

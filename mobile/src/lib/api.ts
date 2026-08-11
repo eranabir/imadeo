@@ -63,6 +63,7 @@ export interface Person {
   isFavorite: boolean;
   isHidden: boolean;
   hasName?: boolean;
+  thumbnailUpdatedAt?: string;
 }
 
 /**
@@ -207,6 +208,8 @@ export function useResource<T>(
   every?: number | null,
 ) {
   const [data, setData] = useState<T | null>(null);
+  /** The endpoint that produced `data`; never show a prior filter's result. */
+  const [loadedPath, setLoadedPath] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(path !== null);
@@ -227,6 +230,7 @@ export function useResource<T>(
   const reload = useCallback(async () => {
     if (path === null) {
       setData(null);
+      setLoadedPath(null);
       setLoading(false);
       return;
     }
@@ -241,6 +245,7 @@ export function useResource<T>(
       ]);
       if (mine !== generation.current) return;
       setData(body);
+      setLoadedPath(path);
       setToken(auth);
     } catch (e) {
       if (mine !== generation.current) return;
@@ -271,7 +276,7 @@ export function useResource<T>(
     void reload();
   }, [reload]);
 
-  return { data, token, error, loading, reload };
+  return { data, loadedPath, token, error, loading, reload };
 }
 
 /** The session token on its own, for screens that only render thumbnails. */
@@ -298,9 +303,14 @@ export function thumbnail(serverUrl: string, assetId: string, token: string | nu
 }
 
 /** The cropped face the server keeps as a person's or pet's avatar. */
-export function faceThumbnail(serverUrl: string, personId: string, token: string | null) {
+export function faceThumbnail(
+  serverUrl: string,
+  personId: string,
+  token: string | null,
+  thumbnailUpdatedAt?: string,
+) {
   return {
-    uri: `${serverUrl}/api/people/${personId}/thumbnail.jpg`,
+    uri: `${serverUrl}/api/people/${personId}/thumbnail.jpg?v=${encodeURIComponent(thumbnailUpdatedAt ?? '')}`,
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   };
 }

@@ -13,6 +13,7 @@ import { colors, TAB_BAR_CLEARANCE } from '../theme';
 interface Status {
   enabled: boolean;
   ready: boolean;
+  petsReady?: boolean;
   pendingAssets: number;
 }
 
@@ -42,9 +43,10 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
    * same reason, and a group that cannot be seen cannot be named or merged into
    * the right person, which is exactly what a two-face group usually needs.
    */
-  const { data, token, error, loading, reload } = useResource<Person[]>(
+  const peoplePath = `/people?kind=${kind}&minFaces=1&size=300`;
+  const { data, loadedPath, token, error, loading, reload } = useResource<Person[]>(
     serverUrl,
-    `/people?kind=${kind}&minFaces=1&size=300`,
+    peoplePath,
   );
   /*
    * Polled only while there is something to watch.
@@ -95,7 +97,10 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
   // so the last column ends the same distance from the edge as the first begins.
   const avatar = Math.floor((width - GUTTER * 2 - GUTTER * (COLUMNS - 1)) / COLUMNS);
 
-  const people = data ?? [];
+  // Do not leave People on screen below the Pets selector while the second
+  // request is loading or failed. That made the tab look as if every person
+  // were being classified as a pet.
+  const people = loadedPath === peoplePath ? data ?? [] : [];
   const noun = kind === 'PET' ? 'pets' : 'people';
 
   return (
@@ -172,6 +177,8 @@ function Notice({
       ? null
       : !status.enabled
         ? 'Face recognition is switched off on this server.'
+        : noun === 'pets' && status.petsReady === false
+          ? 'Pet recognition is not available on this server yet.'
         : !status.ready
           ? 'The recognition service is still starting up. Pull to refresh in a minute.'
           : status.pendingAssets > 0

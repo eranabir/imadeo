@@ -226,7 +226,7 @@ export function PersonCard({
       style={{ width: size }}
     >
       <Image
-        source={faceThumbnail(serverUrl, person.id, token)}
+        source={faceThumbnail(serverUrl, person.id, token, person.thumbnailUpdatedAt)}
         style={{
           width: size,
           height: size,

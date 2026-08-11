@@ -546,7 +546,7 @@ export function AssignSheet({
           >
             <View style={{ alignItems: 'center', paddingVertical: 6 }}>
               <Image
-                source={faceThumbnail(serverUrl, person.id, token)}
+                source={faceThumbnail(serverUrl, person.id, token, person.thumbnailUpdatedAt)}
                 style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface }}
                 contentFit="cover"
                 recyclingKey={person.id}

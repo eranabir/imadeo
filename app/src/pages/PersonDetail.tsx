@@ -24,6 +24,7 @@ interface Person {
   id: string;
   name: string;
   thumbnailPath: string;
+  updatedAt: string;
   isHidden: boolean;
   faceCount: number;
   kind: 'PERSON' | 'PET';
@@ -199,7 +200,7 @@ export function PersonDetail() {
               >
                 {person.thumbnailPath ? (
                   <img
-                    src={`/api/people/${person.id}/thumbnail.jpg?v=${coverVersion}`}
+                    src={`/api/people/${person.id}/thumbnail.jpg?v=${coverVersion || encodeURIComponent(person.updatedAt)}`}
                     alt=""
                     className="h-full w-full object-cover"
                   />

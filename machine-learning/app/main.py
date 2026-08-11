@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from PIL import Image
@@ -194,6 +194,48 @@ async def predict_pets(image: UploadFile = File(...)) -> JSONResponse:
                 }
                 for pet in found
             ],
+        }
+    )
+
+
+@app.post("/predict/pets/candidate")
+async def classify_pet_face_candidate(
+    image: UploadFile = File(...),
+    x1: int = Form(...),
+    y1: int = Form(...),
+    x2: int = Form(...),
+    y2: int = Form(...),
+) -> JSONResponse:
+    """Classify one face-sized crop when whole-animal detection found nothing."""
+    if not pets or not pets.is_loaded:
+        raise HTTPException(status_code=503, detail="Pet recognition is not available on this server")
+
+    payload = await image.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Empty image")
+
+    try:
+        picture = Image.open(io.BytesIO(payload)).convert("RGB")
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="Unreadable image") from error
+
+    width, height = picture.size
+    left, top = max(0, x1), max(0, y1)
+    right, bottom = min(width, x2), min(height, y2)
+    if right <= left or bottom <= top:
+        raise HTTPException(status_code=400, detail="Invalid candidate bounds")
+
+    candidate = pets.classify_face_candidate(picture.crop((left, top, right, bottom)))
+    if not candidate:
+        return JSONResponse({"pet": None})
+
+    return JSONResponse(
+        {
+            "pet": {
+                "label": candidate.label,
+                "score": float(candidate.score),
+                "embedding": candidate.embedding.tolist(),
+            }
         }
     )
 

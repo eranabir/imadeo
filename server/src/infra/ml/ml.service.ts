@@ -33,6 +33,12 @@ export interface PetDetectionResult {
   pets: DetectedPet[];
 }
 
+export interface PetFaceCandidate {
+  label: string;
+  score: number;
+  embedding: number[];
+}
+
 @Injectable()
 export class MachineLearningService {
   private readonly logger = new Logger(MachineLearningService.name);
@@ -138,6 +144,34 @@ export class MachineLearningService {
         ? JSON.stringify(error.response?.data ?? error.message)
         : (error as Error).message;
       this.logger.warn(`Pet detection failed for ${basename(path)}: ${detail}`);
+      return null;
+    } finally {
+      stream.destroy();
+    }
+  }
+
+  /**
+   * YuNet can find a cat's face when the whole-animal detector misses a close
+   * crop. Ask the pet model whether that particular face-shaped crop is a cat
+   * or dog before storing it as a person.
+   */
+  async classifyPetFaceCandidate(
+    path: string,
+    boundingBox: { x1: number; y1: number; x2: number; y2: number },
+  ): Promise<PetFaceCandidate | null> {
+    const stream = createReadStream(path);
+    try {
+      const { data } = await this.http.postForm<{ pet: PetFaceCandidate | null }>(
+        '/predict/pets/candidate',
+        { image: stream, ...boundingBox },
+      );
+      return data.pet;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 503) return null;
+      const detail = axios.isAxiosError(error)
+        ? JSON.stringify(error.response?.data ?? error.message)
+        : (error as Error).message;
+      this.logger.warn(`Pet candidate classification failed for ${basename(path)}: ${detail}`);
       return null;
     } finally {
       stream.destroy();

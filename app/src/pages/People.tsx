@@ -10,6 +10,7 @@ interface Person {
   id: string;
   name: string;
   thumbnailPath: string;
+  thumbnailUpdatedAt: string;
   isHidden: boolean;
   isFavorite: boolean;
   faceCount: number;
@@ -48,7 +49,7 @@ export function People() {
   const [confirmMerge, setConfirmMerge] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: status } = useQuery({
+  const { data: status, dataUpdatedAt: statusUpdatedAt } = useQuery({
     queryKey: ['people', 'status'],
     queryFn: async () => (await api.get<FaceStatus>('/people/status')).data,
     // While a scan is running the pending count is what changes.
@@ -66,13 +67,15 @@ export function People() {
    * query would otherwise still hold the empty response from before the scan.
    */
   const [scanning, setScanning] = useState(false);
+  /** Ignore the stale zero from before this particular scan was submitted. */
+  const [scanStartedAt, setScanStartedAt] = useState(0);
 
   useEffect(() => {
-    if (scanning && status && status.pendingAssets === 0) {
+    if (scanning && status && statusUpdatedAt >= scanStartedAt && status.pendingAssets === 0) {
       setScanning(false);
       void queryClient.invalidateQueries({ queryKey: ['people'] });
     }
-  }, [queryClient, scanning, status]);
+  }, [queryClient, scanStartedAt, scanning, status, statusUpdatedAt]);
 
   const scanned = status ? status.totalAssets - status.pendingAssets : 0;
 
@@ -133,10 +136,14 @@ export function People() {
     onError,
   });
 
-  const scan = useMutation({
-    onMutate: () => setScanning(true),
-    mutationFn: async () => (await api.post('/people/scan')).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['people'] }),
+  const scan = useMutation<unknown, unknown, boolean>({
+    mutationFn: async (force = false) =>
+      (await api.post('/people/scan', undefined, { params: force ? { force: true } : undefined })).data,
+    onSuccess: () => {
+      setScanStartedAt(Date.now());
+      setScanning(true);
+      return queryClient.invalidateQueries({ queryKey: ['people', 'status'] });
+    },
     onError,
   });
 
@@ -214,6 +221,16 @@ export function People() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {status?.ready && (
+              <Button
+                size="sm"
+                icon={<ScanFace size={14} />}
+                disabled={scanning}
+                onClick={() => scan.mutate(true)}
+              >
+                {scanning ? 'Scanning…' : 'Scan again'}
+              </Button>
+            )}
             {selecting ? (
               <>
                 <Button
@@ -326,7 +343,7 @@ export function People() {
               variant="primary"
               icon={<ScanFace size={14} />}
               disabled={scanning}
-              onClick={() => scan.mutate()}
+              onClick={() => scan.mutate(false)}
             >
               {scanning ? 'Scanning…' : 'Scan now'}
             </Button>
@@ -367,7 +384,7 @@ export function People() {
                 variant="primary"
                 icon={<ScanFace size={15} />}
                 disabled={scanning}
-                onClick={() => scan.mutate()}
+                onClick={() => scan.mutate(false)}
               >
                 {scanning ? 'Scanning…' : 'Scan photos'}
               </Button>
@@ -408,7 +425,7 @@ export function People() {
                   >
                     {person.thumbnailPath ? (
                       <img
-                        src={`/api/people/${person.id}/thumbnail.jpg`}
+                        src={`/api/people/${person.id}/thumbnail.jpg?v=${encodeURIComponent(person.thumbnailUpdatedAt)}`}
                         alt={person.name || `Unnamed ${person.kind === 'PET' ? 'pet' : 'person'}`}
                         loading="lazy"
                         draggable={false}

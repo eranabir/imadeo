@@ -52,11 +52,12 @@ export class PersonService {
         isFavorite: boolean;
         kind: string;
         species: string | null;
+        thumbnailUpdatedAt: Date;
         faceCount: bigint;
       }[]
     >`
       SELECT
-        p.id, p.name, p."birthDate", p."thumbnailPath", p."isHidden", p."isFavorite",
+        p.id, p.name, p."birthDate", p."thumbnailPath", p."updatedAt" AS "thumbnailUpdatedAt", p."isHidden", p."isFavorite",
         p.kind, p.species,
         COUNT(f.id)::bigint AS "faceCount"
       FROM people p
@@ -84,7 +85,25 @@ export class PersonService {
   async get(userId: string, personId: string) {
     const person = await this.prisma.person.findFirst({
       where: { id: personId, ownerId: userId },
-      include: { _count: { select: { faces: true } } },
+      include: {
+        _count: {
+          select: {
+            // A group can keep its historical detections after a photo goes to
+            // Trash. The detail header must count the same active photos as
+            // the grid, otherwise it says a dog has photos that are nowhere on
+            // the page and makes the grouping look corrupted.
+            faces: {
+              where: {
+                deletedAt: null,
+                asset: {
+                  deletedAt: null,
+                  visibility: { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
+                },
+              },
+            },
+          },
+        },
+      },
     });
     if (!person) throw new NotFoundException('Person not found');
 
@@ -448,6 +467,37 @@ export class PersonService {
     } catch (error) {
       this.logger.warn(`Could not build a thumbnail for person ${personId}: ${(error as Error).message}`);
       return null;
+    }
+  }
+
+  /**
+   * Rebuild covers for groups touched by a visibility change.
+   *
+   * A group may survive after its old cover is trashed because another active
+   * photo still belongs to it. Without this refresh the People & Pets card
+   * keeps showing the deleted photo, which looks exactly like recognition
+   * attached the new photo to the wrong animal.
+   */
+  async refreshThumbnailsForAssets(assetIds: string[]) {
+    if (assetIds.length === 0) return;
+
+    const people = await this.prisma.person.findMany({
+      where: {
+        OR: [
+          { faceAssetId: { in: assetIds } },
+          { faces: { some: { assetId: { in: assetIds }, deletedAt: null } } },
+        ],
+      },
+      select: { id: true, thumbnailPath: true },
+    });
+
+    for (const person of people) {
+      await this.storage.removeMany([person.thumbnailPath || null]);
+      await this.prisma.person.update({
+        where: { id: person.id },
+        data: { thumbnailPath: '' },
+      });
+      await this.generateThumbnail(person.id);
     }
   }
 

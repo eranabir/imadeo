@@ -8,6 +8,7 @@ interface Subject {
   id: string;
   name: string;
   thumbnailPath: string;
+  thumbnailUpdatedAt?: string;
   faceCount: number;
   kind: 'PERSON' | 'PET';
   species: string | null;
@@ -132,7 +133,7 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
                   <span className="mx-auto block aspect-square w-full overflow-hidden rounded-full bg-surface-sunken">
                     {subject.thumbnailPath ? (
                       <img
-                        src={`/api/people/${subject.id}/thumbnail.jpg`}
+                        src={`/api/people/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
                         alt=""
                         loading="lazy"
                         className="h-full w-full object-cover"

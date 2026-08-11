@@ -17,7 +17,7 @@ HTTPS reverse proxy for remote access.
 
 - Automatic photo and video backup from iOS and Android.
 - A timeline with albums, folders, places, people and favourites.
-- Visual search, face grouping, duplicate detection and EXIF-aware dates.
+- Local visual search, people and pet grouping (cats and dogs), duplicate detection and EXIF-aware dates.
 - Private album and link sharing without handing over the whole library.
 - Separate web and API containers, with one public port for both.
 
@@ -108,7 +108,7 @@ a first installation; the most common adjustments are:
 | `TRASH_RETENTION_DAYS` | How long deleted items remain recoverable |
 | `SMTP_*` | Email invitations; optional, with share links as the fallback |
 | `GOOGLE_*` / `APPLE_*` | Optional social sign-in |
-| `ML_*` | Visual-search and face-recognition worker behaviour |
+| `ML_*` | Visual-search plus people and pet-recognition worker behaviour |
 
 Back up `UPLOAD_LOCATION` and the PostgreSQL data directory. They are the two
 parts of an installation that cannot be recreated from the container image.

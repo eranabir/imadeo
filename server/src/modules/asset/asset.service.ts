@@ -21,6 +21,7 @@ import { MachineLearningService } from '../../infra/ml/ml.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import { FolderService } from '../folder/folder.service';
+import { PersonService } from '../person/person.service';
 import { UserService } from '../user/user.service';
 import type {
   AssetQueryDto,
@@ -56,6 +57,7 @@ export class AssetService {
     private readonly storage: StorageService,
     private readonly jobs: JobService,
     private readonly folders: FolderService,
+    private readonly people: PersonService,
     private readonly users: UserService,
     private readonly ml: MachineLearningService,
     private readonly config: ConfigService<AppConfig, true>,
@@ -847,18 +849,30 @@ export class AssetService {
   // -- trash ----------------------------------------------------------------
 
   async trash(userId: string, ids: string[]) {
-    const { count } = await this.prisma.asset.updateMany({
+    const assets = await this.prisma.asset.findMany({
       where: { id: { in: ids }, ownerId: userId, deletedAt: null },
+      select: { id: true },
+    });
+    const affectedIds = assets.map((asset) => asset.id);
+    const { count } = await this.prisma.asset.updateMany({
+      where: { id: { in: affectedIds } },
       data: { deletedAt: new Date(), status: 'TRASHED' },
     });
+    await this.people.refreshThumbnailsForAssets(affectedIds);
     return { trashed: count };
   }
 
   async restore(userId: string, ids: string[]) {
-    const { count } = await this.prisma.asset.updateMany({
+    const assets = await this.prisma.asset.findMany({
       where: { id: { in: ids }, ownerId: userId, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    const affectedIds = assets.map((asset) => asset.id);
+    const { count } = await this.prisma.asset.updateMany({
+      where: { id: { in: affectedIds } },
       data: { deletedAt: null, status: 'ACTIVE' },
     });
+    await this.people.refreshThumbnailsForAssets(affectedIds);
     return { restored: count };
   }
 
@@ -914,6 +928,7 @@ export class AssetService {
 
     const freed = assets.reduce((sum, a) => sum + a.fileSizeInByte, 0n);
     await this.prisma.asset.deleteMany({ where: { id: { in: assets.map((a) => a.id) } } });
+    await this.people.refreshThumbnailsForAssets(assets.map((asset) => asset.id));
     await this.prisma.user.update({
       where: { id: userId },
       data: { quotaUsageInBytes: { decrement: freed } },

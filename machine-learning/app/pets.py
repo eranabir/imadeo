@@ -50,7 +50,9 @@ class PetEngine:
         self._detector: cv2.dnn.Net | None = None
         self._clip = None
         self._preprocess = None
+        self._tokenizer = None
         self._torch = None
+        self._candidate_text_embeddings: dict[str, np.ndarray] = {}
         self._anchors = self._make_anchors()
 
     @property
@@ -72,7 +74,22 @@ class PetEngine:
         model.eval()
         self._clip = model
         self._preprocess = preprocess
+        self._tokenizer = open_clip.get_tokenizer("ViT-B-32")
         self._torch = torch
+
+        # NanoDet is good at finding a whole animal, but can miss a cat held
+        # close to someone. YuNet then often finds the cat's face, so use CLIP
+        # as a narrow second opinion for those face-sized candidate crops.
+        for label, prompt in {
+            "cat": "a close-up photo of a cat",
+            "dog": "a close-up photo of a dog",
+            "person": "a close-up photo of a human face",
+        }.items():
+            tokens = self._tokenizer([prompt])
+            with torch.no_grad():
+                features = self._clip.encode_text(tokens)
+            vector = features[0].cpu().numpy().astype(np.float32)
+            self._candidate_text_embeddings[label] = vector / np.linalg.norm(vector)
 
     def detect(self, image: Image.Image) -> list[DetectedPet]:
         if not self.is_loaded:
@@ -99,6 +116,38 @@ class PetEngine:
             found.append(DetectedPet(bbox=bbox, score=float(score), label=label, embedding=self._embed(crop)))
 
         return found
+
+    def classify_face_candidate(self, image: Image.Image) -> DetectedPet | None:
+        """Recover a cat or dog face that the whole-animal detector missed.
+
+        This deliberately only runs on a YuNet face candidate. It is not a
+        general image classifier, which keeps a pet-looking background from
+        creating a phantom entry in People & Pets.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("The pet models are not loaded")
+
+        embedding = self._embed(image)
+        scores = {
+            label: float(np.dot(embedding, prototype))
+            for label, prototype in self._candidate_text_embeddings.items()
+        }
+        label = max(("cat", "dog"), key=scores.__getitem__)
+
+        # Require both a meaningful match and a clear win over a human face.
+        # The values are cosine similarities from the same normalised CLIP
+        # space; 0.015 keeps close-up cats from becoming people while leaving
+        # actual people comfortably on the human side of the boundary.
+        if scores[label] < 0.24 or scores[label] - scores["person"] < 0.015:
+            return None
+
+        width, height = image.size
+        return DetectedPet(
+            bbox=np.array([0, 0, width, height], dtype=np.float32),
+            score=scores[label],
+            label=label,
+            embedding=embedding,
+        )
 
     @staticmethod
     def _letterbox(image: np.ndarray) -> tuple[np.ndarray, tuple[int, int, int, int]]:

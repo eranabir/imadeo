@@ -35,6 +35,14 @@ import {
 } from './person.dto';
 import { PersonService } from './person.service';
 
+const unrecognisedAssets = (includePets: boolean) => ({
+  OR: [
+    { jobStatus: null },
+    { jobStatus: { facesRecognizedAt: null } },
+    ...(includePets ? [{ jobStatus: { petsRecognizedAt: null } }] : []),
+  ],
+});
+
 @ApiTags('People')
 @Auth()
 @Controller('people')
@@ -70,20 +78,22 @@ export class PersonController {
       visibility: { not: 'LOCKED' as const },
     };
 
-    const [ready, pending, total] = await Promise.all([
+    const [ready, petsReady, total] = await Promise.all([
       this.ml.isFaceRecognitionReady(),
-      this.prisma.asset.count({
-        where: { ...eligible, jobStatus: { facesRecognizedAt: null } },
-      }),
+      this.ml.hasPets(),
       // The denominator. A count of what is left says nothing on its own —
       // two hundred outstanding is nearly done in one library and barely
       // started in another.
       this.prisma.asset.count({ where: eligible }),
     ]);
+    const pending = await this.prisma.asset.count({
+      where: { ...eligible, ...unrecognisedAssets(petsReady) },
+    });
 
     return {
       enabled: this.ml.faceRecognitionEnabled,
       ready,
+      petsReady,
       pendingAssets: pending,
       totalAssets: total,
     };
@@ -93,7 +103,7 @@ export class PersonController {
   @ApiOperation({
     summary: 'Queue face detection for every photo that has not been scanned yet',
   })
-  async scan(@AuthedUserId() userId: string) {
+  async scan(@AuthedUserId() userId: string, @Query('force') force?: string) {
     if (!(await this.ml.isFaceRecognitionReady())) {
       // Better to say so than to queue work that will fail one job at a time.
       throw new ServiceUnavailableException(
@@ -101,6 +111,8 @@ export class PersonController {
       );
     }
 
+    const petsReady = await this.ml.hasPets();
+    const scanEverything = force === 'true';
     const assets = await this.prisma.asset.findMany({
       where: {
         ownerId: userId,
@@ -108,12 +120,22 @@ export class PersonController {
         deletedAt: null,
         visibility: { not: 'LOCKED' },
         previewPath: { not: null },
-        jobStatus: { facesRecognizedAt: null },
+        ...(scanEverything ? {} : unrecognisedAssets(petsReady)),
       },
       select: { id: true },
     });
 
     const ids = assets.map((asset) => asset.id);
+
+    // A deliberate re-scan must look pending while its jobs are running.
+    // Otherwise the UI sees zero outstanding work immediately and keeps the
+    // previous People & Pets groups on screen until a manual refresh.
+    if (scanEverything && ids.length > 0) {
+      await this.prisma.assetJobStatus.updateMany({
+        where: { assetId: { in: ids } },
+        data: { facesRecognizedAt: null, petsRecognizedAt: null },
+      });
+    }
 
     // A previous attempt that failed still owns its job id, so without this a
     // rescan after an outage would be quietly dropped as a duplicate.
@@ -125,7 +147,7 @@ export class PersonController {
       ids.map((assetId) => ({ assetId })),
     );
 
-    return { queued: ids.length, retried };
+    return { queued: ids.length, retried, forced: scanEverything };
   }
 
   @Post('recluster')
@@ -141,7 +163,7 @@ export class PersonController {
 
   @Get(':id/thumbnail.jpg')
   @ApiOperation({ summary: 'The cropped face used as this person’s avatar' })
-  @Header('Cache-Control', 'private, max-age=86400')
+  @Header('Cache-Control', 'private, no-cache')
   async thumbnailImage(
     @AuthedUserId() userId: string,
     @Param('id') id: string,

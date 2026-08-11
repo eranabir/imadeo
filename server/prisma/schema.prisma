@@ -369,6 +369,7 @@ model AssetJobStatus {
   videoEncodedAt     DateTime?
   smartSearchAt      DateTime?
   facesRecognizedAt  DateTime?
+  petsRecognizedAt   DateTime?
   duplicatesDetectedAt DateTime?
 
   @@map("asset_job_status")
