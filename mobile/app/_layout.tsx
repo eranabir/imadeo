@@ -9,7 +9,9 @@ import { HeaderSlots, useHeaderSlots } from '../src/header';
 import { Opening } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
+import { ConnectionErrorScreen } from '../src/screens/ConnectionErrorScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
+import { ping, useServerReachable } from '../src/lib/api';
 import { SelectionProvider, useSelectionBar } from '../src/selection';
 import { SessionProvider, useSession } from '../src/session';
 import { colors } from '../src/theme';
@@ -61,6 +63,25 @@ export default function RootLayout() {
  */
 function Gate() {
   const { server, signedIn, restoring, connect, signedInNow, changeServer } = useSession();
+  const reachable = useServerReachable();
+  const [retrying, setRetrying] = useState(false);
+
+  // A screen can be quiet for a long time without making an API request, so
+  // probe independently as well as reacting to failed requests. This is what
+  // lets the recovery page appear when a home server goes offline mid-session.
+  useEffect(() => {
+    if (!server || !signedIn) return;
+    void ping(server.url);
+    const interval = setInterval(() => void ping(server.url), 20_000);
+    return () => clearInterval(interval);
+  }, [server, signedIn]);
+
+  const retryConnection = async () => {
+    if (!server) return;
+    setRetrying(true);
+    await ping(server.url);
+    setRetrying(false);
+  };
 
   if (restoring) {
     return (
@@ -106,6 +127,14 @@ function Gate() {
         />
         <Bar />
         <Dock />
+        {!reachable && (
+          <ConnectionErrorScreen
+            serverUrl={server.url}
+            retrying={retrying}
+            onRetry={() => void retryConnection()}
+            onChangeServer={() => void changeServer()}
+          />
+        )}
       </View>
     </HeaderSlots>
   );
