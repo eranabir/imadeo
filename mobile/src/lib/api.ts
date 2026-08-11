@@ -4,6 +4,8 @@ import { storedToken } from './auth';
 /** The asset fields every grid in the app needs, and no more. */
 export interface Asset {
   id: string;
+  /** The account that owns the original, even when it is shared with us. */
+  ownerId: string;
   type: 'IMAGE' | 'VIDEO';
   /** A clock string such as "00:00:12.500", not a number of seconds. */
   duration?: string | null;
@@ -32,6 +34,7 @@ export interface Folder {
 
 export interface Album {
   id: string;
+  owner?: { id: string; name: string | null };
   name: string;
   /** The folder it lives in; null means loose, at the root of the tree. */
   folderId?: string | null;

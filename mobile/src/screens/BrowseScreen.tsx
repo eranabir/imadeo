@@ -8,6 +8,7 @@ import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
 import { PlacesBody } from './PlacesScreen';
+import { SharingShelf } from './SharingScreen';
 import { ConfirmSheet, MoveSheet, PromptSheet, ShareSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
@@ -25,7 +26,7 @@ interface Props {
   onBack?: () => void;
 }
 
-type Shelf = 'photos' | 'folders' | 'albums' | 'places';
+type Shelf = 'photos' | 'folders' | 'albums' | 'places' | 'sharing';
 
 /** Whatever a long press landed on. */
 type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boolean };
@@ -121,6 +122,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     ? trail.slice(0, -1).map((crumb) => crumb.name).join(' / ') || 'Browse'
     : atRoot && total !== null && showing === 'photos'
       ? `${total.toLocaleString()} on your server`
+      : atRoot && showing === 'sharing'
+        ? 'Shared with you'
       : undefined;
 
   const clearance = useHeaderClearance(atRoot ? 54 : 0);
@@ -140,15 +143,17 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         ? 'library'
         : showing === 'albums'
           ? 'album'
+          : showing === 'sharing'
+            ? 'shared'
           : 'browse') as IconName,
     action:
-      showing === 'photos' ? undefined : (
+      showing === 'folders' || showing === 'albums' ? (
         <HeaderAction
           label="New"
           icon="plus"
           onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
         />
-      ),
+      ) : undefined,
     below: atRoot ? (
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
         <Segmented
@@ -157,6 +162,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
             { id: 'folders', label: 'Folders', icon: 'folder' },
             { id: 'albums', label: 'Albums', icon: 'album' },
             { id: 'places', label: 'Places', icon: 'pin' },
+            { id: 'sharing', label: 'Sharing', icon: 'shared' },
           ]}
           active={shelf}
           onChange={(next) => {
@@ -260,6 +266,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
       */}
       {showing === 'places' ? (
         <PlacesBody serverUrl={serverUrl} topInset={clearance} />
+      ) : showing === 'sharing' ? (
+        <SharingShelf serverUrl={serverUrl} topInset={clearance} />
       ) : (
       <AssetGrid
         /*

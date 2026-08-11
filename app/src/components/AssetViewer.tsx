@@ -120,7 +120,7 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           </button>
         )}
 
-        <div className="grid min-w-0 flex-1 place-items-center p-4">
+        <div className="grid min-h-0 min-w-0 flex-1 place-items-center p-4">
           {asset.type === 'VIDEO' ? (
             <video
               key={asset.id}
@@ -130,14 +130,19 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
               autoPlay={user?.preferences.autoplayVideos}
               loop={user?.preferences.loopVideos}
               playsInline
-              className="max-h-full max-w-full"
+              className="block max-w-full object-contain"
+              style={{ maxHeight: 'calc(100dvh - 5.75rem)' }}
             />
           ) : (
             <img
               key={asset.id}
               src={mediaUrl(asset.id, 'preview')}
               alt={asset.originalFileName}
-              className="max-h-full max-w-full object-contain"
+              // The flex/grid ancestors have an auto minimum height in some
+              // browsers, so percentage max-heights are not a real viewport
+              // bound. An explicit viewport cap keeps a portrait complete.
+              className="block max-w-full object-contain"
+              style={{ maxHeight: 'calc(100dvh - 5.75rem)' }}
             />
           )}
         </div>
