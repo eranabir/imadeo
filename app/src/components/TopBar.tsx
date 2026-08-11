@@ -80,7 +80,7 @@ export function TopBar({
       ? [
           {
             id: 'admin',
-            label: 'Administration',
+            label: 'Settings',
             icon: <Settings size={15} />,
             onSelect: () => navigate('/settings'),
           },

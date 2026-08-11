@@ -2,6 +2,9 @@ export interface FolderNode {
   id: string;
   name: string;
   parentId: string | null;
+  ownerId: string;
+  /** This tree was shared with the signed-in account. */
+  shared?: boolean;
   path: string;
   depth: number;
   isLocked: boolean;
@@ -47,6 +50,7 @@ export interface AssetExif {
 
 export interface Asset {
   id: string;
+  ownerId: string;
   type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'OTHER';
   originalFileName: string;
   fileSizeInByte: string;

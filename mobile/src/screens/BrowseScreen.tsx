@@ -8,7 +8,7 @@ import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
 import { PlacesBody } from './PlacesScreen';
-import { ConfirmSheet, MoveSheet, PromptSheet } from '../components/sheets';
+import { ConfirmSheet, MoveSheet, PromptSheet, ShareSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
 import { useResource, type Album, type Asset, type FolderContents, type Paged } from '../lib/api';
@@ -28,7 +28,7 @@ interface Props {
 type Shelf = 'photos' | 'folders' | 'albums' | 'places';
 
 /** Whatever a long press landed on. */
-type Target = { kind: 'folder' | 'album'; id: string; name: string };
+type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boolean };
 
 /**
  * Everything on the server: the whole timeline, the folder tree, the albums.
@@ -54,6 +54,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<Target | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
   const showing: Shelf = atRoot ? shelf : 'folders';
@@ -212,8 +213,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
                 key={folder.id}
                 folder={folder}
                 onPress={() => router.push({ pathname: '/folder/[id]', params: { id: folder.id, title: folder.name } })}
-                onLongPress={() =>
-                  setMenuFor({ kind: 'folder', id: folder.id, name: folder.name })
+                  onLongPress={() =>
+                  setMenuFor({ kind: 'folder', id: folder.id, name: folder.name, shared: folder.shared })
                 }
               />
             ))}
@@ -326,15 +327,24 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         description={menuFor?.kind === 'folder' ? 'Folder' : 'Album'}
         onClose={() => setMenuFor(null)}
       >
-        <SheetRow
+        {menuFor?.kind === 'folder' && !menuFor.shared && <SheetRow
+          icon="shared"
+          label="Share folder"
+          hint="View-only access"
+          onPress={() => {
+            setSharingFolder(menuFor);
+            setMenuFor(null);
+          }}
+        />}
+        {!menuFor?.shared && <SheetRow
           icon="edit"
           label="Rename"
           onPress={() => {
             setRenaming(menuFor);
             setMenuFor(null);
           }}
-        />
-        <SheetRow
+        />}
+        {!menuFor?.shared && <SheetRow
           icon="move"
           label="Move to…"
           hint="Another folder"
@@ -342,8 +352,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
             setMoving(menuFor);
             setMenuFor(null);
           }}
-        />
-        <SheetRow
+        />}
+        {!menuFor?.shared && <SheetRow
           icon="trash"
           label={menuFor?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
           danger
@@ -351,8 +361,21 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
             setDeleting(menuFor);
             setMenuFor(null);
           }}
-        />
+        />}
       </Sheet>
+
+      <ShareSheet
+        open={sharingFolder !== null}
+        serverUrl={serverUrl}
+        itemCount={1}
+        title={`Share “${sharingFolder?.name ?? ''}”`}
+        description="People you choose can view this folder, its albums, and everything inside it. They cannot change your library."
+        confirmLabel="Share folder"
+        onClose={() => setSharingFolder(null)}
+        onShare={(userIds) =>
+          run(() => actions.shareFolder(serverUrl, sharingFolder!.id, userIds)).then(() => setSharingFolder(null))
+        }
+      />
 
       <PromptSheet
         open={creating !== null}

@@ -23,6 +23,7 @@ import {
   LockedIcon,
   PeopleIcon,
   PhotosIcon,
+  SharingIcon,
   SettingsIcon,
   TrashIcon,
 } from './NavigationIcons';
@@ -33,6 +34,7 @@ import { useLibraryActions } from './useLibraryActions';
 export const NAV = [
   { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
   { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
+  { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },
   // Folders is an ordinary destination like the rest; the tree below it is
   // just a shortcut into that page, not a separate concept.
   // `end: false` so viewing any folder keeps this entry marked, the way an

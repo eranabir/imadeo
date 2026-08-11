@@ -11,6 +11,9 @@ export default defineConfig({
     // 127.0.0.1 as well as localhost, and lets a phone on the same network open
     // it while the mobile client is being worked on.
     host: true,
+    // Development can be reached through a LAN IP, DDNS name, or temporary
+    // tunnel. Accept all Host headers here; production is served by nginx.
+    allowedHosts: true,
     // Same-origin in development so cookies and media URLs behave exactly as
     // they will behind the production nginx.
     proxy: {

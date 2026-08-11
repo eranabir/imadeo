@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { useHeaderClearance } from '../components/Header';
+import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
+import { ShareSheet } from '../components/sheets';
+import { actions } from '../lib/actions';
 import { useResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
@@ -34,6 +37,9 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
   );
   const clearance = useHeaderClearance();
   const selection = useSelection();
+  const [sharing, setSharing] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const shared = data?.albumUsers?.length ?? 0;
   const subtitle = [
@@ -47,7 +53,13 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
   // brought its own would slide it in over the top of the one already there.
   useHeaderSlot(
     slot,
-    { title: data?.name ?? title, subtitle, icon: 'album', onBack },
+    {
+      title: data?.name ?? title,
+      subtitle,
+      icon: 'album',
+      onBack,
+      action: <HeaderAction label="Share album" icon="shared" compact onPress={() => setSharing(true)} />,
+    },
     [data?.name, title, subtitle, onBack],
   );
 
@@ -61,9 +73,10 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
         onRefresh={reload}
         topInset={clearance}
         header={
-          error || data?.description ? (
+          error || shareError || data?.description ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
               {error && <Text style={{ color: colors.danger, fontSize: 14 }}>{error}</Text>}
+              {shareError && <Text style={{ color: colors.danger, fontSize: 14 }}>{shareError}</Text>}
               {data?.description && (
                 <Text style={{ color: colors.muted, fontSize: 14.5, lineHeight: 21 }}>
                   {data.description}
@@ -92,6 +105,29 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
         onDone={() => {
           selection.clear();
           reload();
+        }}
+      />
+
+      <ShareSheet
+        open={sharing}
+        serverUrl={serverUrl}
+        assetIds={[]}
+        title="Share album"
+        description="Choose who can view this album. They can view the photos but cannot change your library."
+        busy={shareBusy}
+        onClose={() => setSharing(false)}
+        onShare={async (userIds) => {
+          setShareBusy(true);
+          setShareError(null);
+          try {
+            await actions.shareAlbum(serverUrl, albumId, userIds);
+            setSharing(false);
+            reload();
+          } catch (cause) {
+            setShareError(cause instanceof Error ? cause.message : 'Could not share this album.');
+          } finally {
+            setShareBusy(false);
+          }
         }}
       />
     </View>

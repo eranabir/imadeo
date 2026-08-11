@@ -7,6 +7,7 @@ import {
   Lock,
   Pencil,
   Search,
+  Share2,
   Trash2,
   X,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
+import { FolderShareDialog } from '../components/FolderShareDialog';
 import { SelectionBar } from '../components/SelectionBar';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
@@ -40,6 +42,7 @@ export function FolderView() {
 
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'folder' | 'album' | 'rename' | 'delete' | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
@@ -126,6 +129,7 @@ export function FolderView() {
   if (!data) return null;
 
   const shownAssets = (data?.assets ?? []).filter((asset) => matches(asset.originalFileName));
+  const canManage = !data.folder || data.folder.ownerId === user?.id;
 
   const isEmpty =
     shownFolders.length === 0 &&
@@ -179,15 +183,20 @@ export function FolderView() {
               }
             />
 
-            <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
+            {canManage && <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
               New folder
-            </Button>
-            <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
+            </Button>}
+            {canManage && <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
               New album
-            </Button>
+            </Button>}
 
-            {data.folder && (
+            {data.folder && canManage && (
               <>
+                <Tooltip label="Share folder">
+                  <IconButton label="Share folder" variant="secondary" size="sm" round={false} onClick={() => setShareOpen(true)}>
+                    <Share2 size={14} />
+                  </IconButton>
+                </Tooltip>
                 <Tooltip label="Rename folder">
                   <IconButton
                     label="Rename folder"
@@ -285,6 +294,7 @@ export function FolderView() {
             title="This folder is empty"
             description="Upload photos here, or create a sub-folder to keep things organised."
             action={
+              canManage ? (
               <div className="flex gap-2">
                 <Button
                   variant="primary"
@@ -297,6 +307,7 @@ export function FolderView() {
                   New album
                 </Button>
               </div>
+              ) : undefined
             }
           />
         )}
@@ -320,6 +331,15 @@ export function FolderView() {
           assets={shownAssets}
           onClose={() => setViewing(null)}
           onNavigate={setViewing}
+        />
+      )}
+
+      {data.folder && canManage && (
+        <FolderShareDialog
+          folderId={data.folder.id}
+          folderName={data.folder.name}
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
         />
       )}
 

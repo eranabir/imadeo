@@ -17,6 +17,7 @@ import {
   FolderContentsQueryDto,
   FolderTreeQueryDto,
   MoveFolderDto,
+  ShareFolderDto,
   SetFolderLockDto,
   UpdateFolderDto,
 } from './folder.dto';
@@ -55,6 +56,26 @@ export class FolderController {
     @Body() body: { segments: string[]; rootId?: string | null },
   ) {
     return this.folderService.ensurePath(userId, body.segments ?? [], body.rootId ?? null);
+  }
+
+  @Post(':id/users')
+  @ApiOperation({ summary: 'Share a folder and its complete subtree with other accounts' })
+  share(
+    @AuthedUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: ShareFolderDto,
+  ) {
+    return this.folderService.share(userId, id, dto.userIds);
+  }
+
+  @Delete(':id/users/:userId')
+  @ApiOperation({ summary: 'Revoke an account’s access to a shared folder' })
+  unshare(
+    @AuthedUserId() userId: string,
+    @Param('id') id: string,
+    @Param('userId') recipientId: string,
+  ) {
+    return this.folderService.removeShare(userId, id, recipientId);
   }
 
   @Get(':id')

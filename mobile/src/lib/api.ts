@@ -21,6 +21,8 @@ export interface Folder {
   id: string;
   name: string;
   parentId: string | null;
+  ownerId: string;
+  shared?: boolean;
   assetCount: number;
   albumCount: number;
   childCount: number;

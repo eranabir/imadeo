@@ -113,9 +113,11 @@ model User {
   profileChangedAt DateTime   @default(now())
 
   assets           Asset[]
+  assetShares      AssetUser[]
   albums           Album[]
   albumMemberships AlbumUser[]
   folders          Folder[]
+  folderShares     FolderUser[]
   people           Person[]
   sessions         Session[]
   apiKeys          ApiKey[]
@@ -220,6 +222,7 @@ model Folder {
   deletedAt DateTime?
 
   assets    Asset[]
+  sharedWith FolderUser[]
   /// A folder holds sub-folders, loose assets AND albums.
   albums    Album[]
 
@@ -227,6 +230,20 @@ model Folder {
   @@index([ownerId, path])
   @@index([parentId])
   @@map("folders")
+}
+
+/// Read-only access to a folder and its complete subtree. The owner remains
+/// the only account that can reorganise, upload to, or lock the folder.
+model FolderUser {
+  folderId  String   @db.Uuid
+  folder    Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([folderId, userId])
+  @@index([userId])
+  @@map("folder_users")
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +319,7 @@ model Asset {
   albums            AlbumAsset[]
   tags              TagAsset[]
   sharedLinks       SharedLinkAsset[]
+  sharedWith        AssetUser[]
   jobStatus         AssetJobStatus?
   smartSearch       SmartSearch?
   activities        Activity[]
@@ -320,6 +338,20 @@ model Asset {
   @@index([deletedAt])
   @@index([type])
   @@map("assets")
+}
+
+/// A private, account-to-account share of one photo or video. The owner keeps
+/// full control; the recipient can only view and download it.
+model AssetUser {
+  assetId   String   @db.Uuid
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([assetId, userId])
+  @@index([userId])
+  @@map("asset_users")
 }
 
 model AssetExif {

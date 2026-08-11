@@ -27,6 +27,7 @@ import {
   BulkUpdateAssetsDto,
   CheckDuplicateDto,
   DeleteAssetsDto,
+  ShareAssetsDto,
   StackAssetsDto,
   UpdateAssetDto,
   UploadAssetDto,
@@ -297,6 +298,29 @@ export class AssetController {
   @Post('stack')
   stack(@AuthedUserId() userId: string, @Body() dto: StackAssetsDto) {
     return this.assetService.stack(userId, dto.primaryAssetId, dto.assetIds);
+  }
+
+  @Post('share')
+  @ApiOperation({ summary: 'Share selected photos or videos with existing accounts' })
+  share(@AuthedUserId() userId: string, @Body() dto: ShareAssetsDto) {
+    return this.assetService.share(userId, dto);
+  }
+
+  @Get(':id/shares')
+  @ApiOperation({ summary: 'Accounts with direct access to this asset' })
+  sharedWith(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.assetService.sharedWith(userId, id);
+  }
+
+  @Delete(':id/shares/:userId')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Revoke one account’s direct access to an asset' })
+  revokeShare(
+    @AuthedUserId() userId: string,
+    @Param('id') id: string,
+    @Param('userId') recipientId: string,
+  ) {
+    return this.assetService.removeShare(userId, id, recipientId);
   }
 
   @Delete('stack/:id')

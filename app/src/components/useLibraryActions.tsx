@@ -12,6 +12,7 @@ import {
   Pencil,
   RotateCcw,
   ScanFace,
+  Share2,
   Trash2,
   Unlock,
 } from 'lucide-react';
@@ -28,12 +29,13 @@ import {
   type MenuItem,
 } from '../ui';
 import { AssignSubjectDialog } from './AssignSubjectDialog';
+import { AssetShareDialog } from './AssetShareDialog';
 import { MoveDialog } from './MoveDialog';
 import { VaultDialog } from './VaultGate';
 
 type Target =
   | { kind: 'assets'; asset: Asset; ids: string[] }
-  | { kind: 'folder'; folder: Pick<FolderNode, 'id' | 'name' | 'isLocked'> }
+  | { kind: 'folder'; folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'> }
   | { kind: 'album'; album: Pick<Album, 'id' | 'name'> };
 
 interface Options {
@@ -71,6 +73,7 @@ export function useLibraryActions({
   const [moving, setMoving] = useState<Target | null>(null);
   /** Photos whose detections are being assigned to a person or pet. */
   const [assigning, setAssigning] = useState<string[] | null>(null);
+  const [sharing, setSharing] = useState<string[] | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
   const [newFolderIn, setNewFolderIn] = useState<string | null>(null);
@@ -219,7 +222,7 @@ export function useLibraryActions({
   );
 
   const onFolderContextMenu = useCallback(
-    (folder: Pick<FolderNode, 'id' | 'name' | 'isLocked'>, event: React.MouseEvent) =>
+    (folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'>, event: React.MouseEvent) =>
       openMenu({ kind: 'folder', folder }, event),
     [openMenu],
   );
@@ -321,6 +324,13 @@ export function useLibraryActions({
           onSelect: () => setMoving(item),
         },
         {
+          id: 'share',
+          label: 'Share privately' + suffix,
+          icon: <Share2 size={15} />,
+          hint: 'Choose accounts on this server',
+          onSelect: () => setSharing(ids),
+        },
+        {
           id: 'archive',
           label: (asset.visibility === 'ARCHIVE' ? 'Move back to timeline' : 'Archive') + suffix,
           icon: <Archive size={15} />,
@@ -365,6 +375,7 @@ export function useLibraryActions({
     }
 
     if (item.kind === 'folder') {
+      if (item.folder.shared) return [];
       return [
         {
           id: 'rename',
@@ -471,6 +482,11 @@ export function useLibraryActions({
         assetIds={assigning ?? []}
         onClose={() => setAssigning(null)}
         onError={onError}
+      />
+      <AssetShareDialog
+        open={sharing !== null}
+        assetIds={sharing ?? []}
+        onClose={() => setSharing(null)}
       />
       {target && (
         <Menu

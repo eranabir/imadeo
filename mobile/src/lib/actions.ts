@@ -57,6 +57,23 @@ const writes = {
       body: JSON.stringify({ assetIds: ids }),
     }),
 
+  share: (server: string, ids: string[], userIds: string[]) =>
+    request(server, '/assets/share', {
+      method: 'POST',
+      body: JSON.stringify({ ids, userIds }),
+    }),
+
+  shareAlbum: (server: string, albumId: string, userIds: string[]) =>
+    request(server, `/albums/${albumId}/users`, {
+      method: 'PUT',
+      body: JSON.stringify({ albumUsers: userIds.map((userId) => ({ userId, role: 'VIEWER' })) }),
+    }),
+  shareFolder: (server: string, folderId: string, userIds: string[]) =>
+    request(server, `/folders/${folderId}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ userIds }),
+    }),
+
   // -- people and pets ------------------------------------------------------
 
   /**

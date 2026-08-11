@@ -14,7 +14,7 @@ import { DateTime } from 'luxon';
 import type { AuthDto } from '../../common/auth.types';
 import { fromBytes, toBytes } from '../../common/bytes';
 import type { AppConfig } from '../../config/configuration';
-import { AssetType, AssetVisibility, Prisma } from '../../db';
+import { AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
@@ -26,6 +26,7 @@ import { UserService } from '../user/user.service';
 import type {
   AssetQueryDto,
   BulkUpdateAssetsDto,
+  ShareAssetsDto,
   UpdateAssetDto,
   UploadAssetDto,
 } from './asset.dto';
@@ -257,10 +258,14 @@ export class AssetService {
   }
 
   /**
-   * Read access is: you own it, a partner shared their library with you, it is
-   * in an album shared with you, or the share key names it.
+   * Read access is: you own it, it was directly shared with you, a partner
+   * shared their library with you, it is in an album shared with you, or the
+   * share key names it.
    */
-  private async assertCanRead(auth: AuthDto, asset: { id: string; ownerId: string; visibility: AssetVisibility }) {
+  private async assertCanRead(
+    auth: AuthDto,
+    asset: { id: string; ownerId: string; folderId?: string | null; visibility: AssetVisibility },
+  ) {
     if (auth.sharedLink) {
       if (auth.sharedLink.assetIds.includes(asset.id)) return;
       if (auth.sharedLink.albumId) {
@@ -282,23 +287,103 @@ export class AssetService {
       return;
     }
 
-    const [partner, sharedAlbum] = await Promise.all([
+    // A vault lock is stronger than every sharing mechanism. Do this before
+    // consulting direct shares so a record left behind by an interrupted lock
+    // operation can never expose the protected file.
+    if (asset.visibility === AssetVisibility.LOCKED) {
+      throw new ForbiddenException('Locked photos cannot be shared');
+    }
+
+    const [directShare, partner, sharedAlbum, sharedFolder] = await Promise.all([
+      this.prisma.assetUser.findUnique({
+        where: { assetId_userId: { assetId: asset.id, userId: auth.user.id } },
+      }),
       this.prisma.partner.findUnique({
         where: { sharedById_sharedWithId: { sharedById: asset.ownerId, sharedWithId: auth.user.id } },
       }),
       this.prisma.albumAsset.findFirst({
         where: { assetId: asset.id, album: { albumUsers: { some: { userId: auth.user.id } } } },
       }),
+      asset.folderId
+        ? this.prisma.$queryRaw<{ allowed: boolean }[]>`
+            SELECT EXISTS (
+              SELECT 1
+              FROM folders target
+              JOIN folder_users fu ON fu."userId" = ${auth.user.id}::uuid
+              JOIN folders root ON root.id = fu."folderId"
+              WHERE target.id = ${asset.folderId}::uuid
+                AND target."deletedAt" IS NULL
+                AND target."isLocked" = false
+                AND root."deletedAt" IS NULL
+                AND root."isLocked" = false
+                AND target.path LIKE root.path || '%'
+            ) AS allowed
+          `.then((rows) => rows[0]?.allowed ?? false)
+        : Promise.resolve(false),
     ]);
 
-    if (!partner && !sharedAlbum) {
+    if (!directShare && !partner && !sharedAlbum && !sharedFolder) {
       throw new ForbiddenException('You do not have access to this photo');
     }
   }
 
+  /** Shares selected, non-locked assets with existing accounts as read-only. */
+  async share(userId: string, dto: ShareAssetsDto) {
+    const assetIds = [...new Set(dto.ids)];
+    const recipientIds = [...new Set(dto.userIds)].filter((id) => id !== userId);
+    if (!assetIds.length || !recipientIds.length) {
+      throw new BadRequestException('Choose at least one photo and one other account');
+    }
+
+    const [assets, recipients] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
+        select: { id: true, visibility: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: recipientIds }, status: UserStatus.ACTIVE, deletedAt: null },
+        select: { id: true, name: true, email: true },
+      }),
+    ]);
+
+    if (assets.length !== assetIds.length) throw new NotFoundException('One or more photos were not found');
+    if (assets.some((asset) => asset.visibility === AssetVisibility.LOCKED)) {
+      throw new ForbiddenException('Locked photos cannot be shared');
+    }
+    if (recipients.length !== recipientIds.length) {
+      throw new NotFoundException('One or more accounts were not found');
+    }
+
+    await this.prisma.assetUser.createMany({
+      data: assetIds.flatMap((assetId) => recipientIds.map((recipientId) => ({ assetId, userId: recipientId }))),
+      skipDuplicates: true,
+    });
+
+    return { assetCount: assetIds.length, recipients };
+  }
+
+  async sharedWith(userId: string, assetId: string) {
+    const asset = await this.prisma.asset.findFirst({ where: { id: assetId, ownerId: userId, deletedAt: null } });
+    if (!asset) throw new NotFoundException('Asset not found');
+    return this.prisma.assetUser.findMany({
+      where: { assetId },
+      select: { user: { select: { id: true, name: true, email: true, profileImagePath: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async removeShare(userId: string, assetId: string, recipientId: string) {
+    const { count } = await this.prisma.assetUser.deleteMany({
+      where: { assetId, userId: recipientId, asset: { ownerId: userId } },
+    });
+    if (!count) throw new NotFoundException('Share not found');
+  }
+
   buildWhere(userId: string, query: AssetQueryDto): Prisma.AssetWhereInput {
     return {
-      ownerId: userId,
+      AND: [
+        { OR: [{ ownerId: userId }, { sharedWith: { some: { userId } } }] },
+        {
       deletedAt: null,
       visibility: query.visibility ?? AssetVisibility.TIMELINE,
       type: query.type,
@@ -373,6 +458,8 @@ export class AssetService {
       // the usual way of finding what still needs filing.
       ...(query.notInAlbum ? { albums: { none: {} } } : {}),
       ...(query.withPeople ? { faces: { some: { personId: { not: null }, deletedAt: null } } } : {}),
+        },
+      ],
     };
   }
 

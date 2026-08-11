@@ -55,7 +55,7 @@ const SECTIONS = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'account', label: 'Account', icon: UserCog },
   { id: 'security', label: 'Security', icon: ShieldCheck },
-  { id: 'people', label: 'People', icon: Users, adminOnly: true },
+  { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'recognition', label: 'Recognition', icon: ScanFace, adminOnly: true },
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
@@ -132,7 +132,7 @@ export function Settings() {
           {section === 'appearance' && <Appearance />}
           {section === 'account' && <Account />}
           {section === 'security' && <Security />}
-          {section === 'people' && <People />}
+          {section === 'users' && <People />}
           {section === 'recognition' && <FaceRecognition />}
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
@@ -683,23 +683,14 @@ interface PendingInvite {
   createdAt: string;
 }
 
-/**
- * Two ways to add someone, because they suit different situations.
- *
- * An invite is the better default — the person picks their own password, so no
- * credential is ever typed by one person and read by another. Creating an
- * account directly is the fallback for a household server with no mail relay,
- * where an invite link would have to be copied by hand anyway.
- */
+/** Administrators can inspect users and create an account when needed. */
 function People() {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
-  const [tab, setTab] = useState<'people' | 'invite' | 'create'>('people');
+  const [tab, setTab] = useState<'people' | 'create'>('people');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<ManagedUser | null>(null);
 
-  const [inviteEmail, setInviteEmail] = useState('');
   const [draft, setDraft] = useState({ name: '', email: '', password: '', isAdmin: false });
 
   const { data: users = [] } = useQuery({
@@ -707,40 +698,8 @@ function People() {
     queryFn: async () => (await api.get<ManagedUser[]>('/admin/users')).data,
   });
 
-  // An invitation is only an invitation if it can be delivered; without SMTP
-  // the server just hands back a link, which is a different feature.
-  const { data: mail } = useQuery({
-    queryKey: ['admin', 'mail'],
-    queryFn: async () => (await api.get<{ configured: boolean }>('/admin/mail')).data,
-  });
-  const canEmail = mail?.configured ?? false;
-
-  const { data: invites = [] } = useQuery({
-    queryKey: ['auth', 'invitations'],
-    queryFn: async () => (await api.get<PendingInvite[]>('/auth/invitations')).data,
-  });
-
   const refresh = () => queryClient.invalidateQueries();
   const onError = (e: unknown) => setMessage({ ok: false, text: errorMessage(e) });
-
-  const invite = useMutation({
-    mutationFn: async () =>
-      (await api.post<{ email: string; url: string; emailSent: boolean }>('/auth/invitations', {
-        email: inviteEmail,
-      })).data,
-    onSuccess: (result) => {
-      setInviteEmail('');
-      void refresh();
-      setMessage({
-        ok: true,
-        text: result.emailSent
-          ? `An invitation was emailed to ${result.email}.`
-          : `Invitation created. This server has no mail relay, so send ${result.email} the link below yourself.`,
-      });
-      setInviteLink(result.emailSent ? null : result.url);
-    },
-    onError,
-  });
 
   const createUser = useMutation({
     mutationFn: async () => (await api.post<ManagedUser>('/admin/users', draft)).data,
@@ -760,12 +719,6 @@ function People() {
       void refresh();
       setMessage({ ok: true, text: 'That account is queued for removal.' });
     },
-    onError,
-  });
-
-  const revokeInvite = useMutation({
-    mutationFn: async (id: string) => (await api.delete(`/auth/invitations/${id}`)).data,
-    onSuccess: refresh,
     onError,
   });
 
@@ -803,14 +756,8 @@ function People() {
   return (
     <>
       <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
-        <TabButton id="people" label={`People (${users.length})`} />
-        <TabButton
-          id="invite"
-          label="Invite"
-          disabled={!canEmail}
-          hint={canEmail ? undefined : 'Set up email first, under Settings → Email'}
-        />
-        <TabButton id="create" label="Create account" />
+        <TabButton id="people" label={`Users (${users.length})`} />
+        <TabButton id="create" label="Create user" />
       </div>
 
       {message && (
@@ -821,7 +768,7 @@ function People() {
 
       {tab === 'people' && (
         <>
-          <Card title="Accounts" description="Everyone who can sign in to this server.">
+          <Card title="Users" description="Everyone who can sign in to this server.">
             {users.map((person) => (
               <Row
                 key={person.id}
@@ -846,84 +793,13 @@ function People() {
               </Row>
             ))}
           </Card>
-
-          {invites.length > 0 && (
-            <Card
-              title="Pending invitations"
-              description="Sent but not yet accepted. Revoking one makes its link stop working."
-            >
-              {invites.map((entry) => (
-                <Row
-                  key={entry.id}
-                  label={entry.email}
-                  hint={`Expires ${formatInstant(entry.expiresAt)}`}
-                >
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={revokeInvite.isPending}
-                    onClick={() => revokeInvite.mutate(entry.id)}
-                  >
-                    Revoke
-                  </Button>
-                </Row>
-              ))}
-            </Card>
-          )}
+          <Invitations />
         </>
-      )}
-
-      {tab === 'invite' && (
-        <Card
-          title="Invite someone"
-          description="They set their own name and password from the link, so you never handle their credentials."
-        >
-          <div className="space-y-3">
-            <Input
-              label="Email"
-              type="email"
-              placeholder="friend@example.com"
-              value={inviteEmail}
-              onChange={(e) => {
-                setInviteEmail(e.target.value);
-                setMessage(null);
-                setInviteLink(null);
-              }}
-            />
-
-            {inviteLink && (
-              <div className="rounded-control border border-border-subtle bg-surface-sunken p-3">
-                <p className="text-xs font-medium">Invitation link</p>
-                <code className="mt-1.5 block overflow-x-auto whitespace-pre rounded bg-surface-raised px-2.5 py-1.5 text-[11px]">
-                  {inviteLink}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => void navigator.clipboard.writeText(inviteLink)}
-                  className="mt-2 text-xs font-medium text-primary hover:underline"
-                >
-                  Copy link
-                </button>
-              </div>
-            )}
-
-            <div className="pt-1">
-              <Button
-                variant="primary"
-                icon={<UserPlus size={15} />}
-                disabled={!inviteEmail.includes('@') || invite.isPending}
-                onClick={() => invite.mutate()}
-              >
-                {invite.isPending ? 'Sending…' : 'Send invitation'}
-              </Button>
-            </div>
-          </div>
-        </Card>
       )}
 
       {tab === 'create' && (
         <Card
-          title="Create an account directly"
+          title="Create user"
           description="Use this when there is no mail relay. You choose the password, so pass it on in person and have them change it."
         >
           <div className="space-y-3">
@@ -966,7 +842,7 @@ function People() {
                 }
                 onClick={() => createUser.mutate()}
               >
-                Create account
+                Create user
               </Button>
             </div>
           </div>
@@ -982,6 +858,86 @@ function People() {
         onConfirm={() => confirmRemove && removeUser.mutate(confirmRemove.id)}
         onClose={() => setConfirmRemove(null)}
       />
+    </>
+  );
+}
+
+/** Email-backed account invitations stay separate from direct account creation. */
+function Invitations() {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const { data: mail } = useQuery({
+    queryKey: ['admin', 'mail'],
+    queryFn: async () => (await api.get<{ configured: boolean }>('/admin/mail')).data,
+  });
+  const { data: invites = [] } = useQuery({
+    queryKey: ['auth', 'invitations'],
+    queryFn: async () => (await api.get<PendingInvite[]>('/auth/invitations')).data,
+  });
+  const canEmail = mail?.configured ?? false;
+  const invite = useMutation({
+    mutationFn: async () => (await api.post<{ email: string }>('/auth/invitations', { email })).data,
+    onSuccess: (result) => {
+      setEmail('');
+      setMessage({ ok: true, text: `An invitation was emailed to ${result.email}.` });
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] });
+    },
+    onError: (error) => setMessage({ ok: false, text: errorMessage(error) }),
+  });
+  const revoke = useMutation({
+    mutationFn: async (id: string) => api.delete(`/auth/invitations/${id}`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['auth', 'invitations'] }),
+  });
+
+  return (
+    <>
+      <Card
+        title="Invite users"
+        description="They choose their own name and password from a private email link."
+      >
+        <div className="space-y-3">
+          {!canEmail && (
+            <div className="flex gap-2 rounded-control bg-danger-soft px-3 py-2.5 text-sm text-danger">
+              <MailWarning size={16} className="mt-0.5 shrink-0" />
+              <p>Email is not configured, so invitations are disabled. Set up Settings → Email first.</p>
+            </div>
+          )}
+          <Input
+            label="Email"
+            type="email"
+            placeholder="friend@example.com"
+            disabled={!canEmail}
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setMessage(null);
+            }}
+          />
+          {message && <p className={clsx('text-xs', message.ok ? 'text-success' : 'text-danger')}>{message.text}</p>}
+          <Button
+            variant="primary"
+            icon={<UserPlus size={15} />}
+            disabled={!canEmail || !email.includes('@') || invite.isPending}
+            onClick={() => invite.mutate()}
+          >
+            {invite.isPending ? 'Sending…' : 'Send invitation'}
+          </Button>
+        </div>
+      </Card>
+
+      {invites.length > 0 && (
+        <Card title="Pending invitations" description="Revoking one makes its link stop working.">
+          {invites.map((entry) => (
+            <Row key={entry.id} label={entry.email} hint={`Expires ${formatInstant(entry.expiresAt)}`}>
+              <Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(entry.id)}>
+                Revoke
+              </Button>
+            </Row>
+          ))}
+        </Card>
+      )}
     </>
   );
 }

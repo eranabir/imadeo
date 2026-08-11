@@ -5,7 +5,7 @@ import { actions } from '../lib/actions';
 import { useSelectionBar, useSelectionDock } from '../selection';
 import { colors, radius } from '../theme';
 import { Icon, type IconName } from './Icon';
-import { AssignSheet, ConfirmSheet, MoveSheet } from './sheets';
+import { AssignSheet, ConfirmSheet, MoveSheet, ShareSheet } from './sheets';
 import { Touchable } from './ui';
 
 interface Props {
@@ -28,6 +28,7 @@ interface Props {
 export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onDone }: Props) {
   const [moving, setMoving] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [trashing, setTrashing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onD
           disabled={busy}
           onPress={() => setAssigning(true)}
         />
+        <ToolbarAction icon="shared" label="Share" disabled={busy} onPress={() => setSharing(true)} />
         <ToolbarAction
           icon="trash"
           label="Trash"
@@ -112,6 +114,20 @@ export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onD
         onClose={() => setAssigning(false)}
         onDone={onDone}
         onError={setError}
+      />
+
+      <ShareSheet
+        open={sharing}
+        serverUrl={serverUrl}
+        assetIds={ids}
+        busy={busy}
+        onClose={() => setSharing(false)}
+        onShare={(userIds) =>
+          run(async () => {
+            await actions.share(serverUrl, ids, userIds);
+            setSharing(false);
+          })
+        }
       />
 
       <ConfirmSheet

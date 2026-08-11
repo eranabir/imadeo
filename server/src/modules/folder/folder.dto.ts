@@ -67,6 +67,12 @@ export class FolderAssetsDto {
   assetIds!: string[];
 }
 
+export class ShareFolderDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  userIds!: string[];
+}
+
 export class FolderTreeQueryDto {
   @ApiPropertyOptional({ description: 'Include folders that live in the vault' })
   @IsOptional()

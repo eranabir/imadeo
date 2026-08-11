@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 import { actions } from '../lib/actions';
 import { faceThumbnail, useResource, type Album, type Person } from '../lib/api';
 import { colors, radius } from '../theme';
@@ -139,6 +139,125 @@ export function ConfirmSheet({
       }
     >
       <View />
+    </Sheet>
+  );
+}
+
+interface SharePeer {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/** Gives other signed-in accounts read-only access to selected server photos. */
+export function ShareSheet({
+  open,
+  serverUrl,
+  assetIds = [],
+  itemCount,
+  title,
+  description,
+  confirmLabel = 'Share privately',
+  busy,
+  onShare,
+  onClose,
+}: {
+  open: boolean;
+  serverUrl: string;
+  assetIds?: string[];
+  itemCount?: number;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  busy?: boolean;
+  onShare: (userIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const peers = useResource<SharePeer[]>(serverUrl, open ? '/users' : null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) setSelected(new Set());
+  }, [open]);
+
+  const toggle = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
+  const count = itemCount ?? assetIds.length;
+  return (
+    <Sheet
+      open={open}
+      tall
+      title={title ?? `Share ${count === 1 ? 'photo' : `${count} photos`}`}
+      description={description ?? 'Choose who can view these files. Shared photos stay read-only and can be revoked by you at any time.'}
+      onClose={onClose}
+      footer={
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
+          <Button
+            label={busy ? 'Sharing…' : confirmLabel}
+            icon="shared"
+            disabled={!selected.size || busy}
+            onPress={() => onShare([...selected])}
+            style={{ flex: 1 }}
+          />
+        </View>
+      }
+    >
+      <ScrollView contentContainerStyle={{ gap: 6, paddingBottom: 8 }}>
+        {peers.loading ? (
+          <Text style={{ color: colors.muted, fontSize: 15 }}>Loading accounts…</Text>
+        ) : peers.data?.length ? (
+          peers.data.map((person) => {
+            const checked = selected.has(person.id);
+            return (
+              <Touchable
+                key={person.id}
+                role="radio"
+                selected={checked}
+                label={`Share with ${person.name}`}
+                radius={radius.md}
+                onPress={() => toggle(person.id)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 13,
+                  backgroundColor: checked ? colors.surface : colors.bg,
+                  borderWidth: 1,
+                  borderColor: checked ? colors.primary : colors.border,
+                }}
+              >
+                <View
+                  style={{
+                    width: 21,
+                    height: 21,
+                    borderRadius: radius.sm,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 2,
+                    borderColor: checked ? colors.primary : colors.border,
+                    backgroundColor: checked ? colors.primary : 'transparent',
+                  }}
+                >
+                  {checked && <Icon name="check" size={13} color={colors.onPrimary} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{person.name}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 13, marginTop: 2 }}>{person.email}</Text>
+                </View>
+              </Touchable>
+            );
+          })
+        ) : (
+          <Text style={{ color: colors.muted, fontSize: 15 }}>There are no other accounts on this server yet.</Text>
+        )}
+      </ScrollView>
     </Sheet>
   );
 }

@@ -157,6 +157,13 @@ export class BulkAssetIdsDto {
   ids!: string[];
 }
 
+/** Give existing accounts read-only access to one or more of your assets. */
+export class ShareAssetsDto extends BulkAssetIdsDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  userIds!: string[];
+}
+
 export class DeleteAssetsDto extends BulkAssetIdsDto {
   @ApiPropertyOptional({ description: 'Skip the trash and delete the files immediately' })
   @IsOptional()

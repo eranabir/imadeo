@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AssetVisibility, Prisma } from '../../db';
+import { AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ALBUM_COVER_INCLUDE, pickCover } from '../album/album.service';
@@ -23,6 +23,9 @@ export interface FolderNode {
   id: string;
   name: string;
   parentId: string | null;
+  ownerId: string;
+  /** True when another account shared this folder tree with the caller. */
+  shared: boolean;
   path: string;
   depth: number;
   isLocked: boolean;
@@ -76,13 +79,29 @@ export class FolderService {
 
     const rows = await this.prisma.$queryRaw<FlatFolderRow[]>`
       SELECT
-        f.id, f.name, f."parentId", f.path, f.depth, f."isLocked",
+        f.id, f.name, f."parentId", f."ownerId", f.path, f.depth, f."isLocked",
+        (f."ownerId" <> ${userId}::uuid) AS shared,
         f.color, f.icon, f."sortOrder",
         ${assetCount}::bigint AS "assetCount",
         (SELECT COUNT(*) FROM albums al
           WHERE al."folderId" = f.id AND al."deletedAt" IS NULL)::bigint AS "albumCount"
       FROM folders f
-      WHERE f."ownerId" = ${userId}::uuid AND f."deletedAt" IS NULL ${lockedFilter}
+      WHERE f."deletedAt" IS NULL ${lockedFilter}
+        -- A recipient never sees vault folders, even when their client asks to
+        -- include locked folders for its own Locked view.
+        AND (f."ownerId" = ${userId}::uuid OR f."isLocked" = false)
+        AND (
+          f."ownerId" = ${userId}::uuid
+          OR EXISTS (
+            SELECT 1
+            FROM folder_users fu
+            JOIN folders root ON root.id = fu."folderId"
+            WHERE fu."userId" = ${userId}::uuid
+              AND root."deletedAt" IS NULL
+              AND root."isLocked" = false
+              AND f.path LIKE root.path || '%'
+          )
+        )
       ORDER BY f.depth ASC, f."sortOrder" ASC, f.name ASC
     `;
 
@@ -101,9 +120,8 @@ export class FolderService {
     // sidebar can show them in place with a cover rather than only as counts.
     const albums = await this.prisma.album.findMany({
       where: {
-        ownerId: userId,
         deletedAt: null,
-        folderId: { not: null },
+        folderId: { in: [...nodes.keys()] },
         ...(query.includeLocked ? {} : { isLocked: false }),
       },
       include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
@@ -126,7 +144,7 @@ export class FolderService {
       // Rows are ordered by depth, so a parent is always in the map already —
       // unless it was filtered out (locked), in which case the node is orphaned
       // and deliberately hidden with it.
-      if (node.parentId === null) {
+      if (node.parentId === null || !nodes.has(node.parentId)) {
         roots.push(node);
       } else {
         nodes.get(node.parentId)?.children.push(node);
@@ -137,18 +155,60 @@ export class FolderService {
 
   async getById(userId: string, id: string) {
     const folder = await this.prisma.folder.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!folder) throw new NotFoundException('Folder not found');
+    if (folder.ownerId === userId) return { ...folder, shared: false };
+    if (folder.isLocked || !(await this.isSharedWith(userId, folder.path))) {
+      throw new NotFoundException('Folder not found');
+    }
+    return { ...folder, shared: true };
+  }
+
+  private async getOwnedById(userId: string, id: string) {
+    const folder = await this.prisma.folder.findFirst({
       where: { id, ownerId: userId, deletedAt: null },
     });
     if (!folder) throw new NotFoundException('Folder not found');
     return folder;
   }
 
+  private async isSharedWith(userId: string, path: string) {
+    const [result] = await this.prisma.$queryRaw<{ allowed: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM folder_users fu
+        JOIN folders root ON root.id = fu."folderId"
+        WHERE fu."userId" = ${userId}::uuid
+          AND root."deletedAt" IS NULL
+          AND root."isLocked" = false
+          AND ${path}::text LIKE root.path || '%'
+      ) AS allowed
+    `;
+    return result?.allowed ?? false;
+  }
+
   /** Root-to-self chain, used for the header breadcrumb. */
   async getBreadcrumbs(userId: string, id: string) {
     const folder = await this.getById(userId, id);
-    const ids = folder.path.split('/').filter(Boolean);
+    let ids = folder.path.split('/').filter(Boolean);
+    if (folder.ownerId !== userId) {
+      const roots = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT root.id
+        FROM folder_users fu
+        JOIN folders root ON root.id = fu."folderId"
+        WHERE fu."userId" = ${userId}::uuid
+          AND root."deletedAt" IS NULL
+          AND root."isLocked" = false
+          AND ${folder.path}::text LIKE root.path || '%'
+        ORDER BY root.depth DESC
+        LIMIT 1
+      `;
+      const at = ids.indexOf(roots[0]?.id ?? '');
+      if (at >= 0) ids = ids.slice(at);
+    }
     const folders = await this.prisma.folder.findMany({
-      where: { id: { in: ids }, ownerId: userId },
+      where: { id: { in: ids }, ownerId: folder.ownerId },
       select: { id: true, name: true, isLocked: true },
     });
     const byId = new Map(folders.map((f) => [f.id, f]));
@@ -170,7 +230,7 @@ export class FolderService {
       folder = await this.getById(userId, folderId);
       if (query.recursive) {
         const descendants = await this.prisma.folder.findMany({
-          where: { ownerId: userId, deletedAt: null, path: { startsWith: folder.path } },
+          where: { ownerId: folder.ownerId, deletedAt: null, path: { startsWith: folder.path } },
           select: { id: true },
         });
         subtreeIds = descendants.map((d) => d.id);
@@ -192,7 +252,7 @@ export class FolderService {
         : folderId;
 
     const assetWhere: Prisma.AssetWhereInput = {
-      ownerId: userId,
+      ownerId: folder?.ownerId ?? userId,
       deletedAt: null,
       visibility: folder?.isLocked ? AssetVisibility.LOCKED : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
       ...(folderFilter === undefined && query.recursive && !folderId ? {} : { folderId: folderFilter }),
@@ -202,7 +262,16 @@ export class FolderService {
 
     const [folders, albums, assets, assetTotal] = await Promise.all([
       this.prisma.folder.findMany({
-        where: { ownerId: userId, parentId: folderId, deletedAt: null },
+        where: folder
+          ? { ownerId: folder.ownerId, parentId: folderId, deletedAt: null, isLocked: false }
+          : {
+              deletedAt: null,
+              isLocked: false,
+              OR: [
+                { ownerId: userId, parentId: null },
+                { sharedWith: { some: { userId } } },
+              ],
+            },
         // The UI shows "N items" on every sub-folder card, so the counts have to
         // come back with the listing rather than in a request per folder.
         include: {
@@ -211,7 +280,12 @@ export class FolderService {
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
       this.prisma.album.findMany({
-        where: { ownerId: userId, folderId, deletedAt: null },
+        where: {
+          ownerId: folder?.ownerId ?? userId,
+          folderId,
+          deletedAt: null,
+          isLocked: false,
+        },
         include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
         orderBy: { name: 'asc' },
       }),
@@ -226,10 +300,11 @@ export class FolderService {
     ]);
 
     return {
-      folder,
+      folder: folder ? { ...folder, shared: folder.ownerId !== userId } : null,
       breadcrumbs: folderId ? await this.getBreadcrumbs(userId, folderId) : [],
       folders: folders.map(({ _count, ...folder }) => ({
         ...folder,
+        shared: folder.ownerId !== userId,
         assetCount: _count.assets,
         albumCount: _count.albums,
         childCount: _count.children,
@@ -265,7 +340,7 @@ export class FolderService {
 
     let parent = null;
     if (dto.parentId) {
-      parent = await this.getById(userId, dto.parentId);
+      parent = await this.getOwnedById(userId, dto.parentId);
       if (parent.depth + 1 >= MAX_DEPTH) {
         throw new BadRequestException(`Folders cannot nest deeper than ${MAX_DEPTH} levels`);
       }
@@ -297,7 +372,7 @@ export class FolderService {
   }
 
   async update(userId: string, id: string, dto: UpdateFolderDto) {
-    const folder = await this.getById(userId, id);
+    const folder = await this.getOwnedById(userId, id);
 
     if (dto.name !== undefined) {
       const name = this.normaliseName(dto.name);
@@ -319,7 +394,7 @@ export class FolderService {
    * with a single UPDATE.
    */
   async move(userId: string, id: string, parentId: string | null) {
-    const folder = await this.getById(userId, id);
+    const folder = await this.getOwnedById(userId, id);
     if (parentId === id) {
       throw new BadRequestException('A folder cannot be moved into itself');
     }
@@ -329,7 +404,7 @@ export class FolderService {
 
     let parent = null;
     if (parentId) {
-      parent = await this.getById(userId, parentId);
+      parent = await this.getOwnedById(userId, parentId);
       // Moving a folder under one of its own descendants would detach the tree.
       if (parent.path.startsWith(folder.path)) {
         throw new BadRequestException('A folder cannot be moved into one of its own sub-folders');
@@ -382,7 +457,7 @@ export class FolderService {
    * to the root instead.
    */
   async remove(userId: string, id: string, options: { keepAssets?: boolean } = {}) {
-    const folder = await this.getById(userId, id);
+    const folder = await this.getOwnedById(userId, id);
     const now = new Date();
 
     return this.prisma.$transaction(async (tx) => {
@@ -440,7 +515,7 @@ export class FolderService {
   // -- assets in folders ----------------------------------------------------
 
   async addAssets(userId: string, folderId: string, assetIds: string[]) {
-    const folder = await this.getById(userId, folderId);
+    const folder = await this.getOwnedById(userId, folderId);
     const { count } = await this.prisma.asset.updateMany({
       where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
       data: {
@@ -460,15 +535,52 @@ export class FolderService {
     return { removed: count };
   }
 
+  // -- sharing --------------------------------------------------------------
+
+  /** Shares one folder and every present/future descendant as read-only. */
+  async share(userId: string, folderId: string, userIds: string[]) {
+    const folder = await this.getOwnedById(userId, folderId);
+    const recipients = [...new Set(userIds)].filter((id) => id !== userId);
+    if (!recipients.length) throw new BadRequestException('Choose at least one other account');
+    if (folder.isLocked) throw new ForbiddenException('Locked folders cannot be shared');
+
+    const lockedDescendant = await this.prisma.folder.findFirst({
+      where: { ownerId: userId, path: { startsWith: folder.path }, isLocked: true },
+      select: { id: true },
+    });
+    if (lockedDescendant) {
+      throw new ForbiddenException('Unlock or move locked sub-folders before sharing this folder');
+    }
+
+    const accounts = await this.prisma.user.findMany({
+      where: { id: { in: recipients }, status: UserStatus.ACTIVE, deletedAt: null },
+      select: { id: true, name: true, email: true },
+    });
+    if (accounts.length !== recipients.length) throw new NotFoundException('One or more accounts were not found');
+
+    await this.prisma.folderUser.createMany({
+      data: recipients.map((recipientId) => ({ folderId, userId: recipientId })),
+      skipDuplicates: true,
+    });
+    return { folderId, recipients: accounts };
+  }
+
+  async removeShare(userId: string, folderId: string, recipientId: string) {
+    await this.getOwnedById(userId, folderId);
+    const { count } = await this.prisma.folderUser.deleteMany({ where: { folderId, userId: recipientId } });
+    if (!count) throw new NotFoundException('Share not found');
+    return { successful: true };
+  }
+
   // -- vault ----------------------------------------------------------------
 
   /** Moves a folder subtree into or out of the vault. Requires an unlocked session. */
   async setLock(userId: string, id: string, isLocked: boolean) {
-    const folder = await this.getById(userId, id);
+    const folder = await this.getOwnedById(userId, id);
     if (folder.isLocked === isLocked) return folder;
 
     if (folder.parentId && !isLocked) {
-      const parent = await this.getById(userId, folder.parentId);
+      const parent = await this.getOwnedById(userId, folder.parentId);
       if (parent.isLocked) {
         throw new ForbiddenException('Move the folder out of the locked branch before unlocking it');
       }
@@ -508,10 +620,14 @@ export class FolderService {
     });
 
     if (isLocked) {
-      // Locked content must not stay reachable through an existing public link.
-      await tx.sharedLinkAsset.deleteMany({
-        where: { asset: { ownerId: userId, folderId: { in: ids } } },
-      });
+      // Locked content must not stay reachable through an existing share.
+      const assetWhere = { ownerId: userId, folderId: { in: ids } };
+      await Promise.all([
+        tx.sharedLinkAsset.deleteMany({ where: { asset: assetWhere } }),
+        tx.assetUser.deleteMany({ where: { asset: assetWhere } }),
+        tx.folderUser.deleteMany({ where: { folderId: { in: ids } } }),
+        tx.albumUser.deleteMany({ where: { album: { folderId: { in: ids } } } }),
+      ]);
     }
   }
 
@@ -524,7 +640,7 @@ export class FolderService {
    */
   async ensurePath(userId: string, segments: string[], rootId: string | null = null) {
     let parentId = rootId;
-    let parent = rootId ? await this.getById(userId, rootId) : null;
+    let parent = rootId ? await this.getOwnedById(userId, rootId) : null;
 
     for (const raw of segments) {
       const name = this.normaliseName(raw);

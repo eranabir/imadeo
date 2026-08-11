@@ -83,10 +83,31 @@ export class AlbumService {
     }
 
     if (album.ownerId === auth.user.id) return 'owner';
+    if (album.isLocked) throw new ForbiddenException('Locked albums cannot be shared');
 
     const membership = album.albumUsers[0];
-    if (!membership) throw new ForbiddenException('You do not have access to this album');
-    return membership.role === AlbumUserRole.EDITOR ? 'editor' : 'viewer';
+    if (membership) return membership.role === AlbumUserRole.EDITOR ? 'editor' : 'viewer';
+    if (album.folderId && (await this.hasSharedFolderAccess(auth.user.id, album.folderId))) return 'viewer';
+    throw new ForbiddenException('You do not have access to this album');
+  }
+
+  /** Folder shares make the whole folder tree viewable, including its albums. */
+  private async hasSharedFolderAccess(userId: string, folderId: string) {
+    const [result] = await this.prisma.$queryRaw<{ allowed: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM folders target
+        JOIN folder_users fu ON fu."userId" = ${userId}::uuid
+        JOIN folders root ON root.id = fu."folderId"
+        WHERE target.id = ${folderId}::uuid
+          AND target."deletedAt" IS NULL
+          AND target."isLocked" = false
+          AND root."deletedAt" IS NULL
+          AND root."isLocked" = false
+          AND target.path LIKE root.path || '%'
+      ) AS allowed
+    `;
+    return result?.allowed ?? false;
   }
 
   private async assertCanEdit(auth: AuthDto, albumId: string) {
@@ -108,15 +129,32 @@ export class AlbumService {
   async list(userId: string, query: AlbumQueryDto = {}) {
     const mine: Prisma.AlbumWhereInput = { ownerId: userId };
     const sharedWithMe: Prisma.AlbumWhereInput = { albumUsers: { some: { userId } } };
+    const sharedFolderIds = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT target.id
+      FROM folders target
+      JOIN folder_users fu ON fu."userId" = ${userId}::uuid
+      JOIN folders root ON root.id = fu."folderId"
+      WHERE target."deletedAt" IS NULL
+        AND target."isLocked" = false
+        AND root."deletedAt" IS NULL
+        AND root."isLocked" = false
+        AND target.path LIKE root.path || '%'
+    `;
+    const sharedFolder: Prisma.AlbumWhereInput = {
+      folderId: { in: sharedFolderIds.map((folder) => folder.id) },
+    };
 
+    const sharedAccess: Prisma.AlbumWhereInput = {
+      AND: [{ isLocked: false }, { OR: [sharedWithMe, sharedFolder] }],
+    };
     const where: Prisma.AlbumWhereInput = {
       deletedAt: null,
       ...(query.includeLocked ? {} : { isLocked: false }),
       ...(query.folderId !== undefined ? { folderId: query.folderId } : {}),
       ...(query.assetId ? { assets: { some: { assetId: query.assetId } } } : {}),
       ...(query.shared
-        ? { OR: [{ AND: [mine, { albumUsers: { some: {} } }] }, sharedWithMe] }
-        : { OR: [mine, sharedWithMe] }),
+        ? { OR: [{ AND: [mine, { albumUsers: { some: {} } }] }, sharedAccess] }
+        : { OR: [mine, sharedAccess] }),
     };
 
     const albums = await this.prisma.album.findMany({
@@ -135,7 +173,7 @@ export class AlbumService {
       ...album,
       assetCount: _count.assets,
       ...pickCover(album.thumbnailAssetId, assets),
-      shared: album.albumUsers.length > 0,
+      shared: album.albumUsers.length > 0 || album.ownerId !== userId,
     }));
   }
 

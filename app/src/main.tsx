@@ -19,6 +19,7 @@ import { OAuthCallback } from './pages/OAuthCallback';
 import { Register } from './pages/Register';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
+import { Sharing } from './pages/Sharing';
 import { Timeline } from './pages/Timeline';
 import { Trash } from './pages/Trash';
 import { useAuth } from './store/auth';
@@ -115,6 +116,7 @@ function App() {
         <Route path="/folders/:folderId" element={<FolderView />} />
         <Route path="/albums" element={<Albums />} />
         <Route path="/albums/:albumId" element={<AlbumDetail />} />
+        <Route path="/sharing" element={<Sharing />} />
         <Route path="/search" element={<Search />} />
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/places" element={<Places />} />

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Imadeo documentation</title>
-<meta name="description" content="How to install Imadeo with Docker and how to use it: uploading, the timeline, albums and folders, people, search, duplicates and accounts." />
+<meta name="description" content="How to install Imadeo with Docker and how to use it: uploading, sharing, the timeline, albums and folders, people, search, duplicates and users." />
 <link rel="canonical" href="https://imadeo.app/guide.html" />
 
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -143,6 +143,7 @@
     <a href="#uploading">Uploading</a>
     <a href="#timeline">The timeline</a>
     <a href="#albums">Albums and folders</a>
+    <a href="#sharing">Sharing</a>
     <a href="#people">People &amp; Pets</a>
     <a href="#search">Search</a>
     <a href="#duplicates">Duplicates</a>
@@ -398,6 +399,26 @@ docker compose up -d</code></pre>
       </p>
     </section>
 
+    <section id="sharing">
+      <h2>Sharing</h2>
+      <p>
+        Every user has a private library. Nothing appears in another user’s
+        library unless its owner chooses to share it. The <strong>Sharing</strong>
+        section collects everything that has been shared with you without mixing
+        it into your own photos.
+      </p>
+      <ul>
+        <li><strong>Photos</strong> can be shared directly from the selection or photo menu.</li>
+        <li><strong>Albums</strong> can be shared with other users on the same server.</li>
+        <li><strong>Folders</strong> share their full subtree, including its albums and photos, as read-only.</li>
+      </ul>
+      <p>
+        Recipients can view and download shared content but cannot rename, move,
+        delete, organise, or re-share it. Locked photos, albums, and folders are
+        never shareable; locking content also revokes existing shares.
+      </p>
+    </section>
+
     <section id="people">
       <h2>People &amp; Pets</h2>
       <p>
@@ -480,10 +501,10 @@ docker compose up -d</code></pre>
     </section>
 
     <section id="accounts">
-      <h2>Accounts and invites</h2>
+      <h2>Users and invitations</h2>
       <p>
-        Under <strong>Settings</strong>, an administrator can invite someone by
-        email or create an account directly.
+        Under <strong>Settings → Users</strong>, an administrator can invite
+        someone by email or create a user directly.
       </p>
       <ul>
         <li><strong>Invitation</strong> sends a link that opens registration with

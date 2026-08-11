@@ -72,9 +72,9 @@ export class UserService {
   }
 
   /** Everyone the caller may share with — name and avatar only. */
-  listPeers() {
+  listPeers(userId: string) {
     return this.prisma.user.findMany({
-      where: { status: UserStatus.ACTIVE, deletedAt: null },
+      where: { id: { not: userId }, status: UserStatus.ACTIVE, deletedAt: null },
       select: { id: true, email: true, name: true, profileImagePath: true },
       orderBy: { name: 'asc' },
     });

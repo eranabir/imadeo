@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Imadeo — your photos, on your own server</title>
-<meta name="description" content="A self-hosted home for your photos and videos. Timeline, faces, albums, duplicate detection and search that understands what is in a picture — all running on hardware you own." />
+<meta name="description" content="A self-hosted home for your photos and videos. Timeline, private sharing, faces, albums, duplicate detection and search that understands what is in a picture — all running on hardware you own." />
 
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://imadeo.app/" />
@@ -238,15 +238,16 @@
      recognisable at a glance rather than a column of grey glyphs. */
   .side-item:nth-child(1)  { --ic: #06b6d4; } /* Photos        — cyan   */
   .side-item:nth-child(2)  { --ic: #f59e0b; } /* Albums        — amber  */
-  .side-item:nth-child(3)  { --ic: #8b5cf6; } /* Folders       — violet */
-  .side-item:nth-child(4)  { --ic: #8b5cf6; } /* nested folder         */
-  .side-item:nth-child(5)  { --ic: #7cdbff; } /* Places        — sky    */
-  .side-item:nth-child(6)  { --ic: #0ea5e9; } /* People & Pets — sky    */
-  .side-item:nth-child(7)  { --ic: #f43f5e; } /* Favorites     — rose   */
-  .side-item:nth-child(8)  { --ic: #818cf8; } /* Locked        — indigo */
-  .side-item:nth-child(9)  { --ic: #f97316; } /* Duplicates    — orange */
-  .side-item:nth-child(10) { --ic: #94a3b8; } /* Trash         — slate  */
-  .side-item:nth-child(11) { --ic: #10b981; } /* Settings      — emerald*/
+  .side-item:nth-child(3)  { --ic: #7cdbff; } /* Sharing       — sky    */
+  .side-item:nth-child(4)  { --ic: #8b5cf6; } /* Folders       — violet */
+  .side-item:nth-child(5)  { --ic: #8b5cf6; } /* nested folder         */
+  .side-item:nth-child(6)  { --ic: #7cdbff; } /* Places        — sky    */
+  .side-item:nth-child(7)  { --ic: #0ea5e9; } /* People & Pets — sky    */
+  .side-item:nth-child(8)  { --ic: #f43f5e; } /* Favorites     — rose   */
+  .side-item:nth-child(9)  { --ic: #818cf8; } /* Locked        — indigo */
+  .side-item:nth-child(10) { --ic: #f97316; } /* Duplicates    — orange */
+  .side-item:nth-child(11) { --ic: #94a3b8; } /* Trash         — slate  */
+  .side-item:nth-child(12) { --ic: #10b981; } /* Settings      — emerald*/
   .side-item b { margin-left: auto; font-weight: 500; font-size: 11px; opacity: .8; font-variant-numeric: tabular-nums; }
   .side-item.nest { padding-left: 26px; font-size: 14px; }
 
@@ -421,7 +422,7 @@
   <div class="shot">
     <div class="browser-chrome">
       <span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span>
-      <span class="browser-url">https://photos.example.com</span>
+      <span class="browser-url">http://localhost:1111</span>
     </div>
     <div class="app-top">
       <span class="app-brand">
@@ -455,6 +456,10 @@
         <div class="side-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
           Albums
+        </div>
+        <div class="side-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.5-4.4M8.2 13.2l7.5 4.4"/></svg>
+          Sharing
         </div>
         <div class="side-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -576,8 +581,8 @@
 
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
-        <h3>Accounts you control</h3>
-        <p>Invite family by email, or create local accounts directly. A locked area keeps private photos out of the main timeline.</p>
+        <h3>Private sharing</h3>
+        <p>Keep every account separate by default, then share exactly the photos, albums, or folder trees you choose — read-only and only with people on your server.</p>
       </div>
     </div>
   </div>
