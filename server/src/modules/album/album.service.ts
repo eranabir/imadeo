@@ -110,6 +110,45 @@ export class AlbumService {
     return result?.allowed ?? false;
   }
 
+  /** Folder ancestry visible to this album viewer, ordered root to parent. */
+  private async getFolderBreadcrumbs(
+    auth: AuthDto,
+    ownerId: string,
+    folder: { id: string; path: string },
+  ) {
+    let ids = folder.path.split('/').filter(Boolean);
+
+    // A direct album share must not reveal its owner's private folder tree.
+    // Folder-share recipients see only from the shared root downwards.
+    if (ownerId !== auth.user.id) {
+      if (auth.sharedLink) return [];
+      const roots = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT root.id
+        FROM folder_users fu
+        JOIN folders root ON root.id = fu."folderId"
+        JOIN folders target ON target.id = ${folder.id}::uuid
+        WHERE fu."userId" = ${auth.user.id}::uuid
+          AND root."deletedAt" IS NULL
+          AND root."isLocked" = false
+          AND target.path LIKE root.path || '%'
+        ORDER BY root.depth DESC
+        LIMIT 1
+      `;
+      const sharedRootIndex = ids.indexOf(roots[0]?.id ?? '');
+      if (sharedRootIndex < 0) return [];
+      ids = ids.slice(sharedRootIndex);
+    }
+
+    const folders = await this.prisma.folder.findMany({
+      where: { id: { in: ids }, ownerId, deletedAt: null },
+      select: { id: true, name: true, isLocked: true },
+    });
+    const byId = new Map(folders.map((candidate) => [candidate.id, candidate]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+  }
+
   private async assertCanEdit(auth: AuthDto, albumId: string) {
     const access = await this.getAccess(auth, albumId);
     if (access === 'viewer') {
@@ -210,6 +249,9 @@ export class AlbumService {
     });
 
     const { _count, assets: coverAssets, ...rest } = album;
+    const breadcrumbs = album.folder
+      ? await this.getFolderBreadcrumbs(auth, album.ownerId, album.folder)
+      : [];
     const total = await this.prisma.albumAsset.count({
       where: {
         albumId,
@@ -219,6 +261,7 @@ export class AlbumService {
     return {
       ...rest,
       access,
+      breadcrumbs,
       assetCount: total,
       ...pickCover(album.thumbnailAssetId, coverAssets),
       assets: rows.map((r) => ({ ...r.asset, addedAt: r.createdAt, addedById: r.addedById })),

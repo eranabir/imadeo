@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCheck, Folder, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
+import { CheckCheck, ChevronRight, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
@@ -24,6 +24,7 @@ import {
 interface AlbumDetailResponse extends Album {
   assets: Asset[];
   access: 'owner' | 'editor' | 'viewer';
+  breadcrumbs: { id: string; name: string; isLocked: boolean }[];
 }
 
 export function BrowseAlbumPage() {
@@ -90,23 +91,25 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
-        <nav className="mb-1 flex items-center gap-1 text-xs text-content-muted">
-          <Link to={rootMode === 'browse' ? '/browse' : '/albums'} className="flex items-center gap-1 transition hover:text-content">
-            <ArrowLeft size={12} />
+        <nav className="mb-1 flex flex-wrap items-center gap-1 text-xs text-content-muted">
+          <Link to={rootMode === 'browse' ? '/browse' : '/albums'} className="transition hover:text-content">
             {rootMode === 'browse' ? 'Browse' : 'Albums'}
           </Link>
-          {album.folder && (
-            <>
-              <span>·</span>
+          {album.breadcrumbs.map((crumb) => (
+            <span key={crumb.id} className="flex items-center gap-1">
+              <ChevronRight size={12} />
               <Link
-                to={`${rootMode === 'browse' ? '/browse/folders' : '/folders'}/${album.folder.id}`}
-                className="flex items-center gap-1 transition hover:text-content"
+                to={`${rootMode === 'browse' ? '/browse/folders' : '/folders'}/${crumb.id}`}
+                className="transition hover:text-content"
               >
-                <Folder size={11} />
-                {album.folder.name}
+                {crumb.name}
               </Link>
-            </>
-          )}
+            </span>
+          ))}
+          <span className="flex items-center gap-1 text-content">
+            <ChevronRight size={12} />
+            {album.name}
+          </span>
         </nav>
 
         <div className="flex flex-wrap items-center justify-between gap-3">

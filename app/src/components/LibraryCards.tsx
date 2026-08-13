@@ -50,7 +50,7 @@ export function FolderCard({ folder, basePath = '/folders', onDrop, onContextMen
       {...dropProps}
       onContextMenu={(event) => onContextMenu(folder, event)}
       className={clsx(
-        'flex items-center gap-3 rounded-panel border px-3.5 py-3 transition',
+        'flex h-full min-h-0 items-center gap-3 overflow-hidden rounded-panel border px-3.5 py-3 transition',
         isOver
           ? 'border-primary bg-primary/15 ring-2 ring-primary/40'
           : 'border-border-subtle bg-surface-raised hover:border-primary hover:bg-surface-sunken',
@@ -65,7 +65,9 @@ export function FolderCard({ folder, basePath = '/folders', onDrop, onContextMen
         <Tooltip label={folder.name} onlyWhenOverflow>
           <span className="block truncate text-sm font-medium">{folder.name}</span>
         </Tooltip>
-        <span className="block text-xs text-content-muted">{summary}</span>
+        <Tooltip label={summary} onlyWhenOverflow>
+          <span className="block truncate text-xs text-content-muted">{summary}</span>
+        </Tooltip>
       </span>
     </Link>
   );
