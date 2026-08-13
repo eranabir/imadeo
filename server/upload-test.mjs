@@ -6,7 +6,7 @@ import { join } from 'node:path';
 // The exiftool CLI is not on PATH here; use the copy the server already depends on.
 import { exiftool } from 'exiftool-vendored';
 
-const BASE = 'http://127.0.0.1:3001/api';
+const BASE = 'http://127.0.0.1:6666/api';
 const TMP = process.env.TMPDIR || 'C:/Users/eran/AppData/Local/Temp/claude/C--projects-imadeo/c93a5ee4-0725-4562-9b4a-37df28bcd59e/scratchpad/media';
 let token = '';
 

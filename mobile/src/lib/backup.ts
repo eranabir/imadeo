@@ -106,7 +106,7 @@ async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string>
     if (!token) return null;
 
     const response = await fetch(`${baseUrl}/api/assets/backed-up`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'x-imadeo-client': 'native' },
     });
     if (!response.ok) return null;
 
@@ -368,7 +368,7 @@ async function send(
         uploadType: FileSystem.FileSystemUploadType.MULTIPART,
         fieldName: 'assetData',
         mimeType: mimeOf(asset.filename, asset.mediaType),
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'x-imadeo-client': 'native' },
         parameters: {
           deviceAssetId: asset.id,
           deviceId: id,

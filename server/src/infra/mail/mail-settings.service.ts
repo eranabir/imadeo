@@ -111,7 +111,7 @@ export class MailSettingsService implements OnModuleInit {
        * from an empty address would be broken in a way that is hard to spot.
        * Trailing slash removed so links never end up with a double slash.
        */
-      publicUrl: (stored.publicUrl?.trim() || envPublicUrl || 'http://localhost:2283').replace(
+      publicUrl: (stored.publicUrl?.trim() || envPublicUrl || 'http://localhost:1111').replace(
         /\/$/,
         '',
       ),

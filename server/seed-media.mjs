@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { exiftool } from 'exiftool-vendored';
 
-const BASE = 'http://127.0.0.1:3001/api';
+const BASE = 'http://127.0.0.1:6666/api';
 const TMP = join(process.cwd(), '.seed-media');
 
 const SHOTS = [

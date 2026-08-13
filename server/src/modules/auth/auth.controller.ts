@@ -89,6 +89,7 @@ export class AuthController {
 
   /** Browser credentials stay in HttpOnly cookies; native clients receive tokens for SecureStore. */
   private isBrowserRequest(req: Request) {
+    if (req.header('x-imadeo-client') === 'native') return false;
     // Fetch Metadata and the browser's User-Agent cannot be forged by page
     // JavaScript. The marker keeps older browsers on the cookie-only path.
     return (
@@ -121,7 +122,9 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange email and password for a session' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.login(dto.email, dto.password, this.deviceInfo(req));
-    this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    if (this.isBrowserRequest(req)) {
+      this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    }
     return this.sessionResponse(req, result);
   }
 
@@ -152,7 +155,9 @@ export class AuthController {
     // Sign them straight in — asking someone to retype what they just entered
     // is pure friction.
     const session = await this.authService.loginWithUserId(user.id, this.deviceInfo(req));
-    this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    if (this.isBrowserRequest(req)) {
+      this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    }
     return this.sessionResponse(req, session);
   }
 
@@ -185,7 +190,9 @@ export class AuthController {
     });
 
     const session = await this.authService.loginWithUserId(user.id, this.deviceInfo(req));
-    this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    if (this.isBrowserRequest(req)) {
+      this.setAuthCookies(req, res, session.accessToken, session.refreshToken);
+    }
     return this.sessionResponse(req, session);
   }
 
@@ -234,7 +241,9 @@ export class AuthController {
     if (!token) throw new UnauthorizedException('No refresh token supplied');
 
     const result = await this.authService.refresh(token);
-    this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    if (this.isBrowserRequest(req)) {
+      this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
+    }
     return this.isBrowserRequest(req) ? { successful: true } : result;
   }
 

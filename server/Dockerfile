@@ -82,7 +82,7 @@ COPY package.json /src/package.json
 ENV MEDIA_LOCATION=/data
 RUN mkdir -p /data
 
-EXPOSE 3001
+EXPOSE 6666
 
 # Migrations run at boot rather than at build time, so an existing install
 # picks up its own schema changes when it pulls a newer tag.

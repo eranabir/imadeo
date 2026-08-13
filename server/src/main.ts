@@ -71,7 +71,15 @@ async function bootstrap() {
     const hasAuthCookie = Boolean(
       req.cookies?.[AUTH_COOKIE.ACCESS] || req.cookies?.[AUTH_COOKIE.REFRESH],
     );
-    if (!unsafe || !hasAuthCookie) return next();
+    const hasBearerToken = /^Bearer\s+\S+/i.test(req.header('authorization') ?? '');
+    const nativeClient =
+      req.header('x-imadeo-client') === 'native' &&
+      !req.header('origin') &&
+      !req.header('referer');
+    // CSRF applies only when a browser cookie is the credential. Native apps
+    // authenticate with a bearer token; Android may still retain Set-Cookie
+    // headers from an older login, but that must not turn it into a browser.
+    if (!unsafe || !hasAuthCookie || hasBearerToken || nativeClient) return next();
 
     const origin = req.header('origin');
     const referer = req.header('referer');

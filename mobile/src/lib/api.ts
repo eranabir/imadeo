@@ -139,6 +139,7 @@ export async function request<T>(
       ...init,
       headers: {
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        'x-imadeo-client': 'native',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...init.headers,
       },

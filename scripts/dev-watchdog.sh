@@ -37,7 +37,7 @@ log() {
 
 docker_up()   { docker info >/dev/null 2>&1; }
 container_up() { docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^$1$"; }
-api_up()      { curl -sf -m 5 http://127.0.0.1:3001/api >/dev/null 2>&1; }
+api_up()      { curl -sf -m 5 http://127.0.0.1:6666/api >/dev/null 2>&1; }
 web_up()      { curl -sf -o /dev/null -m 5 http://localhost:5173/ 2>/dev/null; }
 
 start_dev() {

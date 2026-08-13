@@ -10,7 +10,8 @@ Your originals stay on storage you choose.
 ## Development
 
 `yarn dev` serves the full local stack at `http://localhost:5173`; the
-development API is on HTTP port `3001`. Production deployments should use an
+API is on HTTP port `6666` in development and production. Production web is
+served on port `1111`. Remote deployments should use an
 HTTPS reverse proxy for remote access.
 
 ## Built for your library

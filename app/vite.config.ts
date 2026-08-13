@@ -18,7 +18,7 @@ export default defineConfig({
     // they will behind the production nginx.
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: 'http://127.0.0.1:6666',
         changeOrigin: true,
         headers: { 'X-Forwarded-Proto': 'http' },
       },

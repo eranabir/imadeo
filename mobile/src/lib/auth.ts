@@ -49,7 +49,7 @@ export async function login(baseUrl: string, email: string, password: string): P
   try {
     response = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-imadeo-client': 'native' },
       body: JSON.stringify({ email: email.trim(), password }),
     });
   } catch {

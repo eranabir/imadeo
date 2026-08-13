@@ -70,7 +70,7 @@ export function ConnectScreen({ onConnected }: Props) {
             setAddress(t);
             if (error) setError(null);
           }}
-          placeholder="192.168.1.40:3001"
+          placeholder="192.168.1.40:6666"
           placeholderTextColor={colors.faint}
           autoCapitalize="none"
           autoCorrect={false}
@@ -94,7 +94,7 @@ export function ConnectScreen({ onConnected }: Props) {
           <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 12 }}>{error}</Text>
         ) : (
           <Text style={{ color: colors.faint, fontSize: 13, lineHeight: 19, marginTop: 12 }}>
-            A local address like 192.168.1.40:3001, or a domain such as
+            A local address like 192.168.1.40:6666, or a domain such as
             photos.example.com.
           </Text>
         )}

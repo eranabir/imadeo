@@ -34,7 +34,7 @@ server and the client together. It needs Docker running and a `.env` (copy
 Then verify, before saying it works:
 
 - Postgres and redis containers are up.
-- `GET http://127.0.0.1:3001/api/health` returns 200.
+- `GET http://127.0.0.1:6666/api/health` returns 200.
 - `http://localhost:5173` renders past the loading state, with no 502s in the
   browser console.
 
