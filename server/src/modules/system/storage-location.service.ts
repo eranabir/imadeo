@@ -71,7 +71,7 @@ export class StorageLocationService {
     }
   }
 
-  async describe(storageLabel: string | null) {
+  async describe(userId: string) {
     const storage = this.config.get('storage', { infer: true });
     const inContainer = await this.detectContainer();
     const host = this.hostKind(inContainer);
@@ -98,16 +98,16 @@ export class StorageLocationService {
        * the server genuinely cannot see from in here.
        */
       paths: {
-        originals: show(storage.upload),
-        incoming: show(storage.incoming),
-        thumbnails: show(storage.thumbs),
-        encodedVideo: show(storage.encodedVideo),
-        profile: show(storage.profile),
+        originals: show(join(storage.users, userId, 'library')),
+        incoming: show(join(storage.users, userId, 'upload')),
+        thumbnails: show(join(storage.users, userId, 'thumbs')),
+        encodedVideo: show(join(storage.users, userId, 'encoded-video')),
+        profile: show(join(storage.users, userId, 'profile')),
         backups: show(storage.backups),
-        vault: show(storage.vault),
+        vault: show(join(storage.users, userId, 'locked')),
       },
-      /** This account's own folder underneath the originals directory. */
-      library: storageLabel ? show(join(storage.upload, storageLabel)) : null,
+      /** This account's complete filesystem boundary. */
+      library: show(join(storage.users, userId)),
       disk: await this.disk(root),
     };
   }

@@ -11,6 +11,7 @@ import { Permission, UserStatus } from '../../db';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { StorageService } from '../../infra/storage/storage.service';
 import type { AuthDto } from '../../common/auth.types';
 import type { AppConfig } from '../../config/configuration';
 
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly storage: StorageService,
   ) {}
 
   static hashToken(token: string) {
@@ -91,7 +93,7 @@ export class AuthService {
     const normalised = email.toLowerCase().trim();
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    return this.prisma.$transaction(async (tx) => {
+    const user = await this.prisma.$transaction(async (tx) => {
       // Only one request may decide who owns a newly installed server. A plain
       // count followed by create allows two simultaneous first sign-ups to both
       // become administrators.
@@ -118,6 +120,8 @@ export class AuthService {
         },
       });
     });
+    await this.storage.ensureUserRoot(user.id);
+    return user;
   }
 
   /** A stable, filesystem-safe directory name derived from the email. */

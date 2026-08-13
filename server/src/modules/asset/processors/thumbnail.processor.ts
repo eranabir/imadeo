@@ -2,7 +2,6 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
-import { join } from 'node:path';
 import { extname } from 'node:path';
 import type { AppConfig } from '../../../config/configuration';
 import { AssetType } from '../../../db';
@@ -43,19 +42,13 @@ export class ThumbnailProcessor extends WorkerHost {
 
     try {
       if (asset.type === AssetType.VIDEO) {
-        temporary = join(
-          this.config.get('storage.incoming', { infer: true }),
-          `${asset.id}-poster.jpg`,
-        );
+        temporary = this.storage.buildIncomingPath(asset.ownerId, `${asset.id}-poster.jpg`);
         // One second in usually avoids a black or fading first frame.
         const probe = await this.media.probeVideo(asset.originalPath).catch(() => null);
         const seek = probe && probe.durationSeconds > 2 ? 1 : 0;
         source = await this.media.extractPosterFrame(asset.originalPath, temporary, seek);
       } else if (!this.media.canSharpDecode(extname(asset.originalPath))) {
-        temporary = join(
-          this.config.get('storage.incoming', { infer: true }),
-          `${asset.id}-decoded.jpg`,
-        );
+        temporary = this.storage.buildIncomingPath(asset.ownerId, `${asset.id}-decoded.jpg`);
         source = await this.media.extractToJpeg(asset.originalPath, temporary);
       }
 
@@ -83,10 +76,7 @@ export class ThumbnailProcessor extends WorkerHost {
           }`,
         );
 
-        temporary = join(
-          this.config.get('storage.incoming', { infer: true }),
-          `${asset.id}-decoded.jpg`,
-        );
+        temporary = this.storage.buildIncomingPath(asset.ownerId, `${asset.id}-decoded.jpg`);
         source = await this.media.extractToJpeg(asset.originalPath, temporary);
         rendered = await this.media.generateImageThumbnails(source, asset.ownerId, asset.id);
       }

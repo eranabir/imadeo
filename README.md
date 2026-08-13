@@ -43,14 +43,16 @@ JWT_SECRET=replace-with-64-bytes-of-hex
 # Generate with: openssl rand -hex 32
 VAULT_MASTER_KEY=replace-with-32-bytes-of-hex
 
-# Keep this on storage that is backed up and has room to grow.
-UPLOAD_LOCATION=/path/to/your/imadeo-library
+# Permanent data root, kept outside the cloned repository.
+UPLOAD_LOCATION=/path/to/your/imadeo-data
+DB_DATA_LOCATION=/path/to/your/imadeo-postgres
 ```
 
 Then start Imadeo:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 On your LAN or VPN, open `http://<server-ip>:1111` and create the first account.
@@ -103,7 +105,7 @@ a first installation; the most common adjustments are:
 
 | Setting | What it controls |
 | --- | --- |
-| `UPLOAD_LOCATION` | Where originals, thumbnails and video previews are stored |
+| `UPLOAD_LOCATION` | Permanent data root; each account lives in `users/<user-id>` |
 | `PUBLIC_URL` | LAN URL or the public HTTPS proxy address used in links and callbacks |
 | `LOCAL_HTTP_ENABLED` | Allows HTTP sessions only for private LAN/VPN access |
 | `TRASH_RETENTION_DAYS` | How long deleted items remain recoverable |
@@ -111,20 +113,21 @@ a first installation; the most common adjustments are:
 | `GOOGLE_*` / `APPLE_*` | Optional social sign-in |
 | `ML_*` | Visual-search plus people and pet-recognition worker behaviour |
 
-Back up `UPLOAD_LOCATION` and the PostgreSQL data directory. They are the two
-parts of an installation that cannot be recreated from the container image.
+Back up `UPLOAD_LOCATION` and `DB_DATA_LOCATION`. Application containers are
+replaceable; these two paths are the parts that cannot be recreated.
 
 ## Updates
 
-Pull the latest code and rebuild the stack:
+Pull the published images and replace the application containers:
 
 ```bash
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d --remove-orphans
 ```
 
-Imadeo releases the web, server, and machine-learning images from version
-tags. Docker Compose updates the whole stack together.
+The database, media and model cache are bind-mounted outside the containers, so
+an update does not touch them. Set `IMADEO_VERSION` to pin a release; `latest`
+tracks the newest stable images.
 
 ## Project
 

@@ -6,6 +6,7 @@ import { createHash, createPublicKey, randomBytes } from 'node:crypto';
 import { UserStatus } from '../../db';
 import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { StorageService } from '../../infra/storage/storage.service';
 import { OAuthSettingsService } from './oauth-settings.service';
 
 export type OAuthProvider = 'google' | 'apple';
@@ -81,6 +82,7 @@ export class OAuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly settings: OAuthSettingsService,
+    private readonly storage: StorageService,
   ) {}
 
   // -- availability ---------------------------------------------------------
@@ -417,7 +419,7 @@ export class OAuthService {
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const user = await this.prisma.$transaction(async (tx) => {
       // See password registration: exactly one concurrent request may claim
       // the initial administrator role.
       await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
@@ -436,6 +438,8 @@ export class OAuthService {
         },
       });
     });
+    await this.storage.ensureUserRoot(user.id);
+    return user;
   }
 
   /** A stable, filesystem-safe directory name derived from the email. */

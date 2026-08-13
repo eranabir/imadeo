@@ -13,6 +13,7 @@ name: Publish images
 
 on:
   push:
+    branches: ['master']
     tags: ['v*']
   workflow_dispatch:
 
@@ -39,6 +40,9 @@ jobs:
           - name: server
             context: .
             dockerfile: server/Dockerfile
+          - name: web
+            context: .
+            dockerfile: app/Dockerfile
           - name: machine-learning
             context: ./machine-learning
             dockerfile: ./machine-learning/Dockerfile
@@ -63,7 +67,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
             type=ref,event=branch
 
       - uses: docker/build-push-action@v6
@@ -73,10 +77,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # amd64 only for now. The machine-learning image carries torch and the
-          # model weights, and cross-building it for arm64 under emulation takes
-          # hours — worth adding deliberately, with native arm runners, rather
-          # than by default.
+          # TerraMaster and the first supported self-hosting target are amd64.
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

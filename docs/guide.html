@@ -245,7 +245,7 @@ LOCAL_HTTP_ENABLED=true</code></pre>
 
       <table>
         <tr><th>Dataset</th><th>Holds</th></tr>
-        <tr><td><code>/mnt/tank/imadeo/library</code></td><td>Your photos and videos, plus thumbnails and transcodes.</td></tr>
+        <tr><td><code>/mnt/tank/imadeo/data</code></td><td>One isolated media tree for every registered user.</td></tr>
         <tr><td><code>/mnt/tank/imadeo/database</code></td><td>Postgres. Albums, names on faces, favourites — everything you have organised.</td></tr>
       </table>
 
@@ -255,8 +255,8 @@ LOCAL_HTTP_ENABLED=true</code></pre>
         left alone it puts your database wherever you happened to unpack things.
       </p>
 
-<pre><code>UPLOAD_LOCATION=/mnt/tank/imadeo/library
-DB_DATA_LOCATION=/mnt/tank/imadeo/database</code></pre>
+<pre><code>UPLOAD_LOCATION=/mnt/tank/imadeo/data
+DB_DATA_LOCATION=/mnt/tank/imadeo-postgres</code></pre>
 
       <h3>Install</h3>
       <p>
@@ -268,7 +268,8 @@ DB_DATA_LOCATION=/mnt/tank/imadeo/database</code></pre>
 <pre><code>mkdir -p /mnt/tank/apps/imadeo &amp;&amp; cd /mnt/tank/apps/imadeo
 curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
-<span class="c"># set UPLOAD_LOCATION to your dataset, then</span>
+<span class="c"># set UPLOAD_LOCATION to your permanent data directory, then</span>
+docker compose pull
 docker compose up -d</code></pre>
 
       <div class="note">
@@ -294,16 +295,16 @@ docker compose up -d</code></pre>
         lives under it.
       </p>
 
-<pre><code>UPLOAD_LOCATION=/volume1/photos</code></pre>
+<pre><code>UPLOAD_LOCATION=/volume1/imadeo-data</code></pre>
 
       <table>
         <tr><th>Directory</th><th>Holds</th></tr>
-        <tr><td><code>library/</code></td><td>Your original files, untouched.</td></tr>
-        <tr><td><code>thumbs/</code></td><td>Generated thumbnails and preview sizes.</td></tr>
-        <tr><td><code>encoded-video/</code></td><td>Transcoded copies for playback in the browser.</td></tr>
-        <tr><td><code>profile/</code></td><td>Profile pictures.</td></tr>
+        <tr><td><code>users/&lt;user-id&gt;/library/</code></td><td>That user's original files, untouched.</td></tr>
+        <tr><td><code>users/&lt;user-id&gt;/thumbs/</code></td><td>That user's generated thumbnails and previews.</td></tr>
+        <tr><td><code>users/&lt;user-id&gt;/encoded-video/</code></td><td>That user's transcoded playback copies.</td></tr>
+        <tr><td><code>users/&lt;user-id&gt;/profile/</code></td><td>That user's profile picture.</td></tr>
         <tr><td><code>backups/</code></td><td>Database dumps.</td></tr>
-        <tr><td><code>upload/</code></td><td>Scratch space for uploads in progress.</td></tr>
+        <tr><td><code>users/&lt;user-id&gt;/upload/</code></td><td>That user's uploads in progress.</td></tr>
       </table>
 
       <div class="note">
@@ -319,8 +320,8 @@ docker compose up -d</code></pre>
         root, so nothing needs rewriting in the database.
       </p>
 <pre><code>docker compose down
-mv /volume1/photos /volume2/photos
-<span class="c"># set UPLOAD_LOCATION=/volume2/photos in .env</span>
+mv /volume1/imadeo-data /volume2/imadeo-data
+<span class="c"># set UPLOAD_LOCATION=/volume2/imadeo-data in .env</span>
 docker compose up -d</code></pre>
     </section>
 

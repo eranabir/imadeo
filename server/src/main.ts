@@ -12,6 +12,8 @@ import { mkdir } from 'node:fs/promises';
 import { AppModule } from './app.module';
 import { AUTH_COOKIE } from './common/auth.types';
 import type { AppConfig } from './config/configuration';
+import { PrismaService } from './infra/prisma/prisma.service';
+import { StorageService } from './infra/storage/storage.service';
 
 // BigInt is used for file sizes and quotas; Express serialises with JSON.stringify.
 (BigInt.prototype as unknown as { toJSON(): string }).toJSON = function () {
@@ -120,15 +122,17 @@ async function bootstrap() {
   const storage = config.get('storage', { infer: true });
   await Promise.all(
     [
-      storage.upload,
-      storage.incoming,
-      storage.thumbs,
-      storage.encodedVideo,
-      storage.profile,
+      storage.users,
       storage.backups,
-      storage.vault,
     ].map((dir) => mkdir(dir, { recursive: true })),
   );
+
+  // Backfill account directories for installations created before per-user
+  // storage was introduced. This is idempotent on every boot.
+  const prisma = app.get(PrismaService);
+  const storageService = app.get(StorageService);
+  const users = await prisma.user.findMany({ select: { id: true } });
+  await Promise.all(users.map(({ id }) => storageService.ensureUserRoot(id)));
 
   const swagger = new DocumentBuilder()
     .setTitle('Imadeo API')

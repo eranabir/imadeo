@@ -94,17 +94,9 @@ export const configuration = () => {
 
     storage: {
       root: mediaRoot,
-      /// Originals, laid out by the storage template.
-      upload: join(mediaRoot, 'library'),
-      /// Files that arrived but have not finished their pipeline yet.
-      incoming: join(mediaRoot, 'upload'),
-      thumbs: join(mediaRoot, 'thumbs'),
-      encodedVideo: join(mediaRoot, 'encoded-video'),
-      profile: join(mediaRoot, 'profile'),
+      /// Every account owns one complete subtree below this directory.
+      users: join(mediaRoot, 'users'),
       backups: join(mediaRoot, 'backups'),
-      /// Vault content is stored outside `library` so a careless rsync of the
-      /// visible tree does not leak it.
-      vault: join(mediaRoot, 'vault'),
       /// Template applied when moving an original out of `incoming`.
       template: process.env.STORAGE_TEMPLATE ?? '{{y}}/{{y}}-{{MM}}-{{dd}}/{{filename}}',
       maxUploadBytes: int(process.env.MAX_UPLOAD_BYTES, 50 * 1024 * 1024 * 1024),

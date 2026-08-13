@@ -9,7 +9,6 @@ import type { AppConfig } from '../../config/configuration';
 
 export interface StoragePathContext {
   ownerId: string;
-  storageLabel: string | null;
   assetId: string;
   originalFileName: string;
   localDateTime: Date;
@@ -28,20 +27,34 @@ export class StorageService {
 
   // -- path construction ----------------------------------------------------
 
+  buildUserRoot(userId: string) {
+    return join(this.storage.users, userId);
+  }
+
+  async ensureUserRoot(userId: string) {
+    const root = this.buildUserRoot(userId);
+    await Promise.all(
+      ['library', 'upload', 'thumbs', 'encoded-video', 'profile', 'locked'].map((directory) =>
+        this.ensureDir(join(root, directory)),
+      ),
+    );
+    return root;
+  }
+
   /**
-   * Where an original file finally lives. Vault content is deliberately kept in
-   * a separate tree with opaque names so the visible library never hints at it.
+   * Where an original file finally lives. Each account has a self-contained
+   * tree, making ownership visible on disk and straightforward to back up.
    */
   buildOriginalPath(ctx: StoragePathContext): string {
     const ext = extname(ctx.originalFileName).toLowerCase() || '.bin';
+    const userRoot = this.buildUserRoot(ctx.ownerId);
 
     if (ctx.isLocked) {
-      return join(this.storage.vault, ctx.ownerId, `${ctx.assetId}${ext}`);
+      return join(userRoot, 'locked', `${ctx.assetId}${ext}`);
     }
 
-    const root = join(this.storage.upload, sanitize(ctx.storageLabel || ctx.ownerId));
     const rendered = this.renderTemplate(this.storage.template, ctx);
-    return join(root, rendered);
+    return join(userRoot, 'library', rendered);
   }
 
   /**
@@ -49,30 +62,27 @@ export class StorageService {
    * ends up with a million entries.
    */
   buildDerivativePath(kind: 'thumb' | 'preview' | 'video', ownerId: string, assetId: string) {
-    const base =
-      kind === 'video'
-        ? this.storage.encodedVideo
-        : this.storage.thumbs;
+    const base = join(this.buildUserRoot(ownerId), kind === 'video' ? 'encoded-video' : 'thumbs');
 
     const shard = join(assetId.slice(0, 2), assetId.slice(2, 4));
     const format = this.config.get('thumbnail.format', { infer: true });
     const name =
       kind === 'video' ? `${assetId}.mp4` : `${assetId}-${kind}.${format === 'jpeg' ? 'jpg' : 'webp'}`;
 
-    return join(base, ownerId, shard, name);
+    return join(base, shard, name);
   }
 
   buildProfilePath(userId: string, ext: string) {
-    return join(this.storage.profile, `${userId}${ext}`);
+    return join(this.buildUserRoot(userId), 'profile', `avatar${ext}`);
   }
 
   buildPersonThumbnailPath(ownerId: string, personId: string) {
-    return join(this.storage.thumbs, ownerId, 'people', `${personId}.jpeg`);
+    return join(this.buildUserRoot(ownerId), 'thumbs', 'people', `${personId}.jpeg`);
   }
 
   /** Temporary landing spot before the pipeline knows the real capture date. */
   buildIncomingPath(ownerId: string, filename: string) {
-    return join(this.storage.incoming, ownerId, sanitize(filename));
+    return join(this.buildUserRoot(ownerId), 'upload', sanitize(filename));
   }
 
   private renderTemplate(template: string, ctx: StoragePathContext) {

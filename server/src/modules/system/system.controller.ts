@@ -105,11 +105,7 @@ export class SystemController {
   @Auth()
   @Get('server/storage')
   @ApiOperation({ summary: 'Where media is written on this machine, and how it is installed' })
-  async storage(@AuthedUserId() userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { storageLabel: true },
-    });
-    return this.storageLocation.describe(user.storageLabel);
+  storage(@AuthedUserId() userId: string) {
+    return this.storageLocation.describe(userId);
   }
 }

@@ -7,6 +7,7 @@ import { statfs } from 'node:fs/promises';
 import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { StorageService } from '../../infra/storage/storage.service';
 import type {
   CreateUserDto,
   UpdatePreferencesDto,
@@ -53,6 +54,7 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly storage: StorageService,
   ) {}
 
   async me(userId: string) {
@@ -96,7 +98,7 @@ export class UserService {
       throw new BadRequestException('An account with that email already exists');
     }
 
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         email,
         name: dto.name.trim(),
@@ -109,6 +111,8 @@ export class UserService {
       },
       select: PUBLIC_FIELDS,
     });
+    await this.storage.ensureUserRoot(user.id);
+    return user;
   }
 
   async update(id: string, dto: UpdateUserDto) {

@@ -131,14 +131,8 @@ export class AssetService {
 
     // Now that the id exists the storage template can be rendered.
     try {
-      const user = await this.prisma.user.findUniqueOrThrow({
-        where: { id: userId },
-        select: { storageLabel: true },
-      });
-
       const destination = this.storage.buildOriginalPath({
         ownerId: userId,
-        storageLabel: user.storageLabel,
         assetId: asset.id,
         originalFileName: asset.originalFileName,
         localDateTime: fileCreatedAt,

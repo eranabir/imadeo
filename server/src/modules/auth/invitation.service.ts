@@ -6,6 +6,7 @@ import { AlbumUserRole } from '../../db';
 import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { StorageService } from '../../infra/storage/storage.service';
 
 const INVITE_TTL_DAYS = 14;
 
@@ -15,6 +16,7 @@ export class InvitationService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly storage: StorageService,
   ) {}
 
   private static hash(token: string) {
@@ -155,7 +157,7 @@ export class InvitationService {
       throw new BadRequestException('That address already has an account');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const user = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           email: invitation.email,
@@ -184,6 +186,8 @@ export class InvitationService {
 
       return user;
     });
+    await this.storage.ensureUserRoot(user.id);
+    return user;
   }
 
   list(invitedById: string) {
