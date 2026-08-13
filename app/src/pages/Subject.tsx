@@ -20,7 +20,7 @@ import {
   Tooltip,
 } from '../ui';
 
-interface Person {
+interface Subject {
   id: string;
   name: string;
   thumbnailPath: string;
@@ -30,14 +30,14 @@ interface Person {
   kind: 'PERSON' | 'PET';
 }
 
-/** Carries this person's detections, so a wrong one can be pointed at. */
+/** Carries this subject's detections, so a wrong one can be pointed at. */
 interface AssetWithFaces extends Asset {
   faces?: { id: string }[];
 }
 
-/** Every photo one person appears in, with the same tools as any other grid. */
-export function PersonDetail() {
-  const { personId } = useParams();
+/** Every photo one subject appears in, with the same tools as any other grid. */
+export function SubjectPage() {
+  const { subjectId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -55,10 +55,10 @@ export function PersonDetail() {
    */
   const assetsRef = useRef<AssetWithFaces[]>([]);
 
-  const { data: person, isLoading } = useQuery({
-    queryKey: ['people', personId],
-    queryFn: async () => (await api.get<Person>(`/people/${personId}`)).data,
-    enabled: Boolean(personId),
+  const { data: subject, isLoading } = useQuery({
+    queryKey: ['subjects', subjectId],
+    queryFn: async () => (await api.get<Subject>(`/people-and-pets/${subjectId}`)).data,
+    enabled: Boolean(subjectId),
   });
 
   /**
@@ -68,7 +68,7 @@ export function PersonDetail() {
    * said — the tab is called People & Pets, and half of what it holds is not a
    * person.
    */
-  const subject = person?.kind === 'PET' ? 'pet' : 'person';
+  const subjectNoun = subject?.kind === 'PET' ? 'pet' : 'person';
 
   const actions = useLibraryActions({
     onShowDetails: setViewing,
@@ -87,8 +87,8 @@ export function PersonDetail() {
         onSelect: () => setCover.mutate(asset.id),
       },
       {
-        id: 'not-this-person',
-        label: `${subject === 'pet' ? 'Not this pet' : 'Not this person'}${
+        id: 'not-this-subject',
+        label: `${subjectNoun === 'pet' ? 'Not this pet' : 'Not this person'}${
           ids.length > 1 ? ` (${ids.length})` : ''
         }`,
         icon: <UserRoundX size={15} />,
@@ -105,26 +105,28 @@ export function PersonDetail() {
   });
 
   const { data: photos } = useQuery({
-    queryKey: ['people', personId, 'assets'],
+    queryKey: ['subjects', subjectId, 'assets'],
     queryFn: async () =>
-      (await api.get<Paginated<AssetWithFaces>>(`/people/${personId}/assets`)).data,
-    enabled: Boolean(personId),
+      (await api.get<Paginated<AssetWithFaces>>(`/people-and-pets/${subjectId}/assets`)).data,
+    enabled: Boolean(subjectId),
   });
 
   const invalidate = () => queryClient.invalidateQueries();
   const onError = (e: unknown) => setError(errorMessage(e));
 
   const rename = useMutation({
-    mutationFn: async (name: string) => (await api.put(`/people/${personId}`, { name })).data,
+    mutationFn: async (name: string) =>
+      (await api.put(`/people-and-pets/${subjectId}`, { name })).data,
     onSuccess: invalidate,
     onError,
   });
 
   const hide = useMutation({
-    mutationFn: async () => (await api.put(`/people/${personId}`, { isHidden: true })).data,
+    mutationFn: async () =>
+      (await api.put(`/people-and-pets/${subjectId}`, { isHidden: true })).data,
     onSuccess: () => {
       void invalidate();
-      navigate('/people');
+      navigate('/people-and-pets');
     },
     onError,
   });
@@ -149,7 +151,7 @@ export function PersonDetail() {
 
   const setCover = useMutation({
     mutationFn: async (assetId: string) =>
-      (await api.put(`/people/${personId}/cover`, { assetId })).data,
+      (await api.put(`/people-and-pets/${subjectId}/cover`, { assetId })).data,
     // The avatar URL does not change, so the browser would keep showing the old
     // crop; a cache-busting key on the <img> is what actually refreshes it.
     onSuccess: () => {
@@ -160,19 +162,19 @@ export function PersonDetail() {
   });
 
   /**
-   * Corrects a wrong match: the face stops belonging to this person, but the
+   * Corrects a wrong match: the face stops belonging to this subject, but the
    * photo itself is untouched. The server pins the detection so the next
    * clustering pass does not simply put it back.
    */
   const detach = useMutation({
     mutationFn: async (faceIds: string[]) =>
-      (await api.post(`/people/${personId}/detach`, { faceIds })).data,
+      (await api.post(`/people-and-pets/${subjectId}/detach`, { faceIds })).data,
     onSuccess: afterBulk,
     onError,
   });
 
   if (isLoading) return <Loading label="Loading photos…" />;
-  if (!person) return null;
+  if (!subject) return null;
 
   const assets: AssetWithFaces[] = photos?.items ?? [];
   assetsRef.current = assets;
@@ -181,7 +183,7 @@ export function PersonDetail() {
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <nav className="mb-1 flex items-center gap-1 text-xs text-content-muted">
-          <Link to="/people" className="flex items-center gap-1 transition hover:text-content">
+          <Link to="/people-and-pets" className="flex items-center gap-1 transition hover:text-content">
             <ArrowLeft size={12} />
             People &amp; Pets
           </Link>
@@ -198,9 +200,9 @@ export function PersonDetail() {
                 aria-label="Choose a cover photo"
                 className="group relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-sunken"
               >
-                {person.thumbnailPath ? (
+                {subject.thumbnailPath ? (
                   <img
-                    src={`/api/people/${person.id}/thumbnail.jpg?v=${coverVersion || encodeURIComponent(person.updatedAt)}`}
+                    src={`/api/people-and-pets/${subject.id}/thumbnail.jpg?v=${coverVersion || encodeURIComponent(subject.updatedAt)}`}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -219,20 +221,20 @@ export function PersonDetail() {
               {renaming ? (
                 <Input
                   autoFocus
-                  defaultValue={person.name}
+                  defaultValue={subject.name}
                   placeholder="Add a name"
                   onFocus={(event) => event.currentTarget.select()}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') event.currentTarget.blur();
                     if (event.key === 'Escape') {
-                      event.currentTarget.value = person.name;
+                      event.currentTarget.value = subject.name;
                       event.currentTarget.blur();
                     }
                   }}
                   onBlur={(event) => {
                     const name = event.currentTarget.value.trim();
                     setRenaming(false);
-                    if (name !== person.name) rename.mutate(name);
+                    if (name !== subject.name) rename.mutate(name);
                   }}
                   // Matches the button's box exactly — same padding and border
                   // width — so the heading does not jump when it becomes a
@@ -242,26 +244,26 @@ export function PersonDetail() {
                   className="border-primary text-lg font-semibold tracking-tight focus:outline-none"
                 />
               ) : (
-                <Tooltip label={person.name ? 'Click to rename' : 'Click to add a name'}>
+                <Tooltip label={subject.name ? 'Click to rename' : 'Click to add a name'}>
                 <button
                   type="button"
                   onClick={() => setRenaming(true)}
                   className="-ml-1.5 block rounded-control border border-transparent px-1.5 text-lg font-semibold tracking-tight transition hover:bg-surface-sunken"
                 >
-                  {person.name || <span className="text-content-muted">Add a name</span>}
+                  {subject.name || <span className="text-content-muted">Add a name</span>}
                 </button>
                 </Tooltip>
               )}
               <p className="text-xs text-content-muted">
-                {person.faceCount} {person.faceCount === 1 ? 'photo' : 'photos'}
+                {subject.faceCount} {subject.faceCount === 1 ? 'photo' : 'photos'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Tooltip label={person.name ? 'Rename' : 'Add a name'}>
+            <Tooltip label={subject.name ? 'Rename' : 'Add a name'}>
               <IconButton
-                label={person.name ? 'Rename' : 'Add a name'}
+                label={subject.name ? 'Rename' : 'Add a name'}
                 variant="secondary"
                 size="sm"
                 round={false}
@@ -295,9 +297,9 @@ export function PersonDetail() {
         <EmptyState
           icon={UserRound}
           title="No photos yet"
-          description={`Photos of this ${subject} have not finished processing.`}
+          description={`Photos of this ${subjectNoun} have not finished processing.`}
           action={
-            <Button variant="primary" onClick={() => navigate('/people')}>
+            <Button variant="primary" onClick={() => navigate('/people-and-pets')}>
               Back to People &amp; Pets
             </Button>
           }
@@ -357,12 +359,12 @@ export function PersonDetail() {
         onTrash={() => trash.mutate([...selected])}
       >
         <span className="mx-1 h-5 w-px bg-white/15" />
-        <Tooltip label="Remove these photos from this person. The photos are kept.">
+        <Tooltip label={`Remove these photos from this ${subjectNoun}. The photos are kept.`}>
         <button
           type="button"
           disabled={detach.isPending}
           onClick={() => {
-            // A photo can contain several people; only this person's detections
+            // A photo can contain several subjects; only this subject's detections
             // are sent, so nobody else loses the picture.
             const faceIds = assets
               .filter((asset) => selected.has(asset.id))
@@ -372,7 +374,7 @@ export function PersonDetail() {
           className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium hover:bg-white/10 disabled:opacity-50"
         >
           <UserRoundX size={16} />
-          {subject === 'pet' ? 'Not this pet' : 'Not this person'}
+          {subjectNoun === 'pet' ? 'Not this pet' : 'Not this person'}
         </button>
         </Tooltip>
       </SelectionBar>

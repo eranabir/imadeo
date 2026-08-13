@@ -7,7 +7,7 @@ import { api, errorMessage, mediaUrl } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
-import { Button, EmptyState, Loading, Tooltip } from '../ui';
+import { Button, ConfirmDialog, EmptyState, Loading, Tooltip } from '../ui';
 
 interface DuplicateAsset {
   id: string;
@@ -34,13 +34,14 @@ interface DuplicateGroup {
  * "least re-compressed" — but every tile can be toggled, because only the
  * person who took the photos knows which copy matters.
  */
-export function Duplicates() {
+export function DuplicatesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [viewing, setViewing] = useState<Asset | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Per group: the ids the person has chosen to keep. */
   const [keeping, setKeeping] = useState<Record<string, Set<string>>>({});
+  const [trashing, setTrashing] = useState<string[] | null>(null);
 
   const { data: groups = [], isLoading } = useQuery({
     queryKey: ['assets', 'duplicates'],
@@ -175,7 +176,7 @@ export function Duplicates() {
                       variant="danger"
                       icon={<Trash2 size={14} />}
                       disabled={removing.length === 0 || trash.isPending}
-                      onClick={() => trash.mutate(removing.map((a) => a.id))}
+                      onClick={() => setTrashing(removing.map((a) => a.id))}
                     >
                       Trash {removing.length}
                     </Button>
@@ -264,6 +265,15 @@ export function Duplicates() {
           onNavigate={setViewing}
         />
       )}
+      <ConfirmDialog
+        open={trashing !== null}
+        title={`Move ${trashing?.length ?? 0} duplicate ${(trashing?.length ?? 0) === 1 ? 'photo' : 'photos'} to trash?`}
+        description={trashing?.length === 1 ? 'You can restore it from Trash for 30 days.' : 'You can restore them from Trash for 30 days.'}
+        confirmLabel="Move to trash"
+        destructive
+        onConfirm={() => trashing && trash.mutate(trashing)}
+        onClose={() => setTrashing(null)}
+      />
     </div>
   );
 }

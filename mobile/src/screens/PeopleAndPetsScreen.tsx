@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { FlatList, Text, useWindowDimensions, View } from 'react-native';
 import { Empty } from '../components/AssetGrid';
 import { Loading } from '../components/Loading';
-import { PersonCard } from '../components/Cards';
+import { SubjectCard } from '../components/Cards';
 import { useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { Segmented } from '../components/Segmented';
-import { useResource, type Person } from '../lib/api';
+import { useResource, type Subject } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
 
@@ -29,7 +29,7 @@ const GUTTER = 16;
  * different models with different confidence, and a run of unnamed dogs in
  * among the family reads as the grouping having failed.
  */
-export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
+export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
   const router = useRouter();
   const [kind, setKind] = useState<Kind>('PERSON');
   const { width } = useWindowDimensions();
@@ -43,10 +43,10 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
    * same reason, and a group that cannot be seen cannot be named or merged into
    * the right person, which is exactly what a two-face group usually needs.
    */
-  const peoplePath = `/people?kind=${kind}&minFaces=1&size=300`;
-  const { data, loadedPath, token, error, loading, reload } = useResource<Person[]>(
+  const subjectsPath = `/people-and-pets?kind=${kind}&minFaces=1&size=300`;
+  const { data, loadedPath, token, error, loading, reload } = useResource<Subject[]>(
     serverUrl,
-    peoplePath,
+    subjectsPath,
     4000,
   );
   /*
@@ -57,16 +57,16 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
    * rather than wait to be told. Once nothing is outstanding the timer stops
    * and the screen goes quiet again.
    */
-  const status = useResource<Status>(serverUrl, '/people/status', 4000);
+  const status = useResource<Status>(serverUrl, '/people-and-pets/status', 4000);
 
   const clearance = useHeaderClearance(54);
 
   // The bar itself belongs to the shell; this only says what goes in it.
   useHeaderSlot(
-    'people',
+    'people-and-pets',
     {
       title: 'People & Pets',
-      icon: 'people',
+      icon: 'people-and-pets',
       below: (
         <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
           <Segmented
@@ -90,14 +90,14 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
   // Do not leave People on screen below the Pets selector while the second
   // request is loading or failed. That made the tab look as if every person
   // were being classified as a pet.
-  const people = loadedPath === peoplePath ? data ?? [] : [];
+  const subjects = loadedPath === subjectsPath ? data ?? [] : [];
   const noun = kind === 'PET' ? 'pets' : 'people';
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
-        data={people}
-        keyExtractor={(person) => person.id}
+        data={subjects}
+        keyExtractor={(subject) => subject.id}
         numColumns={COLUMNS}
         columnWrapperStyle={{ gap: GUTTER, paddingHorizontal: GUTTER }}
         contentContainerStyle={{
@@ -106,20 +106,20 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
           gap: 18,
         }}
         onRefresh={reload}
-        refreshing={loading && people.length > 0}
+        refreshing={loading && subjects.length > 0}
         progressViewOffset={clearance}
         ListHeaderComponent={
           <Notice status={status.data} error={error ?? status.error} noun={noun} />
         }
         renderItem={({ item }) => (
-          <PersonCard
+          <SubjectCard
             serverUrl={serverUrl}
-            person={item}
+            subject={item}
             token={token}
             size={avatar}
             onPress={() =>
               router.push({
-                pathname: '/person/[id]',
+                pathname: '/subject/[id]',
                 params: { id: item.id, kind: item.kind, title: item.name || 'Unnamed' },
               })
             }
@@ -130,11 +130,11 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
             <Loading label={`Finding ${noun}…`} />
           ) : (
             <Empty
-              icon={kind === 'PET' ? 'pet' : 'people'}
+              icon={kind === 'PET' ? 'pet' : 'people-and-pets'}
               title={`No ${noun} yet`}
               body={
                 status.data && !status.data.enabled
-                  ? 'This server has face recognition switched off, so nothing is being grouped.'
+                  ? 'This server has People & Pets recognition switched off, so nothing is being grouped.'
                   : `Once your photos have been scanned, the ${noun} in them are grouped here.`
               }
             />
@@ -166,7 +166,7 @@ function Notice({
     : !status
       ? null
       : !status.enabled
-        ? 'Face recognition is switched off on this server.'
+        ? 'People & Pets recognition is switched off on this server.'
         : noun === 'pets' && status.petsReady === false
           ? 'Pet recognition is not available on this server yet.'
         : !status.ready

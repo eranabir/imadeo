@@ -23,7 +23,7 @@ import {
   FavoritesIcon,
   FoldersIcon,
   LockedIcon,
-  PeopleIcon,
+  PeopleAndPetsIcon,
   PhotosIcon,
   SharingIcon,
   SettingsIcon,
@@ -51,7 +51,7 @@ export const NAV = [
   // exactly this — somewhere that needs to read as ours without being the
   // primary.
   { to: '/places', label: 'Places', icon: MapPin, tint: 'text-secondary', end: false },
-  { to: '/people', label: 'People & Pets', icon: PeopleIcon, tint: 'text-sky-500', end: false },
+  { to: '/people-and-pets', label: 'People & Pets', icon: PeopleAndPetsIcon, tint: 'text-sky-500', end: false },
   { to: '/favorites', label: 'Favorites', icon: FavoritesIcon, tint: 'text-rose-500', end: false },
   { to: '/locked', label: 'Locked', icon: LockedIcon, tint: 'text-indigo-400', end: false },
   { to: '/duplicates', label: 'Duplicates', icon: DuplicatesIcon, tint: 'text-orange-500', end: false },

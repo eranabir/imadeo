@@ -9,7 +9,7 @@ import { AlbumModule } from './modules/album/album.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FolderModule } from './modules/folder/folder.module';
-import { PersonModule } from './modules/person/person.module';
+import { PeopleAndPetsModule } from './modules/person/people-and-pets.module';
 import { ShareModule } from './modules/share/share.module';
 import { SystemModule } from './modules/system/system.module';
 import { UserModule } from './modules/user/user.module';
@@ -33,7 +33,7 @@ import { UserModule } from './modules/user/user.module';
     FolderModule,
     AlbumModule,
     AssetModule,
-    PersonModule,
+    PeopleAndPetsModule,
     ShareModule,
     SystemModule,
   ],

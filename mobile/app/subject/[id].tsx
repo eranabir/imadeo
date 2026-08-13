@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { PersonScreen } from '../../src/screens/PersonScreen';
+import { SubjectScreen } from '../../src/screens/SubjectScreen';
 import { useServerUrl } from '../../src/session';
 
-export default function Route() {
+export default function SubjectRoute() {
   const serverUrl = useServerUrl();
   const router = useRouter();
   const { id, title, kind } = useLocalSearchParams<{
@@ -12,14 +12,12 @@ export default function Route() {
   }>();
 
   return (
-    <PersonScreen
+    <SubjectScreen
       serverUrl={serverUrl}
-      personId={id}
+      subjectId={id}
       title={title ?? 'Unnamed'}
-      // Params arrive as strings, so the union has to be narrowed rather than
-      // asserted — a stray value would otherwise put a person among the pets.
       kind={kind === 'PET' ? 'PET' : 'PERSON'}
-      slot={`person:${id}`}
+      slot={`subject:${id}`}
       onBack={() => router.back()}
     />
   );

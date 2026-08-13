@@ -61,7 +61,7 @@ export function HeaderSlots({ children }: { children: ReactNode }) {
        *
        * A push does not bring a new bar — the screen publishes into the one
        * already there — so what changes is that bar's contents and its height:
-       * People & Pets carries a segmented control, a person a back chevron and
+       * People & Pets carries a segmented control, a subject a back chevron and
        * two buttons. Measured before and after and interpolated by the
        * platform, it reads as the bar becoming the next thing rather than being
        * replaced by it.

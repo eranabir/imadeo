@@ -12,7 +12,7 @@ interface Props {
   /** Where this screen publishes its bar. */
   slot: string;
   serverUrl: string;
-  personId: string;
+  subjectId: string;
   title: string;
   /** Whether the server has this grouped with the people or with the pets. */
   kind: 'PERSON' | 'PET';
@@ -20,7 +20,7 @@ interface Props {
 }
 
 /** Every photo one person or pet appears in. */
-export function PersonScreen({ serverUrl, personId, title, kind, slot, onBack }: Props) {
+export function SubjectScreen({ serverUrl, subjectId, title, kind, slot, onBack }: Props) {
   const [name, setName] = useState(title === 'Unnamed' ? '' : title);
   const [naming, setNaming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -40,7 +40,7 @@ export function PersonScreen({ serverUrl, personId, title, kind, slot, onBack }:
     setIs(next);
     setSaveError(null);
     try {
-      await request(serverUrl, `/people/${personId}`, {
+      await request(serverUrl, `/people-and-pets/${subjectId}`, {
         method: 'PUT',
         body: JSON.stringify({ kind: next }),
       });
@@ -53,7 +53,7 @@ export function PersonScreen({ serverUrl, personId, title, kind, slot, onBack }:
 
   const { data, token, error, loading, reload } = useResource<Paged<Asset>>(
     serverUrl,
-    `/people/${personId}/assets?size=500`,
+    `/people-and-pets/${subjectId}/assets?size=500`,
   );
   const clearance = useHeaderClearance();
   const selection = useSelection();
@@ -146,7 +146,7 @@ export function PersonScreen({ serverUrl, personId, title, kind, slot, onBack }:
             setNaming(false);
             setSaveError(null);
             try {
-              await request(serverUrl, `/people/${personId}`, {
+              await request(serverUrl, `/people-and-pets/${subjectId}`, {
                 method: 'PUT',
                 body: JSON.stringify({ name: next }),
               });

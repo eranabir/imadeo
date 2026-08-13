@@ -48,7 +48,7 @@ interface Options {
   selectedIds?: string[];
   /**
    * Extra right-click entries a page can contribute, for actions that only make
-   * sense there — "not this person" on a person's page, say. Appended to the
+   * sense there — “not this person” on a subject page, say. Appended to the
    * standard photo menu so the shared items keep the same order everywhere.
    */
   extraAssetItems?: (asset: Asset, ids: string[]) => MenuItem[];
@@ -80,6 +80,7 @@ export function useLibraryActions({
   const [sharingAlbum, setSharingAlbum] = useState<Extract<Target, { kind: 'album' }> | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
+  const [trashingAssets, setTrashingAssets] = useState<string[] | null>(null);
   const [newFolderIn, setNewFolderIn] = useState<string | null>(null);
   const [newAlbumIn, setNewAlbumIn] = useState<string | null>(null);
   const [vaultPrompt, setVaultPrompt] = useState(false);
@@ -373,7 +374,7 @@ export function useLibraryActions({
           icon: <Trash2 size={15} />,
           danger: true,
           separated: true,
-          onSelect: () => trashAssets.mutate(ids),
+          onSelect: () => setTrashingAssets(ids),
         },
       ];
     }
@@ -595,6 +596,16 @@ export function useLibraryActions({
         placeholder="Best of the trip"
         onSubmit={(albumName) => createAlbum.mutate({ albumName, folderId: newAlbumIn })}
         onClose={() => setNewAlbumIn(null)}
+      />
+
+      <ConfirmDialog
+        open={trashingAssets !== null}
+        title={trashingAssets?.length === 1 ? 'Move this photo to trash?' : `Move these ${trashingAssets?.length ?? 0} photos to trash?`}
+        description={trashingAssets?.length === 1 ? 'You can restore it from Trash for 30 days.' : 'You can restore them from Trash for 30 days.'}
+        confirmLabel="Move to trash"
+        destructive
+        onConfirm={() => trashingAssets && trashAssets.mutate(trashingAssets)}
+        onClose={() => setTrashingAssets(null)}
       />
 
       <ConfirmDialog

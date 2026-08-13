@@ -83,20 +83,20 @@ const writes = {
    * one and records a manual link when there is not, which is what makes this
    * usable on exactly the photos recognition failed on.
    */
-  assignSubject: (server: string, personId: string, assetIds: string[]) =>
-    request(server, `/people/${personId}/assets`, {
+  assignSubject: (server: string, subjectId: string, assetIds: string[]) =>
+    request(server, `/people-and-pets/${subjectId}/assets`, {
       method: 'POST',
       body: JSON.stringify({ assetIds }),
     }),
 
   createSubject: (server: string, name: string, kind: 'PERSON' | 'PET') =>
-    request<{ id: string }>(server, '/people', {
+    request<{ id: string }>(server, '/people-and-pets', {
       method: 'POST',
       body: JSON.stringify({ name, kind }),
     }),
 
   renameSubject: (server: string, id: string, name: string) =>
-    request(server, `/people/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    request(server, `/people-and-pets/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
 
   // -- folders --------------------------------------------------------------
 

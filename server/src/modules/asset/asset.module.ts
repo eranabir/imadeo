@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import type { AppConfig } from '../../config/configuration';
 import { FolderModule } from '../folder/folder.module';
-import { PersonModule } from '../person/person.module';
+import { PeopleAndPetsModule } from '../person/people-and-pets.module';
 import { UserModule } from '../user/user.module';
 import { AssetController } from './asset.controller';
 import { AssetService } from './asset.service';
@@ -22,7 +22,7 @@ import { VideoProcessor } from './processors/video.processor';
 @Module({
   imports: [
     FolderModule,
-    PersonModule,
+    PeopleAndPetsModule,
     UserModule,
     MulterModule.registerAsync({
       imports: [ConfigModule],

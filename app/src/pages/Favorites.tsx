@@ -8,7 +8,7 @@ import { formatDate, groupByDay } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Asset, Paginated } from '../types';
 
-export function Favorites() {
+export function FavoritesPage() {
   const { user } = useAuth();
   const [viewing, setViewing] = useState<Asset | null>(null);
 

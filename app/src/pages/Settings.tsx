@@ -21,7 +21,7 @@ import {
   Trash2,
   UserCog,
   UserPlus,
-  Users,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -55,7 +55,7 @@ const SECTIONS = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'account', label: 'Account', icon: UserCog },
   { id: 'security', label: 'Security', icon: ShieldCheck },
-  { id: 'users', label: 'Users', icon: Users, adminOnly: true },
+  { id: 'users', label: 'Users', icon: UsersIcon, adminOnly: true },
   { id: 'recognition', label: 'Recognition', icon: ScanFace, adminOnly: true },
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
@@ -71,7 +71,7 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
-export function Settings() {
+export function SettingsPage() {
   // The section lives in the URL so links can point at a specific one — the
   // storage card in the sidebar goes straight to Storage rather than dropping
   // people on Appearance.
@@ -132,8 +132,8 @@ export function Settings() {
           {section === 'appearance' && <Appearance />}
           {section === 'account' && <Account />}
           {section === 'security' && <Security />}
-          {section === 'users' && <People />}
-          {section === 'recognition' && <FaceRecognition />}
+          {section === 'users' && <Users />}
+          {section === 'recognition' && <PeopleAndPetsRecognition />}
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
           {section === 'storage' && <Storage />}
@@ -613,35 +613,40 @@ function ConnectedAccount() {
   );
 }
 
-interface FaceRecognitionSettings {
+interface PeopleAndPetsRecognitionSettings {
   enabled: boolean;
   fromEnv: boolean;
 }
 
-function FaceRecognition() {
+function PeopleAndPetsRecognition() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'face-recognition'],
-    queryFn: async () => (await api.get<FaceRecognitionSettings>('/admin/face-recognition')).data,
+    queryKey: ['admin', 'people-and-pets-recognition'],
+    queryFn: async () =>
+      (await api.get<PeopleAndPetsRecognitionSettings>('/admin/people-and-pets-recognition')).data,
   });
 
   const save = useMutation({
     mutationFn: async (enabled: boolean) =>
-      (await api.put<FaceRecognitionSettings>('/admin/face-recognition', { enabled })).data,
+      (
+        await api.put<PeopleAndPetsRecognitionSettings>('/admin/people-and-pets-recognition', {
+          enabled,
+        })
+      ).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'face-recognition'] });
-      void queryClient.invalidateQueries({ queryKey: ['people', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'people-and-pets-recognition'] });
+      void queryClient.invalidateQueries({ queryKey: ['subjects', 'status'] });
       void queryClient.invalidateQueries({ queryKey: ['server', 'about'] });
     },
   });
 
   return (
     <Card
-      title="Face recognition"
+      title="People & Pets recognition"
       description="Find people and pets in new photos, or scan the library from People & Pets."
     >
       <Row
-        label="Recognise faces and pets"
+        label="Recognise people and pets"
         hint={
           data?.enabled
             ? 'New photos are queued for recognition. Turn this off to pause future scans.'
@@ -684,10 +689,10 @@ interface PendingInvite {
 }
 
 /** Administrators can inspect users and create an account when needed. */
-function People() {
+function Users() {
   const queryClient = useQueryClient();
   const { user: me } = useAuth();
-  const [tab, setTab] = useState<'people' | 'create'>('people');
+  const [tab, setTab] = useState<'users' | 'create'>('users');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<ManagedUser | null>(null);
 
@@ -707,7 +712,7 @@ function People() {
       setDraft({ name: '', email: '', password: '', isAdmin: false });
       void refresh();
       setMessage({ ok: true, text: `${created.name} can now sign in with the password you set.` });
-      setTab('people');
+      setTab('users');
     },
     onError,
   });
@@ -756,7 +761,7 @@ function People() {
   return (
     <>
       <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
-        <TabButton id="people" label={`Users (${users.length})`} />
+        <TabButton id="users" label={`Users (${users.length})`} />
         <TabButton id="create" label="Create user" />
       </div>
 
@@ -766,7 +771,7 @@ function People() {
         </p>
       )}
 
-      {tab === 'people' && (
+      {tab === 'users' && (
         <>
           <Card title="Users" description="Everyone who can sign in to this server.">
             {users.map((person) => (

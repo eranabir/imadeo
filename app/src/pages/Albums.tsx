@@ -21,7 +21,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'topLevel', label: 'Top level' },
 ];
 
-export function Albums() {
+export function AlbumsPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 

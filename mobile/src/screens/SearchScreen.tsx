@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { AlbumCard, FolderCard, PersonCard, Section } from '../components/Cards';
+import { AlbumCard, FolderCard, SubjectCard, Section } from '../components/Cards';
 import { useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { Segmented } from '../components/Segmented';
-import { useResource, type Asset, type Paged, type Person } from '../lib/api';
+import { useResource, type Asset, type Paged, type Subject } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors, radius } from '../theme';
 
-type Mode = 'smart' | 'people' | 'places' | 'files';
+type Mode = 'smart' | 'people-and-pets' | 'places' | 'files';
 
 interface Places {
   folders: { id: string; name: string; path: string }[];
@@ -81,12 +81,12 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
    * filters it locally. That also makes it instant, which a face picker should
    * be.
    */
-  const subjects = useResource<Person[]>(
+  const subjects = useResource<Subject[]>(
     serverUrl,
     // `minFaces=1` for the same reason the People tab passes it: the server's
     // default minimum hides small groups, and a name you are searching for is
     // no less findable for belonging to one.
-    mode === 'people' ? '/people?minFaces=1&size=500' : null,
+    mode === 'people-and-pets' ? '/people-and-pets?minFaces=1&size=500' : null,
   );
 
   /**
@@ -100,7 +100,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
 
   const needle = query.trim().toLowerCase();
   const matches = (subjects.data ?? []).filter(
-    (person) => !needle || person.name.toLowerCase().includes(needle),
+    (subject) => !needle || subject.name.toLowerCase().includes(needle),
   );
 
   const placeMatches = (towns.data ?? []).filter(
@@ -153,7 +153,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                 placeholder={
                   mode === 'smart'
                     ? 'What is in the photo?'
-                    : mode === 'people'
+                    : mode === 'people-and-pets'
                       ? "A person or pet's name"
                       : mode === 'places'
                         ? 'A town, album or folder'
@@ -182,7 +182,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
             <Segmented
               segments={[
                 { id: 'smart', label: 'Content', icon: 'sparkle' },
-                { id: 'people', label: 'People & Pets', icon: 'people', weight: 1.3 },
+                { id: 'people-and-pets', label: 'People & Pets', icon: 'people-and-pets', weight: 1.3 },
                 { id: 'places', label: 'Places', icon: 'pin' },
                 { id: 'files', label: 'Files', icon: 'photo' },
               ]}
@@ -232,7 +232,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
               </Text>
             )}
 
-            {mode === 'people' && matches.length > 0 && (
+            {mode === 'people-and-pets' && matches.length > 0 && (
               <Section
                 title={needle ? 'Matching' : 'Everyone'}
                 trailing={`${matches.length}`}
@@ -240,17 +240,17 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                 <View
                   style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 16 }}
                 >
-                  {matches.map((person) => (
-                    <PersonCard
-                      key={person.id}
+                  {matches.map((subject) => (
+                    <SubjectCard
+                      key={subject.id}
                       serverUrl={serverUrl}
-                      person={person}
+                      subject={subject}
                       token={subjects.token}
                       size={68}
                       onPress={() =>
                         router.push({
-                          pathname: '/person/[id]',
-                          params: { id: person.id, kind: person.kind, title: person.name || 'Unnamed' },
+                          pathname: '/subject/[id]',
+                          params: { id: subject.id, kind: subject.kind, title: subject.name || 'Unnamed' },
                         })
                       }
                     />
@@ -335,14 +335,14 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
         emptyIcon={
           mode === 'smart'
             ? 'sparkle'
-            : mode === 'people'
-              ? 'people'
+            : mode === 'people-and-pets'
+              ? 'people-and-pets'
               : mode === 'places'
                 ? 'folder'
                 : 'photo'
         }
         emptyTitle={
-          mode === 'people'
+          mode === 'people-and-pets'
             ? subjects.loading
               ? 'Loading…'
               : needle
@@ -359,7 +359,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                 : 'Nothing matched'
         }
         emptyBody={
-          mode === 'people'
+          mode === 'people-and-pets'
             ? needle
               ? `No person or pet is named anything like “${query}”. Unnamed groups can be named from the People & Pets tab.`
               : 'Once your photos have been scanned, the people and pets in them can be searched for by name here.'
@@ -426,7 +426,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
 const blurb = (mode: Mode) =>
   mode === 'smart'
     ? 'Your server compares the words against the pictures themselves, so they need not appear in any file name.'
-    : mode === 'people'
+    : mode === 'people-and-pets'
       ? 'Finds a person or pet by name, and opens every photo they appear in.'
       : mode === 'places'
         ? 'Finds albums and folders by name, and shows everything filed inside them.'

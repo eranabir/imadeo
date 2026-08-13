@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { Button, Chip, ConfirmDialog, EmptyState, Input, Menu, Progress, Tooltip } from '../ui';
 
-interface Person {
+interface Subject {
   id: string;
   name: string;
   thumbnailPath: string;
@@ -28,7 +28,7 @@ interface FaceStatus {
   totalAssets: number;
 }
 
-export function People() {
+export function PeopleAndPetsPage() {
   const queryClient = useQueryClient();
 
   /**
@@ -40,18 +40,18 @@ export function People() {
   const [showHidden, setShowHidden] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [menu, setMenu] = useState<{ person: Person; anchor: { x: number; y: number } } | null>(
+  const [menu, setMenu] = useState<{ subject: Subject; anchor: { x: number; y: number } } | null>(
     null,
   );
-  const [confirmForget, setConfirmForget] = useState<Person | null>(null);
-  /** The person whose name is currently being typed, edited inline on the card. */
+  const [confirmForget, setConfirmForget] = useState<Subject | null>(null);
+  /** The subject whose name is currently being typed, edited inline on the card. */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmMerge, setConfirmMerge] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: status, dataUpdatedAt: statusUpdatedAt } = useQuery({
-    queryKey: ['people', 'status'],
-    queryFn: async () => (await api.get<FaceStatus>('/people/status')).data,
+    queryKey: ['subjects', 'status'],
+    queryFn: async () => (await api.get<FaceStatus>('/people-and-pets/status')).data,
     // Uploads can start recognition after this page has already loaded. Keep
     // watching even at zero or a fast background job is never observed.
     refetchInterval: 4000,
@@ -80,27 +80,27 @@ export function People() {
   useEffect(() => {
     if (status) {
       if (previousPending.current !== null && previousPending.current > 0 && status.pendingAssets === 0) {
-        void queryClient.invalidateQueries({ queryKey: ['people'] });
+        void queryClient.invalidateQueries({ queryKey: ['subjects'] });
       }
       previousPending.current = status.pendingAssets;
     }
 
     if (scanning && status && statusUpdatedAt >= scanStartedAt && status.pendingAssets === 0) {
       setScanning(false);
-      void queryClient.invalidateQueries({ queryKey: ['people'] });
+      void queryClient.invalidateQueries({ queryKey: ['subjects'] });
     }
   }, [queryClient, scanStartedAt, scanning, status, statusUpdatedAt]);
 
   const scanned = status ? status.totalAssets - status.pendingAssets : 0;
 
-  const { data: people = [], isLoading } = useQuery({
-    queryKey: ['people', showHidden, kind],
+  const { data: subjects = [], isLoading } = useQuery({
+    queryKey: ['subjects', showHidden, kind],
     queryFn: async () =>
       (
-        await api.get<Person[]>('/people', {
+        await api.get<Subject[]>('/people-and-pets', {
           // Every group, however few photos it has. A server-side minimum was
           // hiding most of them with nothing on screen to say so, and a group
-          // that cannot be seen cannot be merged into the right person — which
+          // that cannot be seen cannot be merged into the right subject — which
           // is exactly what a two-face group usually needs.
           params: { withHidden: showHidden, minFaces: 1, ...(kind === 'ALL' ? {} : { kind }) },
         })
@@ -111,19 +111,19 @@ export function People() {
     refetchInterval: 4000,
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['people'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['subjects'] });
   const onError = (e: unknown) => setError(errorMessage(e));
 
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) =>
-      (await api.put(`/people/${id}`, { name })).data,
+      (await api.put(`/people-and-pets/${id}`, { name })).data,
     onSuccess: invalidate,
     onError,
   });
 
   const setHidden = useMutation({
     mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) =>
-      (await api.put(`/people/${id}`, { isHidden })).data,
+      (await api.put(`/people-and-pets/${id}`, { isHidden })).data,
     onSuccess: invalidate,
     onError,
   });
@@ -138,14 +138,14 @@ export function People() {
    */
   const reclassify = useMutation({
     mutationFn: async ({ id, kind: next }: { id: string; kind: 'PERSON' | 'PET' }) =>
-      (await api.put(`/people/${id}`, { kind: next })).data,
+      (await api.put(`/people-and-pets/${id}`, { kind: next })).data,
     onSuccess: invalidate,
     onError,
   });
 
   const merge = useMutation({
     mutationFn: async ({ targetId, sourceIds }: { targetId: string; sourceIds: string[] }) =>
-      (await api.post(`/people/${targetId}/merge`, { sourceIds })).data,
+      (await api.post(`/people-and-pets/${targetId}/merge`, { sourceIds })).data,
     onSuccess: () => {
       setSelected(new Set());
       setSelecting(false);
@@ -156,24 +156,24 @@ export function People() {
 
   const scan = useMutation<unknown, unknown, boolean>({
     mutationFn: async (force = false) =>
-      (await api.post('/people/scan', undefined, { params: force ? { force: true } : undefined })).data,
+      (await api.post('/people-and-pets/scan', undefined, { params: force ? { force: true } : undefined })).data,
     onSuccess: () => {
       setScanStartedAt(Date.now());
       setScanning(true);
-      return queryClient.invalidateQueries({ queryKey: ['people', 'status'] });
+      return queryClient.invalidateQueries({ queryKey: ['subjects', 'status'] });
     },
     onError,
   });
 
   const setFavorite = useMutation({
     mutationFn: async ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
-      (await api.put(`/people/${id}`, { isFavorite })).data,
+      (await api.put(`/people-and-pets/${id}`, { isFavorite })).data,
     onSuccess: invalidate,
     onError,
   });
 
   const forget = useMutation({
-    mutationFn: async (id: string) => (await api.delete(`/people/${id}`)).data,
+    mutationFn: async (id: string) => (await api.delete(`/people-and-pets/${id}`)).data,
     onSuccess: () => {
       setConfirmForget(null);
       return invalidate();
@@ -181,33 +181,33 @@ export function People() {
     onError,
   });
 
-  const visible = people;
+  const visible = subjects;
 
 
-  const toggle = (person: Person) => {
+  const toggle = (subject: Subject) => {
     const hasDifferentKindSelected = visible.some(
-      (selectedPerson) => selected.has(selectedPerson.id) && selectedPerson.kind !== person.kind,
+      (selectedSubject) => selected.has(selectedSubject.id) && selectedSubject.kind !== subject.kind,
     );
-    if (!selected.has(person.id) && hasDifferentKindSelected) {
+    if (!selected.has(subject.id) && hasDifferentKindSelected) {
       setError('People and pets cannot be merged. Select groups of the same type.');
       return;
     }
 
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(person.id)) next.delete(person.id);
-      else next.add(person.id);
+      if (next.has(subject.id)) next.delete(subject.id);
+      else next.add(subject.id);
       return next;
     });
   };
 
   /**
-   * Merging keeps the person who already has a name, so folding an unnamed
+   * Merging keeps the subject who already has a name, so folding an unnamed
    * group into "Anna" does not lose the name.
    */
   const mergeTarget = () => {
-    const chosen = visible.filter((person) => selected.has(person.id));
-    return chosen.find((person) => person.hasName) ?? chosen[0];
+    const chosen = visible.filter((subject) => selected.has(subject.id));
+    return chosen.find((subject) => subject.hasName) ?? chosen[0];
   };
 
   const target = mergeTarget();
@@ -218,8 +218,8 @@ export function People() {
    * never what was meant.
    */
   const mergeSources = visible
-    .filter((person) => selected.has(person.id) && person.id !== target?.id)
-    .filter((person) => person.kind === target?.kind);
+    .filter((subject) => selected.has(subject.id) && subject.id !== target?.id)
+    .filter((subject) => subject.kind === target?.kind);
 
   return (
     <div className="min-h-full">
@@ -333,10 +333,10 @@ export function People() {
         </p>
       )}
 
-      {/* Face recognition needs its own service, so say plainly when it is off. */}
+      {/* Recognition needs its own service, so say plainly when it is off. */}
       {status && !status.enabled && (
         <p className="mx-5 mt-4 rounded-control bg-surface-sunken px-3.5 py-2.5 text-sm text-content-muted">
-          Face recognition is switched off on this server. An administrator can turn it on in
+          People &amp; Pets recognition is switched off on this server. An administrator can turn it on in
           Settings → Recognition.
         </p>
       )}
@@ -411,24 +411,24 @@ export function People() {
         />
       ) : (
         <div className="grid gap-4 px-5 pb-24 pt-4 [grid-template-columns:repeat(auto-fill,minmax(124px,1fr))]">
-          {visible.map((person) => {
-            const isSelected = selected.has(person.id);
+          {visible.map((subject) => {
+            const isSelected = selected.has(subject.id);
 
             return (
               <div
-                key={person.id}
+                key={subject.id}
                 className="group relative"
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  setMenu({ person, anchor: { x: event.clientX, y: event.clientY } });
+                  setMenu({ subject, anchor: { x: event.clientX, y: event.clientY } });
                 }}
               >
                 <Link
-                  to={selecting ? '#' : `/people/${person.id}`}
+                  to={selecting ? '#' : `/people-and-pets/${subject.id}`}
                   onClick={(event) => {
                     if (selecting) {
                       event.preventDefault();
-                      toggle(person);
+                      toggle(subject);
                     }
                   }}
                   className="block"
@@ -441,10 +441,10 @@ export function People() {
                         : 'group-hover:opacity-90',
                     )}
                   >
-                    {person.thumbnailPath ? (
+                    {subject.thumbnailPath ? (
                       <img
-                        src={`/api/people/${person.id}/thumbnail.jpg?v=${encodeURIComponent(person.thumbnailUpdatedAt)}`}
-                        alt={person.name || `Unnamed ${person.kind === 'PET' ? 'pet' : 'person'}`}
+                        src={`/api/people-and-pets/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt)}`}
+                        alt={subject.name || `Unnamed ${subject.kind === 'PET' ? 'pet' : 'person'}`}
                         loading="lazy"
                         draggable={false}
                         className="h-full w-full object-cover"
@@ -465,25 +465,25 @@ export function People() {
                 </Link>
 
                 {/* Outside the Link on purpose: clicking the name edits it,
-                    clicking the face opens the person. */}
-                {editingId === person.id ? (
+                    clicking the face opens the subject. */}
+                {editingId === subject.id ? (
                   <Input
                     autoFocus
-                    defaultValue={person.name}
+                    defaultValue={subject.name}
                     placeholder="Add a name"
                     onFocus={(event) => event.currentTarget.select()}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') event.currentTarget.blur();
                       if (event.key === 'Escape') {
                         // Put the old value back so the blur below saves nothing new.
-                        event.currentTarget.value = person.name;
+                        event.currentTarget.value = subject.name;
                         event.currentTarget.blur();
                       }
                     }}
                     onBlur={(event) => {
                       const name = event.currentTarget.value.trim();
                       setEditingId(null);
-                      if (name !== person.name) rename.mutate({ id: person.id, name });
+                      if (name !== subject.name) rename.mutate({ id: subject.id, name });
                     }}
                     // `focus:outline-none` because the primary border already
                     // shows focus; without it the global focus ring sits
@@ -493,26 +493,26 @@ export function People() {
                     className="border-primary text-center font-medium focus:outline-none"
                   />
                 ) : (
-                  <Tooltip label={person.name ? 'Click to rename' : 'Click to add a name'}>
+                  <Tooltip label={subject.name ? 'Click to rename' : 'Click to add a name'}>
                   <button
                     type="button"
                     onClick={() => {
-                      if (selecting) toggle(person);
-                      else setEditingId(person.id);
+                      if (selecting) toggle(subject);
+                      else setEditingId(subject.id);
                     }}
                     // A transparent border of the same width as the input's, so
                     // swapping one for the other does not change the height and
                     // shove the cards below it around.
                     className="mt-2 block w-full truncate rounded-control border border-transparent px-1.5 py-0.5 text-center text-sm font-medium transition hover:bg-surface-sunken"
                   >
-                    {person.name || <span className="text-content-muted">Add a name</span>}
+                    {subject.name || <span className="text-content-muted">Add a name</span>}
                   </button>
                   </Tooltip>
                 )}
 
                 <span className="block text-center text-[11px] text-content-muted">
-                  {person.species ? `${person.species} · ` : ''}
-                  {person.faceCount} {person.faceCount === 1 ? 'photo' : 'photos'}
+                  {subject.species ? `${subject.species} · ` : ''}
+                  {subject.faceCount} {subject.faceCount === 1 ? 'photo' : 'photos'}
                 </span>
 
                 {/* No hover buttons over the face. Renaming is the name itself,
@@ -555,60 +555,60 @@ export function People() {
           items={[
             {
               id: 'name',
-              label: menu.person.name ? 'Rename' : 'Add a name',
+              label: menu.subject.name ? 'Rename' : 'Add a name',
               icon: <Pencil size={15} />,
-              onSelect: () => setEditingId(menu.person.id),
+              onSelect: () => setEditingId(menu.subject.id),
             },
             {
               id: 'merge',
               // The main entry point for merging. The header button was easy to
-              // miss, and starting from the person you right-clicked is a far
+              // miss, and starting from the subject you right-clicked is a far
               // more natural way in than "enter a mode, then pick two".
               label: 'Merge with…',
               icon: <Merge size={15} />,
               hint: 'Then pick who they are the same as',
               onSelect: () => {
                 setSelecting(true);
-                setSelected(new Set([menu.person.id]));
+                setSelected(new Set([menu.subject.id]));
               },
             },
             {
               id: 'favorite',
-              label: menu.person.isFavorite ? 'Remove from favourites' : 'Add to favourites',
+              label: menu.subject.isFavorite ? 'Remove from favourites' : 'Add to favourites',
               icon: <Star size={15} />,
               onSelect: () =>
                 setFavorite.mutate({
-                  id: menu.person.id,
-                  isFavorite: !menu.person.isFavorite,
+                  id: menu.subject.id,
+                  isFavorite: !menu.subject.isFavorite,
                 }),
             },
             {
               id: 'kind',
-              label: menu.person.kind === 'PET' ? 'This is a person' : 'This is a pet',
+              label: menu.subject.kind === 'PET' ? 'This is a person' : 'This is a pet',
               icon:
-                menu.person.kind === 'PET' ? <UserRound size={15} /> : <PawPrint size={15} />,
-              hint: menu.person.kind === 'PET' ? 'Move to People' : 'Move to Pets',
+                menu.subject.kind === 'PET' ? <UserRound size={15} /> : <PawPrint size={15} />,
+              hint: menu.subject.kind === 'PET' ? 'Move to People' : 'Move to Pets',
               onSelect: () =>
                 reclassify.mutate({
-                  id: menu.person.id,
-                  kind: menu.person.kind === 'PET' ? 'PERSON' : 'PET',
+                  id: menu.subject.id,
+                  kind: menu.subject.kind === 'PET' ? 'PERSON' : 'PET',
                 }),
             },
             {
               id: 'hide',
-              label: menu.person.isHidden ? 'Show again' : 'Hide from People & Pets',
-              icon: menu.person.isHidden ? <Eye size={15} /> : <EyeOff size={15} />,
+              label: menu.subject.isHidden ? 'Show again' : 'Hide from People & Pets',
+              icon: menu.subject.isHidden ? <Eye size={15} /> : <EyeOff size={15} />,
               separated: true,
               onSelect: () =>
-                setHidden.mutate({ id: menu.person.id, isHidden: !menu.person.isHidden }),
+                setHidden.mutate({ id: menu.subject.id, isHidden: !menu.subject.isHidden }),
             },
             {
               id: 'forget',
-              label: menu.person.kind === 'PET' ? 'Remove this pet' : 'Remove this person',
+              label: menu.subject.kind === 'PET' ? 'Remove this pet' : 'Remove this person',
               icon: <Trash2 size={15} />,
               hint: 'The photos are kept',
               danger: true,
-              onSelect: () => setConfirmForget(menu.person),
+              onSelect: () => setConfirmForget(menu.subject),
             },
           ]}
         />

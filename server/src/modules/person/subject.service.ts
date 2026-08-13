@@ -7,11 +7,11 @@ import { AssetVisibility, Prisma, SourceType } from '../../db';
 import { SubjectKind } from '../../db';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
-import type { PersonQueryDto, UpdatePersonDto } from './person.dto';
+import type { SubjectQueryDto, UpdateSubjectDto } from './person.dto';
 
 @Injectable()
-export class PersonService {
-  private readonly logger = new Logger(PersonService.name);
+export class SubjectService {
+  private readonly logger = new Logger(SubjectService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -22,14 +22,14 @@ export class PersonService {
   // -- reads ----------------------------------------------------------------
 
   /**
-   * People in the library, most-photographed first.
+   * People and pets in the library, most-photographed first.
    *
    * Unnamed groups with only a face or two are hidden by default: early on,
    * clustering produces a long tail of one-off detections (a stranger in the
    * background, a face on a poster) and showing them all buries the people who
    * actually matter.
    */
-  async list(userId: string, query: PersonQueryDto = {}) {
+  async list(userId: string, query: SubjectQueryDto = {}) {
     /**
      * Two independent filters that used to be one.
      *
@@ -144,7 +144,7 @@ export class PersonService {
 
   // -- writes ---------------------------------------------------------------
 
-  async update(userId: string, personId: string, dto: UpdatePersonDto) {
+  async update(userId: string, personId: string, dto: UpdateSubjectDto) {
     await this.get(userId, personId);
 
     return this.prisma.person.update({
@@ -161,7 +161,7 @@ export class PersonService {
   }
 
   /**
-   * Folds several people into one.
+   * Folds several matching subjects into one.
    *
    * Every face moves rather than being re-detected, and the surviving person
    * keeps whichever name is already set — merging "Anna" into an unnamed group
@@ -200,10 +200,10 @@ export class PersonService {
       return moved.count;
     });
 
-    // Old thumbnails belong to people who no longer exist.
+    // Old thumbnails belong to subjects that no longer exist.
     await this.storage.removeMany(sources.map((s) => s.thumbnailPath || null));
 
-    return { mergedInto: targetId, people: sources.length, faces: result };
+    return { mergedInto: targetId, subjects: sources.length, detections: result };
   }
 
   /**
@@ -502,7 +502,7 @@ export class PersonService {
   async refreshThumbnailsForAssets(assetIds: string[]) {
     if (assetIds.length === 0) return;
 
-    const people = await this.prisma.person.findMany({
+    const subjects = await this.prisma.person.findMany({
       where: {
         OR: [
           { faceAssetId: { in: assetIds } },
@@ -512,13 +512,13 @@ export class PersonService {
       select: { id: true, thumbnailPath: true },
     });
 
-    for (const person of people) {
-      await this.refreshThumbnail(person.id);
+    for (const subject of subjects) {
+      await this.refreshThumbnail(subject.id);
     }
   }
 
   async statistics(userId: string) {
-    const [people, named, faces, unassigned] = await Promise.all([
+    const [subjects, named, detections, unassigned] = await Promise.all([
       this.prisma.person.count({ where: { ownerId: userId } }),
       this.prisma.person.count({ where: { ownerId: userId, name: { not: '' } } }),
       this.prisma.assetFace.count({ where: { asset: { ownerId: userId }, deletedAt: null } }),
@@ -527,6 +527,6 @@ export class PersonService {
       }),
     ]);
 
-    return { people, named, faces, unassigned };
+    return { subjects, named, detections, unassigned };
   }
 }

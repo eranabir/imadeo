@@ -7,7 +7,7 @@ import { Button, Dialog, Input, Radio } from '../ui';
 export type SearchMode = 'context' | 'filename' | 'description' | 'place';
 
 export interface SearchFilters {
-  personIds: string[];
+  subjectIds: string[];
   mode: SearchMode;
   text: string;
   takenAfter: string;
@@ -15,7 +15,7 @@ export interface SearchFilters {
 }
 
 export const emptyFilters: SearchFilters = {
-  personIds: [],
+  subjectIds: [],
   mode: 'context',
   text: '',
   takenAfter: '',
@@ -29,7 +29,7 @@ export function toParams(filters: SearchFilters) {
     ...(filters.mode === 'context' || filters.mode === 'place'
       ? {}
       : { [filters.mode]: filters.text || undefined }),
-    personIds: filters.personIds.length ? filters.personIds.join(',') : undefined,
+    subjectIds: filters.subjectIds.length ? filters.subjectIds.join(',') : undefined,
     takenAfter: filters.takenAfter ? new Date(filters.takenAfter).toISOString() : undefined,
     takenBefore: filters.takenBefore ? new Date(filters.takenBefore).toISOString() : undefined,
     size: 500,
@@ -37,8 +37,8 @@ export function toParams(filters: SearchFilters) {
 }
 
 export function countActive(filters: SearchFilters) {
-  const { personIds, mode: _mode, ...rest } = filters;
-  return personIds.length + Object.values(rest).filter((value) => value !== '').length;
+  const { subjectIds, mode: _mode, ...rest } = filters;
+  return subjectIds.length + Object.values(rest).filter((value) => value !== '').length;
 }
 
 interface Subject {
@@ -68,29 +68,30 @@ export function SearchOptions({
   onSearch: (filters: SearchFilters) => void;
 }) {
   const [filters, setFilters] = useState<SearchFilters>(initial);
-  const [peopleFilter, setPeopleFilter] = useState('');
-  const [showAllPeople, setShowAllPeople] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState('');
+  const [showAllSubjects, setShowAllSubjects] = useState(false);
 
   const set = <K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) =>
     setFilters((current) => ({ ...current, [key]: value }));
 
   const { data: subjects = [] } = useQuery({
-    queryKey: ['people', 'search-picker'],
-    queryFn: async () => (await api.get<Subject[]>('/people', { params: { minFaces: 1 } })).data,
+    queryKey: ['subjects', 'search-picker'],
+    queryFn: async () =>
+      (await api.get<Subject[]>('/people-and-pets', { params: { minFaces: 1 } })).data,
     enabled: open,
   });
 
-  const needle = peopleFilter.trim().toLowerCase();
+  const needle = subjectFilter.trim().toLowerCase();
   const matching = subjects.filter((s) => !needle || s.name.toLowerCase().includes(needle));
   // A single row until asked for more, so the form does not open two pages tall.
-  const shownPeople = showAllPeople ? matching : matching.slice(0, 8);
+  const shownSubjects = showAllSubjects ? matching : matching.slice(0, 8);
 
-  const togglePerson = (id: string) =>
+  const toggleSubject = (id: string) =>
     set(
-      'personIds',
-      filters.personIds.includes(id)
-        ? filters.personIds.filter((entry) => entry !== id)
-        : [...filters.personIds, id],
+      'subjectIds',
+      filters.subjectIds.includes(id)
+        ? filters.subjectIds.filter((entry) => entry !== id)
+        : [...filters.subjectIds, id],
     );
 
   const current = SEARCH_TYPES.find((entry) => entry.value === filters.mode)!;
@@ -128,21 +129,21 @@ export function SearchOptions({
                 placeholder="Filter people and pets"
                 adornment={<SearchIcon size={14} />}
                 size="sm"
-                value={peopleFilter}
+                value={subjectFilter}
                 containerClassName="w-56"
                 className="rounded-full bg-surface-sunken"
-                onChange={(event) => setPeopleFilter(event.target.value)}
+                onChange={(event) => setSubjectFilter(event.target.value)}
               />
             </div>
 
             <div className="flex flex-wrap gap-3">
-              {shownPeople.map((subject) => {
-                const picked = filters.personIds.includes(subject.id);
+              {shownSubjects.map((subject) => {
+                const picked = filters.subjectIds.includes(subject.id);
                 return (
                   <button
                     key={subject.id}
                     type="button"
-                    onClick={() => togglePerson(subject.id)}
+                    onClick={() => toggleSubject(subject.id)}
                     className="w-[68px] text-center"
                   >
                     <span
@@ -152,7 +153,7 @@ export function SearchOptions({
                     >
                       {subject.thumbnailPath ? (
                         <img
-                          src={`/api/people/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
+                          src={`/api/people-and-pets/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
                           alt=""
                           loading="lazy"
                           className="h-full w-full object-cover"
@@ -171,10 +172,10 @@ export function SearchOptions({
               })}
             </div>
 
-            {matching.length > shownPeople.length && (
+            {matching.length > shownSubjects.length && (
               <button
                 type="button"
-                onClick={() => setShowAllPeople(true)}
+                onClick={() => setShowAllSubjects(true)}
                 className="mx-auto mt-3 flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
               >
                 <ArrowRight size={14} />

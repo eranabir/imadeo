@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
-import { faceThumbnail, thumbnail, type Person } from '../lib/api';
+import { subjectThumbnail, thumbnail, type Subject } from '../lib/api';
 import { colors, radius, shadow, wash } from '../theme';
 import { Icon } from './Icon';
 import { Touchable } from './ui';
@@ -205,15 +205,15 @@ export function AlbumCard({
  * that is the only thing distinguishing one anonymous cluster from the next —
  * and tapping through to see them is how someone decides whether to name it.
  */
-export function PersonCard({
+export function SubjectCard({
   serverUrl,
-  person,
+  subject,
   token,
   size,
   onPress,
 }: {
   serverUrl: string;
-  person: Person;
+  subject: Subject;
   token: string | null;
   size: number;
   onPress: () => void;
@@ -221,12 +221,12 @@ export function PersonCard({
   return (
     <Touchable
       onPress={onPress}
-      label={person.name || 'Unnamed'}
+      label={subject.name || 'Unnamed'}
       radius={radius.md}
       style={{ width: size }}
     >
       <Image
-        source={faceThumbnail(serverUrl, person.id, token, person.thumbnailUpdatedAt)}
+        source={subjectThumbnail(serverUrl, subject.id, token, subject.thumbnailUpdatedAt)}
         style={{
           width: size,
           height: size,
@@ -234,7 +234,7 @@ export function PersonCard({
           backgroundColor: colors.surface,
         }}
         contentFit="cover"
-        recyclingKey={person.id}
+        recyclingKey={subject.id}
         transition={140}
         // The crop is generated on first request, so a person viewed for the
         // very first time answers 404 until the server has made one.
@@ -243,14 +243,14 @@ export function PersonCard({
       <Text
         numberOfLines={1}
         style={{
-          color: person.name ? colors.text : colors.faint,
+          color: subject.name ? colors.text : colors.faint,
           fontSize: 13.5,
-          fontWeight: person.name ? '600' : '400',
+          fontWeight: subject.name ? '600' : '400',
           textAlign: 'center',
           marginTop: 7,
         }}
       >
-        {person.name || 'Unnamed'}
+        {subject.name || 'Unnamed'}
       </Text>
       <Text
         style={{
@@ -261,7 +261,7 @@ export function PersonCard({
           marginBottom: 4,
         }}
       >
-        {person.faceCount.toLocaleString()}
+        {subject.faceCount.toLocaleString()}
       </Text>
     </Touchable>
   );

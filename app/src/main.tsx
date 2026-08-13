@@ -1,27 +1,27 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import './index.css';
 import { api } from './lib/api';
-import { AlbumDetail } from './pages/AlbumDetail';
-import { Albums } from './pages/Albums';
-import { Favorites } from './pages/Favorites';
-import { FolderView } from './pages/FolderView';
-import { Duplicates } from './pages/Duplicates';
-import { Locked } from './pages/Locked';
-import { People } from './pages/People';
-import { Places } from './pages/Places';
-import { PersonDetail } from './pages/PersonDetail';
-import { Login } from './pages/Login';
-import { OAuthCallback } from './pages/OAuthCallback';
-import { Register } from './pages/Register';
-import { Search } from './pages/Search';
-import { Settings } from './pages/Settings';
-import { Sharing } from './pages/Sharing';
-import { Timeline } from './pages/Timeline';
-import { Trash } from './pages/Trash';
+import { AlbumPage, BrowseAlbumPage } from './pages/AlbumDetail';
+import { AlbumsPage } from './pages/Albums';
+import { FavoritesPage } from './pages/Favorites';
+import { BrowsePage, FoldersPage } from './pages/FolderView';
+import { DuplicatesPage } from './pages/Duplicates';
+import { LockedPage } from './pages/Locked';
+import { PeopleAndPetsPage } from './pages/PeopleAndPets';
+import { PlacesPage } from './pages/Places';
+import { SubjectPage } from './pages/Subject';
+import { LoginPage } from './pages/Login';
+import { OAuthCallbackPage } from './pages/OAuthCallback';
+import { RegisterPage } from './pages/Register';
+import { SearchPage } from './pages/Search';
+import { SettingsPage } from './pages/Settings';
+import { SharingPage } from './pages/Sharing';
+import { PhotosPage } from './pages/Timeline';
+import { TrashPage } from './pages/Trash';
 import { useAuth } from './store/auth';
 import { applyTheme, useTheme } from './store/theme';
 import { Loading, Opening } from './ui';
@@ -44,6 +44,11 @@ function Protected({ children }: { children: React.ReactNode }) {
     return <Loading className="h-full" />;
   }
   return status === 'authenticated' ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+function LegacySubjectRedirect() {
+  const { subjectId } = useParams();
+  return <Navigate to={`/people-and-pets/${subjectId}`} replace />;
 }
 
 function App() {
@@ -72,12 +77,6 @@ function App() {
     staleTime: 60_000,
   });
 
-  // Local visual preview for reviewing the opening animation without racing
-  // the normally fast session restore. It is never available in production.
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has('loading-preview')) {
-    return <Opening />;
-  }
-
   if (status === 'unknown' || !setupChecked) {
     return <Opening />;
   }
@@ -94,7 +93,7 @@ function App() {
     <Routes>
       <Route
         path="/login"
-        element={status === 'authenticated' ? <Navigate to="/" replace /> : <Login />}
+        element={status === 'authenticated' ? <Navigate to="/" replace /> : <LoginPage />}
       />
       {/* An invitation is for whoever holds the link, not for whoever happens
           to be signed in on this browser. Bouncing them to Photos made a valid
@@ -102,14 +101,14 @@ function App() {
       <Route
         path="/register"
         element={
-          status === 'authenticated' && !invited ? <Navigate to="/" replace /> : <Register />
+          status === 'authenticated' && !invited ? <Navigate to="/" replace /> : <RegisterPage />
         }
       />
       <Route
         path="/setup"
-        element={status === 'authenticated' ? <Navigate to="/" replace /> : <Register />}
+        element={status === 'authenticated' ? <Navigate to="/" replace /> : <RegisterPage />}
       />
-      <Route path="/auth/callback" element={<OAuthCallback />} />
+      <Route path="/auth/callback" element={<OAuthCallbackPage />} />
       <Route
         element={
           <Protected>
@@ -117,25 +116,27 @@ function App() {
           </Protected>
         }
       >
-        <Route path="/" element={<Timeline />} />
-        <Route path="/browse" element={<FolderView rootMode="browse" />} />
-        <Route path="/browse/folders/:folderId" element={<FolderView rootMode="browse" />} />
-        <Route path="/browse/albums/:albumId" element={<AlbumDetail rootMode="browse" />} />
-        <Route path="/folders" element={<FolderView />} />
-        <Route path="/folders/:folderId" element={<FolderView />} />
-        <Route path="/albums" element={<Albums />} />
-        <Route path="/albums/:albumId" element={<AlbumDetail />} />
-        <Route path="/sharing" element={<Sharing />} />
-        <Route path="/search" element={<Search />} />
-        <Route path="/favorites" element={<Favorites />} />
-        <Route path="/places" element={<Places />} />
-        <Route path="/places/:city" element={<Places />} />
-        <Route path="/people" element={<People />} />
-        <Route path="/people/:personId" element={<PersonDetail />} />
-        <Route path="/locked" element={<Locked />} />
-        <Route path="/duplicates" element={<Duplicates />} />
-        <Route path="/trash" element={<Trash />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/" element={<PhotosPage />} />
+        <Route path="/browse" element={<BrowsePage />} />
+        <Route path="/browse/folders/:folderId" element={<BrowsePage />} />
+        <Route path="/browse/albums/:albumId" element={<BrowseAlbumPage />} />
+        <Route path="/folders" element={<FoldersPage />} />
+        <Route path="/folders/:folderId" element={<FoldersPage />} />
+        <Route path="/albums" element={<AlbumsPage />} />
+        <Route path="/albums/:albumId" element={<AlbumPage />} />
+        <Route path="/sharing" element={<SharingPage />} />
+        <Route path="/search" element={<SearchPage />} />
+        <Route path="/favorites" element={<FavoritesPage />} />
+        <Route path="/places" element={<PlacesPage />} />
+        <Route path="/places/:city" element={<PlacesPage />} />
+        <Route path="/people-and-pets" element={<PeopleAndPetsPage />} />
+        <Route path="/people-and-pets/:subjectId" element={<SubjectPage />} />
+        <Route path="/people" element={<Navigate to="/people-and-pets" replace />} />
+        <Route path="/people/:subjectId" element={<LegacySubjectRedirect />} />
+        <Route path="/locked" element={<LockedPage />} />
+        <Route path="/duplicates" element={<DuplicatesPage />} />
+        <Route path="/trash" element={<TrashPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

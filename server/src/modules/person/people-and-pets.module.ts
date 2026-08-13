@@ -1,17 +1,17 @@
 import { Module } from '@nestjs/common';
 import { FaceClusteringService } from './face-clustering.service';
 import { FaceClusterProcessor, FaceDetectionProcessor } from './face.processor';
-import { PersonController } from './person.controller';
-import { PersonService } from './person.service';
+import { PeopleAndPetsController } from './person.controller';
+import { SubjectService } from './subject.service';
 
 @Module({
-  controllers: [PersonController],
+  controllers: [PeopleAndPetsController],
   providers: [
-    PersonService,
+    SubjectService,
     FaceClusteringService,
     FaceDetectionProcessor,
     FaceClusterProcessor,
   ],
-  exports: [PersonService, FaceClusteringService],
+  exports: [SubjectService, FaceClusteringService],
 })
-export class PersonModule {}
+export class PeopleAndPetsModule {}

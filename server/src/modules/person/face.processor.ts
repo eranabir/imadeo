@@ -8,7 +8,7 @@ import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { FaceClusteringService } from './face-clustering.service';
-import { PersonService } from './person.service';
+import { SubjectService } from './subject.service';
 
 /**
  * Detects faces in one asset and groups them.
@@ -24,7 +24,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly ml: MachineLearningService,
     private readonly clustering: FaceClusteringService,
-    private readonly people: PersonService,
+    private readonly subjects: SubjectService,
     private readonly jobs: JobService,
   ) {
     super();
@@ -123,18 +123,18 @@ export class FaceDetectionProcessor extends WorkerHost {
       `;
     }
 
-    const people = await this.clustering.assignFacesForAsset(asset.id, asset.ownerId);
+    const subjects = await this.clustering.assignFacesForAsset(asset.id, asset.ownerId);
 
     // Automatic avatars follow the latest recognised photo, so a successful
     // upload is visible immediately. A cover deliberately chosen by the user
     // remains untouched.
-    for (const personId of people) {
-      const person = await this.prisma.person.findUnique({
-        where: { id: personId },
+    for (const subjectId of subjects) {
+      const subject = await this.prisma.person.findUnique({
+        where: { id: subjectId },
         select: { thumbnailPath: true, thumbnailIsCustom: true },
       });
-      if (!person?.thumbnailIsCustom) {
-        await this.people.refreshThumbnail(personId);
+      if (!subject?.thumbnailIsCustom) {
+        await this.subjects.refreshThumbnail(subjectId);
       }
     }
 
@@ -156,14 +156,14 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     if (humanFaces.length > 0) {
       this.logger.debug(
-        `${humanFaces.length} face(s) in ${asset.originalFileName} across ${people.length} person(s)`,
+        `${humanFaces.length} face(s) in ${asset.originalFileName} across ${subjects.length} subject(s)`,
       );
     }
 
     return {
       faces: humanFaces.length,
       pets: pets.length,
-      people: people.length,
+      subjects: subjects.length,
     };
   }
 }
@@ -173,7 +173,7 @@ export class FaceDetectionProcessor extends WorkerHost {
 export class FaceClusterProcessor extends WorkerHost {
   constructor(
     private readonly clustering: FaceClusteringService,
-    private readonly people: PersonService,
+    private readonly subjects: SubjectService,
     private readonly prisma: PrismaService,
   ) {
     super();
@@ -187,7 +187,7 @@ export class FaceClusterProcessor extends WorkerHost {
       where: { ownerId: job.data.userId, thumbnailPath: '' },
       select: { id: true },
     });
-    for (const group of groups) await this.people.generateThumbnail(group.id);
+    for (const group of groups) await this.subjects.generateThumbnail(group.id);
 
     return result;
   }

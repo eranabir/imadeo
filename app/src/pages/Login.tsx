@@ -21,7 +21,7 @@ interface Providers {
  */
 const hues = [178, 196, 210, 165, 188, 152, 222, 172, 205, 140, 192, 235];
 
-export function Login() {
+export function LoginPage() {
   const { login } = useAuth();
   const { theme, cycle } = useTheme();
   const navigate = useNavigate();

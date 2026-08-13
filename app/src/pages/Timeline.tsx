@@ -17,7 +17,7 @@ import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
 import { EmptyState, GridSkeleton, IconButton, Select, SelectionCheck, Tooltip } from '../ui';
 
-export function Timeline() {
+export function PhotosPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [viewing, setViewing] = useState<Asset | null>(null);

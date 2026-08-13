@@ -75,15 +75,15 @@ export class SystemController {
   }
 
   @Auth({ admin: true })
-  @Get('admin/face-recognition')
-  @ApiOperation({ summary: 'Face and pet recognition setting for this server' })
+  @Get(['admin/people-and-pets-recognition', 'admin/face-recognition'])
+  @ApiOperation({ summary: 'People and pets recognition setting for this server' })
   faceRecognitionSettings() {
     return this.faceRecognition.view();
   }
 
   @Auth({ admin: true })
-  @Put('admin/face-recognition')
-  @ApiOperation({ summary: 'Enable or disable face and pet recognition immediately' })
+  @Put(['admin/people-and-pets-recognition', 'admin/face-recognition'])
+  @ApiOperation({ summary: 'Enable or disable people and pets recognition immediately' })
   saveFaceRecognitionSettings(@Body() dto: UpdateFaceRecognitionDto) {
     return this.faceRecognition.save(dto.enabled);
   }

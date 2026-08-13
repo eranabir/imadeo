@@ -10,7 +10,7 @@ interface Candidate {
 }
 
 /**
- * Groups face embeddings into people.
+ * Groups recognition embeddings into people and pets.
  *
  * The approach is incremental nearest-neighbour rather than a batch algorithm
  * like DBSCAN: each new face is compared against faces already assigned to a
@@ -97,8 +97,8 @@ export class FaceClusteringService {
   }
 
   /**
-   * Assigns every unassigned face for an asset, creating people as needed.
-   * Returns the people this asset ended up touching.
+   * Assigns every unassigned detection for an asset, creating subjects as needed.
+   * Returns the subjects this asset ended up touching.
    */
   async assignFacesForAsset(assetId: string, ownerId: string): Promise<string[]> {
     const faces = await this.prisma.$queryRaw<
@@ -147,7 +147,7 @@ export class FaceClusteringService {
   /**
    * Re-runs clustering across a whole library.
    *
-   * Needed after the threshold is changed, or to tidy up a library where people
+   * Needed after the threshold is changed, or to tidy up a library where subjects
    * were split across several groups early on when there was little to compare
    * against. Manually named or pinned faces are left alone.
    */
@@ -167,7 +167,7 @@ export class FaceClusteringService {
         )
     `;
 
-    // Drop the now-empty unnamed people.
+    // Drop the now-empty unnamed subjects.
     await this.prisma.$executeRaw`
       DELETE FROM people p
       WHERE p."ownerId" = ${ownerId}::uuid

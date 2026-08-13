@@ -24,7 +24,7 @@ interface PlaceResults extends Paginated<Asset> {
 }
 import { Button, EmptyState } from '../ui';
 
-export function Search() {
+export function SearchPage() {
   const [params] = useSearchParams();
   const { user } = useAuth();
 
@@ -92,8 +92,8 @@ export function Search() {
       clear: drop('text', ''),
     });
   }
-  if (filters.personIds.length) {
-    summary.push({ label: `${filters.personIds.length} selected`, clear: drop('personIds', []) });
+  if (filters.subjectIds.length) {
+    summary.push({ label: `${filters.subjectIds.length} selected`, clear: drop('subjectIds', []) });
   }
   if (filters.takenAfter) {
     summary.push({ label: `from ${filters.takenAfter}`, clear: drop('takenAfter', '') });

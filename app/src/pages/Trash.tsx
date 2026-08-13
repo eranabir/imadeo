@@ -10,7 +10,7 @@ import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
 import { Button, ConfirmDialog, EmptyState } from '../ui';
 
-export function Trash() {
+export function TrashPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();

@@ -27,7 +27,7 @@ interface Registration {
 /** Same hues as the login collage, so the two screens read as one place. */
 const hues = [178, 196, 210, 165, 188, 152, 222, 172, 205, 140, 192, 235];
 
-export function Register() {
+export function RegisterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const restore = useAuth((state) => state.restore);

@@ -36,7 +36,15 @@ import {
   Loading,
 } from '../ui';
 
-export function FolderView({ rootMode = 'folders' }: { rootMode?: 'browse' | 'folders' }) {
+export function BrowsePage() {
+  return <LibraryPage rootMode="browse" />;
+}
+
+export function FoldersPage() {
+  return <LibraryPage rootMode="folders" />;
+}
+
+function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const { user } = useAuth();
   const { folderId } = useParams();
   const navigate = useNavigate();
@@ -147,19 +155,21 @@ export function FolderView({ rootMode = 'folders' }: { rootMode?: 'browse' | 'fo
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
-        <nav className="mb-1 flex flex-wrap items-center gap-1 text-xs text-content-muted">
-          <Link to={rootMode === 'browse' ? '/browse' : '/folders'} className="transition hover:text-content">
-            {rootTitle}
-          </Link>
-          {data.breadcrumbs.map((crumb) => (
-            <span key={crumb.id} className="flex items-center gap-1">
-              <ChevronRight size={12} />
-              <Link to={`${folderBasePath}/${crumb.id}`} className="transition hover:text-content">
-                {crumb.name}
-              </Link>
-            </span>
-          ))}
-        </nav>
+        {folderId && (
+          <nav className="mb-1 flex flex-wrap items-center gap-1 text-xs text-content-muted">
+            <Link to={rootMode === 'browse' ? '/browse' : '/folders'} className="transition hover:text-content">
+              {rootTitle}
+            </Link>
+            {data.breadcrumbs.map((crumb) => (
+              <span key={crumb.id} className="flex items-center gap-1">
+                <ChevronRight size={12} />
+                <Link to={`${folderBasePath}/${crumb.id}`} className="transition hover:text-content">
+                  {crumb.name}
+                </Link>
+              </span>
+            ))}
+          </nav>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">

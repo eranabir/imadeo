@@ -26,7 +26,15 @@ interface AlbumDetailResponse extends Album {
   access: 'owner' | 'editor' | 'viewer';
 }
 
-export function AlbumDetail({ rootMode = 'albums' }: { rootMode?: 'browse' | 'albums' }) {
+export function BrowseAlbumPage() {
+  return <AlbumPageContent rootMode="browse" />;
+}
+
+export function AlbumPage() {
+  return <AlbumPageContent rootMode="albums" />;
+}
+
+function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   const { albumId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

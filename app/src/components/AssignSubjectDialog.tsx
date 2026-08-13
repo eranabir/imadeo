@@ -38,9 +38,9 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
   const [creating, setCreating] = useState('');
 
   const { data: subjects = [] } = useQuery({
-    queryKey: ['people', 'assignable', kind],
+    queryKey: ['subjects', 'assignable', kind],
     queryFn: async () =>
-      (await api.get<Subject[]>('/people', { params: { minFaces: 1, withHidden: true, kind } }))
+      (await api.get<Subject[]>('/people-and-pets', { params: { minFaces: 1, withHidden: true, kind } }))
         .data,
     enabled: open,
   });
@@ -49,7 +49,7 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
   const { data: faces = [] } = useQuery({
     queryKey: ['assets', 'faces', assetIds],
     queryFn: async () =>
-      (await api.post<{ id: string; kind: 'PERSON' | 'PET' }[]>('/people/faces/in-assets', {
+      (await api.post<{ id: string; kind: 'PERSON' | 'PET' }[]>('/people-and-pets/faces/in-assets', {
         assetIds,
       })).data,
     enabled: open && assetIds.length > 0,
@@ -58,10 +58,10 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
   const matching = faces.filter((face) => face.kind === kind);
 
   const assign = useMutation({
-    mutationFn: async (personId: string) =>
+    mutationFn: async (subjectId: string) =>
       // Photos, not detections: the server moves a detection when there is one
       // and records a manual link when there is not.
-      (await api.post(`/people/${personId}/assets`, { assetIds })).data,
+      (await api.post(`/people-and-pets/${subjectId}/assets`, { assetIds })).data,
     onSuccess: () => {
       void queryClient.invalidateQueries();
       onClose();
@@ -71,9 +71,9 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
 
   const createAndAssign = useMutation({
     mutationFn: async (name: string) => {
-      const { data: person } = await api.post<Subject>('/people', { name, kind });
-      await api.post(`/people/${person.id}/assets`, { assetIds });
-      return person;
+      const { data: subject } = await api.post<Subject>('/people-and-pets', { name, kind });
+      await api.post(`/people-and-pets/${subject.id}/assets`, { assetIds });
+      return subject;
     },
     onSuccess: () => {
       setCreating('');
@@ -133,7 +133,7 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
                   <span className="mx-auto block aspect-square w-full overflow-hidden rounded-full bg-surface-sunken">
                     {subject.thumbnailPath ? (
                       <img
-                        src={`/api/people/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
+                        src={`/api/people-and-pets/${subject.id}/thumbnail.jpg?v=${encodeURIComponent(subject.thumbnailUpdatedAt ?? '')}`}
                         alt=""
                         loading="lazy"
                         className="h-full w-full object-cover"

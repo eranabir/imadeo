@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { actions } from '../lib/actions';
-import { faceThumbnail, useResource, type Album, type Person } from '../lib/api';
+import { subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
 import { colors, radius } from '../theme';
 import { Icon } from './Icon';
 import { Button, Chip, Sheet, Touchable } from './ui';
@@ -584,9 +584,9 @@ export function AssignSheet({
   const [creating, setCreating] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const { data, token } = useResource<Person[]>(
+  const { data, token } = useResource<Subject[]>(
     serverUrl,
-    open ? `/people?kind=${kind}&minFaces=1&withHidden=true&size=300` : null,
+    open ? `/people-and-pets?kind=${kind}&minFaces=1&withHidden=true&size=300` : null,
   );
 
   const run = async (work: () => Promise<unknown>) => {
@@ -622,8 +622,8 @@ export function AssignSheet({
               onSubmit={() =>
                 creating.trim() &&
                 run(async () => {
-                  const person = await actions.createSubject(serverUrl, creating.trim(), kind);
-                  await actions.assignSubject(serverUrl, person.id, assetIds);
+                  const subject = await actions.createSubject(serverUrl, creating.trim(), kind);
+                  await actions.assignSubject(serverUrl, subject.id, assetIds);
                 })
               }
             />
@@ -635,8 +635,8 @@ export function AssignSheet({
             busy={busy}
             onPress={() =>
               run(async () => {
-                const person = await actions.createSubject(serverUrl, creating.trim(), kind);
-                await actions.assignSubject(serverUrl, person.id, assetIds);
+                const subject = await actions.createSubject(serverUrl, creating.trim(), kind);
+                await actions.assignSubject(serverUrl, subject.id, assetIds);
               })
             }
           />
@@ -654,34 +654,34 @@ export function AssignSheet({
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        {(data ?? []).map((person) => (
+        {(data ?? []).map((subject) => (
           <Touchable
-            key={person.id}
+            key={subject.id}
             disabled={busy}
             radius={radius.md}
-            label={person.name || 'Unnamed'}
-            onPress={() => run(() => actions.assignSubject(serverUrl, person.id, assetIds))}
+            label={subject.name || 'Unnamed'}
+            onPress={() => run(() => actions.assignSubject(serverUrl, subject.id, assetIds))}
             style={{ width: 72 }}
           >
             <View style={{ alignItems: 'center', paddingVertical: 6 }}>
               <Image
-                source={faceThumbnail(serverUrl, person.id, token, person.thumbnailUpdatedAt)}
+                source={subjectThumbnail(serverUrl, subject.id, token, subject.thumbnailUpdatedAt)}
                 style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface }}
                 contentFit="cover"
-                recyclingKey={person.id}
+                recyclingKey={subject.id}
                 transition={120}
               />
               <Text
                 numberOfLines={1}
                 style={{
-                  color: person.name ? colors.text : colors.faint,
+                  color: subject.name ? colors.text : colors.faint,
                   fontSize: 12,
                   fontWeight: '600',
                   marginTop: 6,
                   textAlign: 'center',
                 }}
               >
-                {person.name || 'Unnamed'}
+                {subject.name || 'Unnamed'}
               </Text>
             </View>
           </Touchable>

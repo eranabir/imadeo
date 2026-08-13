@@ -14,7 +14,7 @@ import { Button, EmptyState } from '../ui';
  * Nothing here is fetched until the session is unlocked, so a locked library
  * stays invisible rather than merely hidden by the UI.
  */
-export function Locked() {
+export function LockedPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [askPin, setAskPin] = useState(false);

@@ -1,5 +1,6 @@
 import { Download, Heart, Trash2, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ConfirmDialog } from '../ui';
 
 interface Props {
   count: number;
@@ -22,9 +23,11 @@ export function SelectionBar({
   onTrash,
   children,
 }: Props) {
+  const [confirmTrash, setConfirmTrash] = useState(false);
   if (count === 0) return null;
 
   return (
+    <>
     <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
       <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-neutral-900/92 px-2 py-2 text-white shadow-2xl backdrop-blur">
         <button
@@ -63,7 +66,7 @@ export function SelectionBar({
         {onTrash && (
           <button
             type="button"
-            onClick={onTrash}
+            onClick={() => setConfirmTrash(true)}
             title="Move to trash"
             className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
           >
@@ -73,5 +76,15 @@ export function SelectionBar({
         {children}
       </div>
     </div>
+    <ConfirmDialog
+      open={confirmTrash}
+      title={`Move ${count === 1 ? 'this photo' : `these ${count} photos`} to trash?`}
+      description={count === 1 ? 'You can restore it from Trash for 30 days.' : 'You can restore them from Trash for 30 days.'}
+      confirmLabel="Move to trash"
+      destructive
+      onConfirm={() => onTrash?.()}
+      onClose={() => setConfirmTrash(false)}
+    />
+    </>
   );
 }

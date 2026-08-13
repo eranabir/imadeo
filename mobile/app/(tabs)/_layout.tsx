@@ -74,9 +74,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="people">
+      <NativeTabs.Trigger name="people-and-pets">
         <NativeTabs.Trigger.Icon
-          src={require('../../assets/people-scan.png')}
+          src={require('../../assets/people-and-pets-scan.png')}
           renderingMode="template"
         />
         <NativeTabs.Trigger.Label>People &amp; Pets</NativeTabs.Trigger.Label>

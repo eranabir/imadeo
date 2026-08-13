@@ -39,7 +39,7 @@ interface SharingOverview {
 }
 
 /** Everything going out from this account and coming in from other accounts. */
-export function Sharing() {
+export function SharingPage() {
   const { user } = useAuth();
   const [direction, setDirection] = useState<'OUTGOING' | 'INCOMING'>('OUTGOING');
   const [viewing, setViewing] = useState<Asset | null>(null);

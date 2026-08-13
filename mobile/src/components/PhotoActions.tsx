@@ -75,7 +75,7 @@ export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onD
         />
         <ToolbarAction icon="move" label="Move" disabled={busy} onPress={() => setMoving(true)} />
         <ToolbarAction
-          icon="people"
+          icon="people-and-pets"
           label="Who is this"
           disabled={busy}
           onPress={() => setAssigning(true)}

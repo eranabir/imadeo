@@ -11,7 +11,7 @@ interface FaceRecognitionSettings {
 const CONFIG_KEY = 'face-recognition';
 
 /**
- * Server-wide face and pet recognition switch.
+ * Server-wide People & Pets recognition switch.
  *
  * `ML_ENABLED` remains the first-run default, but an administrator can change
  * this setting without editing an environment file or restarting the server.

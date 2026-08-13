@@ -247,7 +247,7 @@ const TAB_SLOTS: Record<string, string> = {
   '/': 'library',
   '/browse': 'browse',
   '/search': 'search',
-  '/people': 'people',
+  '/people-and-pets': 'people-and-pets',
   '/settings': 'settings',
 };
 

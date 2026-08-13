@@ -59,7 +59,7 @@ export interface FolderContents {
   pagination: { page: number; size: number; total: number; pages: number };
 }
 
-export interface Person {
+export interface Subject {
   id: string;
   name: string;
   kind: 'PERSON' | 'PET';
@@ -376,15 +376,15 @@ export function thumbnail(serverUrl: string, assetId: string, token: string | nu
   };
 }
 
-/** The cropped face the server keeps as a person's or pet's avatar. */
-export function faceThumbnail(
+/** The cropped image the server keeps as a person's or pet's avatar. */
+export function subjectThumbnail(
   serverUrl: string,
-  personId: string,
+  subjectId: string,
   token: string | null,
   thumbnailUpdatedAt?: string,
 ) {
   return {
-    uri: `${serverUrl}/api/people/${personId}/thumbnail.jpg?v=${encodeURIComponent(thumbnailUpdatedAt ?? '')}`,
+    uri: `${serverUrl}/api/people-and-pets/${subjectId}/thumbnail.jpg?v=${encodeURIComponent(thumbnailUpdatedAt ?? '')}`,
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   };
 }

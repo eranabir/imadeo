@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateFaceRecognitionDto {
-  @ApiPropertyOptional({ description: 'Whether this server scans new and existing photos for faces and pets' })
+  @ApiPropertyOptional({ description: 'Whether this server scans photos for people and pets' })
   @IsBoolean()
   enabled!: boolean;
 }

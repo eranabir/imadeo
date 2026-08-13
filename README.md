@@ -4,7 +4,7 @@
 
 Imadeo backs up a phone's camera roll to your own server, then gives you one
 place to browse the timeline, organise albums and folders, share selected
-moments, search by what is in a photograph, and find people and duplicates.
+moments, search by what is in a photograph, and find people, pets and duplicates.
 Your originals stay on storage you choose.
 
 ## Development
@@ -16,7 +16,7 @@ HTTPS reverse proxy for remote access.
 ## Built for your library
 
 - Automatic photo and video backup from iOS and Android.
-- A timeline with albums, folders, places, people and favourites.
+- A timeline with albums, folders, places, people and pets, and favourites.
 - Local visual search, people and pet grouping (cats and dogs), duplicate detection and EXIF-aware dates.
 - Private album and link sharing without handing over the whole library.
 - Separate web and API containers, with one public port for both.

@@ -76,7 +76,7 @@ export class UserController {
 
   @Auth()
   @Get()
-  @ApiOperation({ summary: 'People you can share albums with' })
+  @ApiOperation({ summary: 'User accounts you can share albums with' })
   listPeers(@AuthedUserId() userId: string) {
     return this.userService.listPeers(userId);
   }

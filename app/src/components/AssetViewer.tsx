@@ -13,6 +13,7 @@ import { api, mediaUrl } from '../lib/api';
 import { formatBytes, formatDateTime } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
+import { ConfirmDialog } from '../ui';
 
 interface Props {
   asset: Asset;
@@ -23,6 +24,7 @@ interface Props {
 
 export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const [showInfo, setShowInfo] = useState(false);
+  const [confirmTrash, setConfirmTrash] = useState(false);
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -92,7 +94,7 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => trash.mutate()}
+            onClick={() => setConfirmTrash(true)}
             title="Move to trash"
             className="grid h-9 w-9 place-items-center rounded-md hover:bg-white/10"
           >
@@ -201,6 +203,16 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           </aside>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmTrash}
+        title="Move this photo to trash?"
+        description="You can restore it from Trash for 30 days."
+        confirmLabel="Move to trash"
+        destructive
+        onConfirm={() => trash.mutate()}
+        onClose={() => setConfirmTrash(false)}
+      />
     </div>
   );
 }

@@ -36,7 +36,7 @@ const nameOf = (place: Place) => [place.city, place.country].filter(Boolean).joi
  * With a `:city` in the route the same page becomes that town's photos, which
  * keeps the back button meaning "back to the map".
  */
-export function Places() {
+export function PlacesPage() {
   const { city } = useParams();
   return city ? <OnePlace city={decodeURIComponent(city)} /> : <AllPlaces />;
 }

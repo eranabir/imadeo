@@ -258,6 +258,13 @@ export class AssetQueryDto {
   @IsArray()
   @IsUUID('4', { each: true })
   @Transform(({ value }) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value))
+  subjectIds?: string[];
+
+  /** Legacy query name retained for older clients. */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  @Transform(({ value }) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value))
   personIds?: string[];
 
   @ApiPropertyOptional({ description: 'Only photos that are in no album at all' })

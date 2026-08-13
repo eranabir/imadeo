@@ -6,7 +6,7 @@ export type IconName =
   | 'folder'
   | 'album'
   | 'search'
-  | 'people'
+  | 'people-and-pets'
   | 'person'
   | 'pet'
   | 'backup'
@@ -139,7 +139,7 @@ function shapes(name: IconName, color: string) {
      * is about recognition, so a group-of-people glyph would quietly imply pets
      * are a lesser guest in it.
      */
-    case 'people':
+    case 'people-and-pets':
       return (
         <>
           <Path d="M3 7V5a2 2 0 0 1 2-2h2" />

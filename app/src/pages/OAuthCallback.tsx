@@ -8,7 +8,7 @@ import { useAuth } from '../store/auth';
  * The server has already set HttpOnly cookies before redirecting here. The
  * fragment only carries the internal return path, never a credential.
  */
-export function OAuthCallback() {
+export function OAuthCallbackPage() {
   const navigate = useNavigate();
   const restore = useAuth((s) => s.restore);
 

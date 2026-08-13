@@ -42,7 +42,7 @@ export class SetCoverDto {
   assetId!: string;
 }
 
-export class PersonQueryDto {
+export class SubjectQueryDto {
   @ApiPropertyOptional({
     enum: ['PERSON', 'PET'],
     description: 'Limit to people or to pets. Omit for both.',
@@ -51,14 +51,14 @@ export class PersonQueryDto {
   @IsIn(['PERSON', 'PET'])
   kind?: 'PERSON' | 'PET';
 
-  @ApiPropertyOptional({ description: 'Include people that have been hidden' })
+  @ApiPropertyOptional({ description: 'Include people and pets that have been hidden' })
   @IsOptional()
   @Transform(toBool)
   @IsBoolean()
   withHidden?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Hide unnamed groups with fewer faces than this. Named people always show.',
+    description: 'Hide unnamed groups below this size. Named people and pets always show.',
   })
   @IsOptional()
   @Transform(toInt)
@@ -73,7 +73,7 @@ export class PersonQueryDto {
   size?: number;
 }
 
-export class UpdatePersonDto {
+export class UpdateSubjectDto {
   @ApiPropertyOptional({ description: 'Empty string clears the name again' })
   @IsOptional()
   @IsString()
@@ -110,8 +110,8 @@ export class UpdatePersonDto {
   kind?: SubjectKind;
 }
 
-export class MergePeopleDto {
-  @ApiPropertyOptional({ description: 'The people folded into this one. They are then removed.' })
+export class MergeSubjectsDto {
+  @ApiPropertyOptional({ description: 'The matching subjects folded into this one.' })
   @IsArray()
   @IsUUID('4', { each: true })
   sourceIds!: string[];

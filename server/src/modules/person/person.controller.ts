@@ -27,13 +27,13 @@ import {
   AssetIdsDto,
   CreateSubjectDto,
   FaceIdsDto,
-  MergePeopleDto,
-  PersonQueryDto,
+  MergeSubjectsDto,
+  SubjectQueryDto,
   ReassignFacesDto,
   SetCoverDto,
-  UpdatePersonDto,
+  UpdateSubjectDto,
 } from './person.dto';
-import { PersonService } from './person.service';
+import { SubjectService } from './subject.service';
 
 const unrecognisedAssets = (includePets: boolean) => ({
   OR: [
@@ -43,12 +43,12 @@ const unrecognisedAssets = (includePets: boolean) => ({
   ],
 });
 
-@ApiTags('People')
+@ApiTags('People & Pets')
 @Auth()
-@Controller('people')
-export class PersonController {
+@Controller(['people-and-pets', 'people'])
+export class PeopleAndPetsController {
   constructor(
-    private readonly people: PersonService,
+    private readonly subjects: SubjectService,
     private readonly clustering: FaceClusteringService,
     private readonly ml: MachineLearningService,
     private readonly jobs: JobService,
@@ -57,18 +57,18 @@ export class PersonController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'People found in the library, most photographed first' })
-  list(@AuthedUserId() userId: string, @Query() query: PersonQueryDto) {
-    return this.people.list(userId, query);
+  @ApiOperation({ summary: 'People and pets found in the library, most photographed first' })
+  list(@AuthedUserId() userId: string, @Query() query: SubjectQueryDto) {
+    return this.subjects.list(userId, query);
   }
 
   @Get('statistics')
   statistics(@AuthedUserId() userId: string) {
-    return this.people.statistics(userId);
+    return this.subjects.statistics(userId);
   }
 
   @Get('status')
-  @ApiOperation({ summary: 'Whether face recognition is available and how far it has got' })
+  @ApiOperation({ summary: 'Whether people and pet recognition is available and its progress' })
   async status(@AuthedUserId() userId: string) {
     // Everything a scan would look at, whether or not it has yet.
     const eligible = {
@@ -101,7 +101,7 @@ export class PersonController {
 
   @Post('scan')
   @ApiOperation({
-    summary: 'Queue face detection for every photo that has not been scanned yet',
+    summary: 'Queue people and pet detection for every photo not scanned yet',
   })
   async scan(@AuthedUserId() userId: string, @Query('force') force?: string) {
     if (!(await this.ml.isFaceRecognitionReady())) {
@@ -152,7 +152,7 @@ export class PersonController {
 
   @Post('recluster')
   @ApiOperation({
-    summary: 'Regroup every face again',
+    summary: 'Regroup every recognized person and pet again',
     description:
       'Useful after changing the grouping threshold. Names and manual corrections are kept.',
   })
@@ -162,7 +162,7 @@ export class PersonController {
   }
 
   @Get(':id/thumbnail.jpg')
-  @ApiOperation({ summary: 'The cropped face used as this person’s avatar' })
+  @ApiOperation({ summary: 'The crop used as this subject’s avatar' })
   @Header('Cache-Control', 'private, no-cache')
   async thumbnailImage(
     @AuthedUserId() userId: string,
@@ -171,17 +171,17 @@ export class PersonController {
   ) {
     // Goes through `get` first so one account cannot read another's crops by
     // guessing an id.
-    const person = await this.people.get(userId, id);
+    const subject = await this.subjects.get(userId, id);
 
     // Generated on demand the first time it is asked for: clustering can rename
     // and merge people long after detection ran, and regenerating every crop
     // eagerly on every change would be wasted work for people never viewed.
-    let path = person.thumbnailPath;
+    let path = subject.thumbnailPath;
     if (!path || !(await this.storage.exists(path))) {
-      path = (await this.people.generateThumbnail(id)) ?? '';
+      path = (await this.subjects.generateThumbnail(id)) ?? '';
     }
 
-    if (!path) throw new NotFoundException('No face crop is available for this person yet');
+    if (!path) throw new NotFoundException('No avatar crop is available for this subject yet');
 
     res.setHeader('Content-Type', 'image/jpeg');
     createReadStream(path).pipe(res);
@@ -189,18 +189,18 @@ export class PersonController {
 
   @Get(':id')
   get(@AuthedUserId() userId: string, @Param('id') id: string) {
-    return this.people.get(userId, id);
+    return this.subjects.get(userId, id);
   }
 
   @Get(':id/assets')
-  @ApiOperation({ summary: 'Photos this person appears in' })
+  @ApiOperation({ summary: 'Photos this person or pet appears in' })
   getAssets(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
     @Query('page') page?: string,
     @Query('size') size?: string,
   ) {
-    return this.people.getAssets(
+    return this.subjects.getAssets(
       userId,
       id,
       page ? Number.parseInt(page, 10) : 1,
@@ -209,33 +209,33 @@ export class PersonController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Name a person, hide them, or mark them a favourite' })
+  @ApiOperation({ summary: 'Name, hide, favourite, or classify a person or pet' })
   update(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
-    @Body() dto: UpdatePersonDto,
+    @Body() dto: UpdateSubjectDto,
   ) {
-    return this.people.update(userId, id, dto);
+    return this.subjects.update(userId, id, dto);
   }
 
   @Post(':id/merge')
-  @ApiOperation({ summary: 'Fold other people into this one' })
+  @ApiOperation({ summary: 'Merge other matching subjects into this person or pet' })
   merge(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
-    @Body() dto: MergePeopleDto,
+    @Body() dto: MergeSubjectsDto,
   ) {
-    return this.people.merge(userId, id, dto.sourceIds);
+    return this.subjects.merge(userId, id, dto.sourceIds);
   }
 
   @Post(':id/detach')
-  @ApiOperation({ summary: 'Remove faces that are not this person' })
+  @ApiOperation({ summary: 'Remove detections that are not this person or pet' })
   detach(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
     @Body() dto: FaceIdsDto,
   ) {
-    return this.people.detachFaces(userId, id, dto.faceIds);
+    return this.subjects.detachFaces(userId, id, dto.faceIds);
   }
 
   @Post('faces/in-assets')
@@ -246,13 +246,13 @@ export class PersonController {
       'Assigning works on detections, not photos, so the client needs to know which ones are there before it can move them.',
   })
   facesInAssets(@AuthedUserId() userId: string, @Body() dto: AssetIdsDto) {
-    return this.people.facesInAssets(userId, dto.assetIds);
+    return this.subjects.facesInAssets(userId, dto.assetIds);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Start a new person or pet, for a face the grouping missed' })
+  @ApiOperation({ summary: 'Create a person or pet that recognition missed' })
   create(@AuthedUserId() userId: string, @Body() dto: CreateSubjectDto) {
-    return this.people.create(userId, dto.name, dto.kind);
+    return this.subjects.create(userId, dto.name, dto.kind);
   }
 
   @Post(':id/assets')
@@ -267,36 +267,36 @@ export class PersonController {
     @Param('id') id: string,
     @Body() dto: AssetIdsDto,
   ) {
-    return this.people.attachAssets(userId, id, dto.assetIds);
+    return this.subjects.attachAssets(userId, id, dto.assetIds);
   }
 
   @Post('faces/reassign')
-  @ApiOperation({ summary: 'Move specific faces onto another person' })
+  @ApiOperation({ summary: 'Move specific detections onto another person or pet' })
   reassign(@AuthedUserId() userId: string, @Body() dto: ReassignFacesDto) {
-    return this.people.reassignFaces(userId, dto.faceIds, dto.personId);
+    return this.subjects.reassignFaces(userId, dto.faceIds, dto.personId);
   }
 
   @Put(':id/cover')
-  @ApiOperation({ summary: 'Choose which of this person’s photos the avatar comes from' })
+  @ApiOperation({ summary: 'Choose which photo supplies this subject’s avatar' })
   setCover(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
     @Body() dto: SetCoverDto,
   ) {
-    return this.people.setCover(userId, id, dto.assetId);
+    return this.subjects.setCover(userId, id, dto.assetId);
   }
 
   @Post(':id/thumbnail')
   @ApiOperation({ summary: 'Rebuild the avatar crop' })
   async thumbnail(@AuthedUserId() userId: string, @Param('id') id: string) {
-    await this.people.get(userId, id);
-    const path = await this.people.generateThumbnail(id);
+    await this.subjects.get(userId, id);
+    const path = await this.subjects.generateThumbnail(id);
     return { generated: Boolean(path) };
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Forget this grouping. The photos are untouched.' })
   remove(@AuthedUserId() userId: string, @Param('id') id: string) {
-    return this.people.remove(userId, id);
+    return this.subjects.remove(userId, id);
   }
 }
