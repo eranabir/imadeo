@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Folder, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCheck, Folder, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
@@ -41,7 +41,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   const { user } = useAuth();
 
   const [viewing, setViewing] = useState<Asset | null>(null);
-  const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
+  const { selected, toggle, selectRange, setAnchor, clear, setSelected } = useSelection<Asset>();
   const [dialog, setDialog] = useState<'rename' | 'delete' | 'share' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +85,8 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   if (isLoading) return <Loading label="Loading album…" />;
   if (!album) return null;
 
+  const allSelected = album.assets.length > 0 && selected.size === album.assets.length;
+
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
@@ -117,6 +119,18 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {album.assets.length > 0 && (
+              <Button
+                size="sm"
+                icon={<CheckCheck size={14} />}
+                onClick={() =>
+                  setSelected(allSelected ? new Set() : new Set(album.assets.map((asset) => asset.id)))
+                }
+              >
+                {allSelected ? 'Deselect all' : 'Select all'}
+              </Button>
+            )}
+
             {selected.size > 0 && (
               <Button
                 size="sm"
