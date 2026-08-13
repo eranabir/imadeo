@@ -374,9 +374,17 @@ export class AssetService {
   }
 
   buildWhere(userId: string, query: AssetQueryDto): Prisma.AssetWhereInput {
+    const ownership = query.ownership ?? 'owned';
+    const accessibleAssets: Prisma.AssetWhereInput =
+      ownership === 'shared'
+        ? { ownerId: { not: userId }, sharedWith: { some: { userId } } }
+        : ownership === 'all'
+          ? { OR: [{ ownerId: userId }, { sharedWith: { some: { userId } } }] }
+          : { ownerId: userId };
+
     return {
       AND: [
-        { OR: [{ ownerId: userId }, { sharedWith: { some: { userId } } }] },
+        accessibleAssets,
         {
       deletedAt: null,
       visibility: query.visibility ?? AssetVisibility.TIMELINE,
@@ -929,17 +937,29 @@ export class AssetService {
   // -- trash ----------------------------------------------------------------
 
   async trash(userId: string, ids: string[]) {
+    const uniqueIds = [...new Set(ids)];
     const assets = await this.prisma.asset.findMany({
-      where: { id: { in: ids }, ownerId: userId, deletedAt: null },
+      where: { id: { in: uniqueIds }, ownerId: userId, deletedAt: null },
       select: { id: true },
     });
     const affectedIds = assets.map((asset) => asset.id);
-    const { count } = await this.prisma.asset.updateMany({
-      where: { id: { in: affectedIds } },
-      data: { deletedAt: new Date(), status: 'TRASHED' },
-    });
-    await this.subjects.refreshThumbnailsForAssets(affectedIds);
-    return { trashed: count };
+    const [trashed, removedShares] = await this.prisma.$transaction([
+      this.prisma.asset.updateMany({
+        where: { id: { in: affectedIds } },
+        data: { deletedAt: new Date(), status: 'TRASHED' },
+      }),
+      // Shared photos are read-only: removing one from the recipient's library
+      // revokes their direct share without touching the owner's copy.
+      this.prisma.assetUser.deleteMany({
+        where: { assetId: { in: uniqueIds }, userId },
+      }),
+    ]);
+    // Cover regeneration is cleanup, not part of moving the asset to Trash.
+    // A bad historical crop must not turn a successful delete into HTTP 500.
+    await this.subjects.refreshThumbnailsForAssets(affectedIds).catch((error) =>
+      this.logger.warn(`Could not refresh People & Pets covers after trashing assets: ${String(error)}`),
+    );
+    return { trashed: trashed.count, removedShares: removedShares.count };
   }
 
   async restore(userId: string, ids: string[]) {

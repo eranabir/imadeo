@@ -29,7 +29,8 @@ export function Progress({ value, label, className }: Props) {
       aria-label={label}
       aria-valuemin={known ? 0 : undefined}
       aria-valuemax={known ? 100 : undefined}
-      aria-valuenow={known ? Math.round(percent!) : undefined}
+      // Never announce 100% while work remains (99.6 used to round up).
+      aria-valuenow={known ? Math.floor(percent!) : undefined}
       className={clsx('h-1.5 overflow-hidden rounded-full bg-border-subtle', className)}
     >
       {known ? (

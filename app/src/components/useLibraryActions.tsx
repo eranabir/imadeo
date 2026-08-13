@@ -19,6 +19,7 @@ import {
 import { useCallback, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import type { DragPayload } from '../lib/dnd';
+import { useAuth } from '../store/auth';
 import type { Album, Asset, FolderNode } from '../types';
 import {
   ConfirmDialog,
@@ -70,6 +71,7 @@ export function useLibraryActions({
   onError,
 }: Options = {}) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const [target, setTarget] = useState<{ item: Target; anchor: Anchor } | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
@@ -120,6 +122,11 @@ export function useLibraryActions({
   const trashAssets = useMutation(
     mutation(async (ids: string[]) => api.delete('/assets', { data: { ids } })),
   );
+
+  const sharedAssetsSelected =
+    trashingAssets !== null &&
+    target?.item.kind === 'assets' &&
+    target.item.asset.ownerId !== user?.id;
 
   const restoreAssets = useMutation(
     mutation(async (ids: string[]) => api.post('/assets/trash/restore', { ids })),
@@ -600,9 +607,17 @@ export function useLibraryActions({
 
       <ConfirmDialog
         open={trashingAssets !== null}
-        title={trashingAssets?.length === 1 ? 'Move this photo to trash?' : `Move these ${trashingAssets?.length ?? 0} photos to trash?`}
-        description={trashingAssets?.length === 1 ? 'You can restore it from Trash for 30 days.' : 'You can restore them from Trash for 30 days.'}
-        confirmLabel="Move to trash"
+        title={sharedAssetsSelected
+          ? 'Remove shared photos from your library?'
+          : trashingAssets?.length === 1
+            ? 'Move this photo to trash?'
+            : `Move these ${trashingAssets?.length ?? 0} photos to trash?`}
+        description={sharedAssetsSelected
+          ? "Shared photos will disappear from your library without deleting the owners' copies. Your own photos will move to Trash."
+          : trashingAssets?.length === 1
+            ? 'You can restore it from Trash for 30 days.'
+            : 'You can restore them from Trash for 30 days.'}
+        confirmLabel={sharedAssetsSelected ? 'Remove from library' : 'Move to trash'}
         destructive
         onConfirm={() => trashingAssets && trashAssets.mutate(trashingAssets)}
         onClose={() => setTrashingAssets(null)}

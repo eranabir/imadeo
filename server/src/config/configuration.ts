@@ -152,7 +152,9 @@ export const configuration = () => {
       clipModel: process.env.ML_CLIP_MODEL ?? 'clip-ViT-B-32',
       faceModel: process.env.ML_FACE_MODEL ?? 'yunet+sface',
       faceMinScore: num(process.env.ML_FACE_MIN_SCORE, 0.7),
-      faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.5),
+      // SFace keeps the same person close across photos, but a 0.50 limit
+      // fragmented ordinary changes of angle and lighting into new people.
+      faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),
       /// Tighter than faces on purpose. Pets are matched on how they look rather
       /// than on facial geometry, so a loose threshold folds every black cat in
       /// the library into one animal.

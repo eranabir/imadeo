@@ -210,13 +210,19 @@ export class AlbumService {
     });
 
     const { _count, assets: coverAssets, ...rest } = album;
+    const total = await this.prisma.albumAsset.count({
+      where: {
+        albumId,
+        asset: { deletedAt: null, ...(restrictTo ? { id: { in: restrictTo } } : {}) },
+      },
+    });
     return {
       ...rest,
       access,
-      assetCount: _count.assets,
+      assetCount: total,
       ...pickCover(album.thumbnailAssetId, coverAssets),
       assets: rows.map((r) => ({ ...r.asset, addedAt: r.createdAt, addedById: r.addedById })),
-      pagination: { page, size, total: _count.assets },
+      pagination: { page, size, total },
     };
   }
 

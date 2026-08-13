@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Check, Eye, EyeOff, Merge, PawPrint, Pencil, ScanFace, Star, Trash2, UserRound } from 'lucide-react';
+import { Check, Eye, EyeOff, Merge, PawPrint, Pencil, Star, Trash2, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
@@ -50,7 +50,7 @@ export function PeopleAndPetsPage() {
   const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: status, dataUpdatedAt: statusUpdatedAt } = useQuery({
+  const { data: status } = useQuery({
     queryKey: ['subjects', 'status'],
     queryFn: async () => (await api.get<FaceStatus>('/people-and-pets/status')).data,
     // Uploads can start recognition after this page has already loaded. Keep
@@ -59,22 +59,8 @@ export function PeopleAndPetsPage() {
   });
 
   /**
-   * Whether a scan is under way, as opposed to merely outstanding.
-   *
-   * Latched on the press rather than read from the queue: the server has no
-   * "scanning" flag, only a count of what is left, and that count is just as
-   * high the moment before the button is pressed as the moment after. Cleared
-   * when the count reaches zero, or when the page is left. Completion also
-   * refreshes the groups: the worker has written new results, but the grid's
-   * query would otherwise still hold the empty response from before the scan.
-   */
-  const [scanning, setScanning] = useState(false);
-  /** Ignore the stale zero from before this particular scan was submitted. */
-  const [scanStartedAt, setScanStartedAt] = useState(0);
-  /**
-   * Uploads start recognition in the background too, without this page's Scan
-   * button being involved. Remember the outstanding count so finishing that
-   * work refreshes the cards and their photo counts just like a manual scan.
+   * Uploads start recognition in the background. Remember the outstanding
+   * count so finishing that work refreshes the cards and their photo counts.
    */
   const previousPending = useRef<number | null>(null);
 
@@ -85,12 +71,7 @@ export function PeopleAndPetsPage() {
       }
       previousPending.current = status.pendingAssets;
     }
-
-    if (scanning && status && statusUpdatedAt >= scanStartedAt && status.pendingAssets === 0) {
-      setScanning(false);
-      void queryClient.invalidateQueries({ queryKey: ['subjects'] });
-    }
-  }, [queryClient, scanStartedAt, scanning, status, statusUpdatedAt]);
+  }, [queryClient, status]);
 
   const scanned = status ? status.totalAssets - status.pendingAssets : 0;
 
@@ -151,17 +132,6 @@ export function PeopleAndPetsPage() {
       setSelected(new Set());
       setSelecting(false);
       return invalidate();
-    },
-    onError,
-  });
-
-  const scan = useMutation<unknown, unknown, boolean>({
-    mutationFn: async (force = false) =>
-      (await api.post('/people-and-pets/scan', undefined, { params: force ? { force: true } : undefined })).data,
-    onSuccess: () => {
-      setScanStartedAt(Date.now());
-      setScanning(true);
-      return queryClient.invalidateQueries({ queryKey: ['subjects', 'status'] });
     },
     onError,
   });
@@ -358,40 +328,15 @@ export function PeopleAndPetsPage() {
 
       {status?.ready && status.pendingAssets > 0 && (
         <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-primary">
-              {scanning
-                ? `Scanning — ${scanned.toLocaleString()} of ${status.totalAssets.toLocaleString()} photos done.`
-                : `${status.pendingAssets.toLocaleString()} photos have not been scanned for faces yet.`}
-            </p>
-            <Button
-              size="sm"
-              variant="primary"
-              icon={<ScanFace size={14} />}
-              disabled={scanning}
-              onClick={() => scan.mutate(false)}
-            >
-              {scanning ? 'Scanning…' : 'Scan now'}
-            </Button>
-          </div>
-
-          {/*
-            Only while a scan is actually moving.
-            
-            Standing outstanding work is not progress — a bar sitting at the
-            same fraction for a week says the app is stuck when nothing has been
-            asked of it. It appears when the scan is queued and stays until the
-            count reaches zero.
-          */}
-          {scanning && (
-            <Progress
-              // Indeterminate until the first count comes back, because the
-              // queue is still filling and the fraction would jump backwards.
-              value={scan.isPending ? undefined : scanned / Math.max(1, status.totalAssets)}
-              label="Scanning photos for people and pets"
-              className="mt-2.5"
-            />
-          )}
+          <p className="text-sm text-primary">
+            Scanning — {scanned.toLocaleString()} of {status.totalAssets.toLocaleString()} photos done ·{' '}
+            {status.pendingAssets.toLocaleString()} remaining
+          </p>
+          <Progress
+            value={scanned / Math.max(1, status.totalAssets)}
+            label={`Scanning photos for people and pets: ${scanned} of ${status.totalAssets} complete`}
+            className="mt-2.5"
+          />
         </div>
       )}
 
@@ -403,18 +348,6 @@ export function PeopleAndPetsPage() {
             status?.ready
               ? 'People and pets are grouped as photos are scanned. Once a group has a few photos in it, it shows up here.'
               : 'Once the machine-learning service is running, people and pets in your photos are grouped here automatically.'
-          }
-          action={
-            status?.ready && status.pendingAssets > 0 ? (
-              <Button
-                variant="primary"
-                icon={<ScanFace size={15} />}
-                disabled={scanning}
-                onClick={() => scan.mutate(false)}
-              >
-                {scanning ? 'Scanning…' : 'Scan photos'}
-              </Button>
-            ) : undefined
           }
         />
       ) : (

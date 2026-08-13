@@ -49,7 +49,8 @@ export function SharingPage() {
   });
   const assetsQuery = useQuery({
     queryKey: ['assets', 'sharing'],
-    queryFn: async () => (await api.get<Paginated<Asset>>('/assets', { params: { size: 500 } })).data,
+    queryFn: async () =>
+      (await api.get<Paginated<Asset>>('/assets', { params: { ownership: 'shared', size: 500 } })).data,
   });
   const albumsQuery = useQuery({
     queryKey: ['albums', 'sharing'],
@@ -69,7 +70,7 @@ export function SharingPage() {
     return <Loading label="Loading shared items…" />;
   }
 
-  const incomingAssets = (assetsQuery.data?.items ?? []).filter((asset) => asset.ownerId !== user?.id);
+  const incomingAssets = assetsQuery.data?.items ?? [];
   const incomingAlbums = (albumsQuery.data ?? []).filter((album) => album.owner?.id !== user?.id);
   const incomingFolders = flatten(foldersQuery.data ?? []).filter((folder) => folder.shared);
   const outgoing = outgoingQuery.data ?? { assets: [], albums: [], folders: [], links: [] };

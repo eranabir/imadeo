@@ -27,6 +27,7 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const [confirmTrash, setConfirmTrash] = useState(false);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const isShared = asset.ownerId !== user?.id;
 
   const index = assets.findIndex((a) => a.id === asset.id);
   const previous = index > 0 ? assets[index - 1] : null;
@@ -41,7 +42,10 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const trash = useMutation({
     mutationFn: async () => (await api.delete('/assets', { data: { ids: [asset.id] } })).data,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['assets'] });
+      // The same asset can be open from Photos, an album, a folder, search, or
+      // People & Pets. Refresh every cached view so a trashed item cannot stay
+      // visible and look as though deletion failed.
+      void queryClient.invalidateQueries();
       onClose();
     },
   });
@@ -206,9 +210,13 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
 
       <ConfirmDialog
         open={confirmTrash}
-        title="Move this photo to trash?"
-        description="You can restore it from Trash for 30 days."
-        confirmLabel="Move to trash"
+        title={isShared ? 'Remove this shared photo?' : 'Move this photo to trash?'}
+        description={
+          isShared
+            ? "It will disappear from your library. The owner's copy will not be deleted."
+            : 'You can restore it from Trash for 30 days.'
+        }
+        confirmLabel={isShared ? 'Remove from library' : 'Move to trash'}
         destructive
         onConfirm={() => trash.mutate()}
         onClose={() => setConfirmTrash(false)}

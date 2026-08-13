@@ -174,6 +174,11 @@ export class DeleteAssetsDto extends BulkAssetIdsDto {
 
 /** The one query object behind the timeline, search results and folder views. */
 export class AssetQueryDto {
+  @ApiPropertyOptional({ enum: ['owned', 'shared', 'all'], default: 'owned' })
+  @IsOptional()
+  @IsIn(['owned', 'shared', 'all'])
+  ownership?: 'owned' | 'shared' | 'all';
+
   @IsOptional()
   @IsIn(Object.values(AssetType))
   type?: AssetType;
