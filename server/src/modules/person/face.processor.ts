@@ -46,12 +46,6 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     if (!this.ml.faceRecognitionEnabled) return { skipped: 'face recognition disabled' };
 
-    if (!(await this.ml.isFaceRecognitionReady())) {
-      // Fail loudly so BullMQ retries with backoff rather than silently
-      // marking the asset as processed.
-      throw new Error('The machine-learning service is not ready');
-    }
-
     // Run the pet detector first. Face detectors can mistake the front of a
     // dog or cat for a human face; a face centred inside a confirmed pet box
     // belongs to the pet, not the People tab.

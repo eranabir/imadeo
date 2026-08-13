@@ -625,6 +625,7 @@ interface PeopleAndPetsRecognitionSettings {
 interface PeopleAndPetsRecognitionStatus {
   ready: boolean;
   totalAssets: number;
+  pendingAssets: number;
 }
 
 function PeopleAndPetsRecognition() {
@@ -658,7 +659,9 @@ function PeopleAndPetsRecognition() {
   const rescan = useMutation({
     mutationFn: async () =>
       (await api.post<{ queued: number }>('/people-and-pets/scan', undefined, {
-        params: { force: true },
+        // Recover failed work first. Once everything is complete this remains
+        // the deliberate full-library rescan expected from this setting.
+        params: status?.pendingAssets ? undefined : { force: true },
       })).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['subjects'] });
@@ -687,7 +690,11 @@ function PeopleAndPetsRecognition() {
       </Row>
       <Row
         label="Rescan library"
-        hint="Run recognition again after changing settings or correcting older results."
+        hint={
+          status?.pendingAssets
+            ? `Retry the ${status.pendingAssets.toLocaleString()} photos that did not finish.`
+            : 'Run recognition again after changing settings or correcting older results.'
+        }
       >
         <Button
           size="sm"

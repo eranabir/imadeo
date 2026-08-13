@@ -77,15 +77,17 @@ export class PeopleAndPetsController {
       type: 'IMAGE' as const,
       deletedAt: null,
       visibility: { not: 'LOCKED' as const },
+      previewPath: { not: null },
     };
 
-    const [ready, petsReady, total] = await Promise.all([
+    const [ready, petsReady, total, queue] = await Promise.all([
       this.ml.isFaceRecognitionReady(),
       this.ml.hasPets(),
       // The denominator. A count of what is left says nothing on its own —
       // two hundred outstanding is nearly done in one library and barely
       // started in another.
       this.prisma.asset.count({ where: eligible }),
+      this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION),
     ]);
     const pending = await this.prisma.asset.count({
       where: { ...eligible, ...unrecognisedAssets(petsReady) },
@@ -97,6 +99,7 @@ export class PeopleAndPetsController {
       petsReady,
       pendingAssets: pending,
       totalAssets: total,
+      scanning: queue.active + queue.waiting + queue.delayed > 0,
     };
   }
 

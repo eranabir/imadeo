@@ -5,6 +5,7 @@ import {
   ALL_QUEUES,
   AssetJobData,
   DEFAULT_JOB_OPTIONS,
+  FACE_DETECTION_JOB_OPTIONS,
   JOB,
   QUEUE,
   type QueueName,
@@ -85,9 +86,13 @@ export class JobService {
     return `${name}--${assetId}`;
   }
 
+  private optionsFor(queue: QueueName) {
+    return queue === QUEUE.FACE_DETECTION ? FACE_DETECTION_JOB_OPTIONS : DEFAULT_JOB_OPTIONS;
+  }
+
   enqueue(queue: QueueName, name: string, data: AssetJobData | Record<string, unknown>, priority?: number) {
     return this.queues[queue].add(name, data, {
-      ...DEFAULT_JOB_OPTIONS,
+      ...this.optionsFor(queue),
       priority,
       jobId:
         'assetId' in data ? JobService.jobIdFor(name, (data as AssetJobData).assetId) : undefined,
@@ -129,25 +134,37 @@ export class JobService {
       items.map((data) => ({
         name,
         data,
-        opts: { ...DEFAULT_JOB_OPTIONS, jobId: JobService.jobIdFor(name, data.assetId) },
+        opts: { ...this.optionsFor(queue), jobId: JobService.jobIdFor(name, data.assetId) },
       })),
     );
   }
 
-  /** Queue depths for the admin job dashboard. */
+  /** Queue depth for progress reporting and the admin job dashboard. */
+  async getQueueStatistics(name: QueueName) {
+    const queue = this.queues[name];
+    const counts = await queue.getJobCounts(
+      'active',
+      'waiting',
+      'delayed',
+      'failed',
+      'completed',
+      'paused',
+    );
+    return {
+      active: counts.active ?? 0,
+      waiting: counts.waiting ?? 0,
+      delayed: counts.delayed ?? 0,
+      failed: counts.failed ?? 0,
+      completed: counts.completed ?? 0,
+      paused: counts.paused ?? 0,
+      isPaused: await queue.isPaused(),
+    };
+  }
+
   async getStatistics() {
     const entries = await Promise.all(
       ALL_QUEUES.map(async (name) => {
-        const queue = this.queues[name];
-        const counts = await queue.getJobCounts(
-          'active',
-          'waiting',
-          'delayed',
-          'failed',
-          'completed',
-          'paused',
-        );
-        return [name, { ...counts, isPaused: await queue.isPaused() }] as const;
+        return [name, await this.getQueueStatistics(name)] as const;
       }),
     );
     return Object.fromEntries(entries);

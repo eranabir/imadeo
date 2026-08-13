@@ -26,6 +26,8 @@ interface FaceStatus {
   pendingAssets: number;
   /** Every photo a scan would look at, so the outstanding count means something. */
   totalAssets: number;
+  /** At least one recognition job is active, queued, or waiting to retry. */
+  scanning: boolean;
 }
 
 export function PeopleAndPetsPage() {
@@ -326,7 +328,7 @@ export function PeopleAndPetsPage() {
         </p>
       )}
 
-      {status?.ready && status.pendingAssets > 0 && (
+      {status?.ready && status.pendingAssets > 0 && status.scanning && (
         <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
           <p className="text-sm text-primary">
             Scanning — {scanned.toLocaleString()} of {status.totalAssets.toLocaleString()} photos done ·{' '}
@@ -338,6 +340,13 @@ export function PeopleAndPetsPage() {
             className="mt-2.5"
           />
         </div>
+      )}
+
+      {status?.ready && status.pendingAssets > 0 && !status.scanning && (
+        <p className="mx-5 mt-4 rounded-control bg-surface-sunken px-3.5 py-2.5 text-sm text-warning">
+          Recognition needs attention — {status.pendingAssets.toLocaleString()} photos remain. Continue
+          from Settings → Recognition.
+        </p>
       )}
 
       {!isLoading && visible.length === 0 ? (

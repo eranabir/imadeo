@@ -112,7 +112,7 @@ export class MachineLearningService {
         ? JSON.stringify(error.response?.data ?? error.message)
         : (error as Error).message;
       this.logger.warn(`Face detection failed for ${basename(path)}: ${detail}`);
-      return null;
+      throw error;
     } finally {
       stream.destroy();
     }
@@ -144,7 +144,7 @@ export class MachineLearningService {
         ? JSON.stringify(error.response?.data ?? error.message)
         : (error as Error).message;
       this.logger.warn(`Pet detection failed for ${basename(path)}: ${detail}`);
-      return null;
+      throw error;
     } finally {
       stream.destroy();
     }
@@ -172,7 +172,7 @@ export class MachineLearningService {
         ? JSON.stringify(error.response?.data ?? error.message)
         : (error as Error).message;
       this.logger.warn(`Pet candidate classification failed for ${basename(path)}: ${detail}`);
-      return null;
+      throw error;
     } finally {
       stream.destroy();
     }

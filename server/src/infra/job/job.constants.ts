@@ -53,3 +53,13 @@ export const DEFAULT_JOB_OPTIONS = {
   removeOnComplete: { age: 3600, count: 1_000 },
   removeOnFail: { age: 86_400 * 7 },
 };
+
+/**
+ * Face and pet models can take several minutes to load, and a busy NAS can
+ * briefly apply backpressure. Keep those jobs delayed instead of exhausting
+ * the normal retry budget and leaving recognition permanently incomplete.
+ */
+export const FACE_DETECTION_JOB_OPTIONS = {
+  ...DEFAULT_JOB_OPTIONS,
+  attempts: 10,
+};

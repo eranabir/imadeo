@@ -13,6 +13,7 @@ unpredictable and a model reload would take the whole app down.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import os
@@ -21,6 +22,7 @@ from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from PIL import Image
@@ -38,6 +40,12 @@ log = logging.getLogger("imadeo.ml")
 engine: FaceEngine | None = None
 pets: PetEngine | None = None
 clip: ClipEngine | None = None
+
+# OpenCV and PyTorch inference are synchronous and CPU-heavy. Running them
+# directly inside an async route blocks Uvicorn's only event loop, including
+# health checks and keep-alive handling. One shared lock also keeps the three
+# models from fighting over every CPU core on small NAS installations.
+inference_lock = asyncio.Lock()
 
 
 @asynccontextmanager
@@ -123,7 +131,8 @@ async def predict_faces(image: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Empty image")
 
     try:
-        faces, width, height = engine.detect(payload)
+        async with inference_lock:
+            faces, width, height = await run_in_threadpool(engine.detect, payload)
     except ValueError as error:
         # A file the decoder cannot read is a bad request, not a server fault.
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -174,7 +183,8 @@ async def predict_pets(image: UploadFile = File(...)) -> JSONResponse:
     except Exception as error:
         raise HTTPException(status_code=400, detail="Unreadable image") from error
 
-    found = pets.detect(picture)
+    async with inference_lock:
+        found = await run_in_threadpool(pets.detect, picture)
 
     return JSONResponse(
         {
@@ -225,7 +235,11 @@ async def classify_pet_face_candidate(
     if right <= left or bottom <= top:
         raise HTTPException(status_code=400, detail="Invalid candidate bounds")
 
-    candidate = pets.classify_face_candidate(picture.crop((left, top, right, bottom)))
+    async with inference_lock:
+        candidate = await run_in_threadpool(
+            pets.classify_face_candidate,
+            picture.crop((left, top, right, bottom)),
+        )
     if not candidate:
         return JSONResponse({"pet": None})
 
@@ -255,7 +269,10 @@ async def encode_image(image: UploadFile = File(...)) -> JSONResponse:
     except Exception as error:
         raise HTTPException(status_code=400, detail="Unreadable image") from error
 
-    return JSONResponse({"embedding": clip.encode_image(picture).tolist()})
+    async with inference_lock:
+        embedding = await run_in_threadpool(clip.encode_image, picture)
+
+    return JSONResponse({"embedding": embedding.tolist()})
 
 
 @app.post("/encode/text")
@@ -268,7 +285,10 @@ async def encode_text(payload: dict[str, str]) -> JSONResponse:
     if not text:
         raise HTTPException(status_code=400, detail="Empty text")
 
-    return JSONResponse({"embedding": clip.encode_text(text).tolist()})
+    async with inference_lock:
+        embedding = await run_in_threadpool(clip.encode_text, text)
+
+    return JSONResponse({"embedding": embedding.tolist()})
 
 
 @app.post("/predict/faces/compare")

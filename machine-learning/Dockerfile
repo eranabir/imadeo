@@ -25,5 +25,5 @@ RUN mkdir -p /cache
 EXPOSE 3003
 
 # One worker: the model is large and each worker would load its own copy. The
-# Node side already queues work, so concurrency is controlled there.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3003", "--workers", "1"]
+# app serializes inference without blocking this worker's HTTP event loop.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3003", "--workers", "1", "--timeout-keep-alive", "30"]
