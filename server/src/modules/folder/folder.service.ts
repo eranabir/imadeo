@@ -467,7 +467,9 @@ export class FolderService {
         where: { ownerId: userId, folderId: id },
         data: { folderId: null },
       });
-      await tx.folder.update({ where: { id }, data: { deletedAt: new Date() } });
+      // Conversion is a replacement, not deletion. Leaving an empty soft-
+      // deleted source row made every converted folder appear in Trash.
+      await tx.folder.delete({ where: { id } });
 
       return { ...album, assetCount: assets.length };
     });

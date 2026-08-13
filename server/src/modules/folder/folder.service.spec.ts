@@ -30,9 +30,9 @@ describe('FolderService.convertToAlbum', () => {
       isLocked: true,
     });
     const assetUpdateMany = vi.fn().mockResolvedValue({ count: 2 });
-    const folderUpdate = vi.fn().mockResolvedValue({ id: 'folder-id' });
+    const folderDelete = vi.fn().mockResolvedValue({ id: 'folder-id' });
     const service = serviceWith({
-      folder: { findFirst: folderFindFirst, update: folderUpdate },
+      folder: { findFirst: folderFindFirst, delete: folderDelete },
       album: { findFirst: vi.fn().mockResolvedValue(null), create: albumCreate },
       folderUser: { findFirst: vi.fn().mockResolvedValue(null) },
       asset: {
@@ -63,9 +63,8 @@ describe('FolderService.convertToAlbum', () => {
       where: { ownerId: 'owner-id', folderId: 'folder-id' },
       data: { folderId: null },
     });
-    expect(folderUpdate).toHaveBeenCalledWith({
+    expect(folderDelete).toHaveBeenCalledWith({
       where: { id: 'folder-id' },
-      data: { deletedAt: expect.any(Date) },
     });
   });
 

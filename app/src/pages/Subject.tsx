@@ -145,7 +145,7 @@ export function SubjectPage() {
   });
 
   const trash = useMutation({
-    mutationFn: async (ids: string[]) => (await api.post('/assets/trash', { ids })).data,
+    mutationFn: async (ids: string[]) => (await api.delete('/assets', { data: { ids } })).data,
     onSuccess: afterBulk,
     onError,
   });

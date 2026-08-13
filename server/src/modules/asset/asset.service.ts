@@ -1130,7 +1130,13 @@ export class AssetService {
    */
   async resolveMediaPath(auth: AuthDto, id: string, size: 'thumbnail' | 'preview' | 'original' | 'video') {
     const asset = await this.prisma.asset.findUnique({ where: { id } });
-    if (!asset || asset.deletedAt) throw new NotFoundException('Asset not found');
+    if (!asset) throw new NotFoundException('Asset not found');
+    if (
+      asset.deletedAt &&
+      (asset.ownerId !== auth.user.id || auth.sharedLink || !['thumbnail', 'preview'].includes(size))
+    ) {
+      throw new NotFoundException('Asset not found');
+    }
     await this.assertCanRead(auth, asset);
 
     if (auth.sharedLink && size === 'original' && !auth.sharedLink.allowDownload) {

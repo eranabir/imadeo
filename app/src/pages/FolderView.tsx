@@ -80,7 +80,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   });
 
   const trashSelected = useMutation({
-    mutationFn: async (ids: string[]) => (await api.post('/assets/trash', { ids })).data,
+    mutationFn: async (ids: string[]) => (await api.delete('/assets', { data: { ids } })).data,
     onSuccess: afterBulk,
     onError: (e) => setError(errorMessage(e)),
   });

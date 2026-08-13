@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AssetService } from './asset.service';
 
@@ -111,5 +112,62 @@ describe('AssetService.listTrash', () => {
       skip: 0,
       take: 250,
     });
+  });
+});
+
+describe('AssetService.resolveMediaPath for Trash', () => {
+  const trashedAsset = {
+    id: 'asset-id',
+    ownerId: 'owner-id',
+    folderId: null,
+    visibility: 'TIMELINE',
+    deletedAt: new Date(),
+    type: 'IMAGE',
+    thumbnailPath: '/data/thumb.jpg',
+    previewPath: '/data/preview.jpg',
+    originalPath: '/data/original.jpg',
+    encodedVideoPath: null,
+  };
+
+  const serviceFor = () =>
+    new AssetService(
+      { asset: { findUnique: vi.fn().mockResolvedValue(trashedAsset) } } as never,
+      { exists: vi.fn().mockResolvedValue(true) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+  it('serves a trashed thumbnail to its owner', async () => {
+    await expect(
+      serviceFor().resolveMediaPath(
+        { user: { id: 'owner-id' } } as never,
+        'asset-id',
+        'thumbnail',
+      ),
+    ).resolves.toMatchObject({ path: '/data/thumb.jpg' });
+  });
+
+  it('does not serve a trashed thumbnail to another account', async () => {
+    await expect(
+      serviceFor().resolveMediaPath(
+        { user: { id: 'other-id' } } as never,
+        'asset-id',
+        'thumbnail',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('does not serve a trashed original', async () => {
+    await expect(
+      serviceFor().resolveMediaPath(
+        { user: { id: 'owner-id' } } as never,
+        'asset-id',
+        'original',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

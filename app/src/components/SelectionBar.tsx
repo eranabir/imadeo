@@ -28,7 +28,7 @@ export function SelectionBar({
 
   return (
     <>
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
+    <div className="pointer-events-none fixed bottom-6 left-0 right-0 z-40 flex justify-center px-6 md:left-60">
       <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 bg-neutral-900/92 px-2 py-2 text-white shadow-2xl backdrop-blur">
         <button
           type="button"
