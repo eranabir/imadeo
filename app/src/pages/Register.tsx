@@ -1,14 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  FolderTree,
-  Lock,
   MailWarning,
   Monitor,
   Moon,
   ShieldCheck,
-  Sparkles,
   Sun,
-  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -23,9 +19,6 @@ interface Registration {
   allowed: boolean;
   isFirstUser: boolean;
 }
-
-/** Same hues as the login collage, so the two screens read as one place. */
-const hues = [178, 196, 210, 165, 188, 152, 222, 172, 205, 140, 192, 235];
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -160,7 +153,7 @@ export function RegisterPage() {
   const ThemeIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor;
 
   return (
-    <div className="grid h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="h-full bg-surface">
       {/* safe centring, not plain justify-center: this form is taller than a
           short viewport, and centred overflow spills past the top of a scroll
           container where scrollTop cannot reach it. `safe` falls back to
@@ -397,62 +390,6 @@ export function RegisterPage() {
         </div>
       </div>
 
-      <div className="relative hidden overflow-hidden bg-neutral-950 lg:block">
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-70"
-          style={{
-            background:
-              'radial-gradient(120% 90% at 15% 0%, oklch(52% 0.13 195 / 0.6), transparent 60%),' +
-              'radial-gradient(100% 80% at 95% 20%, oklch(58% 0.12 165 / 0.45), transparent 55%),' +
-              'radial-gradient(90% 90% at 60% 100%, oklch(42% 0.11 230 / 0.55), transparent 60%)',
-          }}
-        />
-
-        <div
-          aria-hidden
-          className="absolute -left-12 top-1/2 grid w-[130%] -translate-y-1/2 -rotate-12 grid-cols-4 gap-3 opacity-45"
-        >
-          {hues.map((hue, index) => (
-            <div
-              key={hue}
-              className="rounded-2xl"
-              style={{
-                aspectRatio: index % 5 === 0 ? '3 / 4' : index % 3 === 0 ? '4 / 3' : '1 / 1',
-                background: `linear-gradient(150deg, oklch(72% 0.11 ${hue}), oklch(46% 0.13 ${(hue + 40) % 360}))`,
-                animation: `imadeo-drift ${9 + (index % 5)}s ease-in-out ${index * 0.35}s infinite`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/55 to-transparent" />
-
-        <div className="relative flex h-full flex-col justify-end p-12 text-white">
-          <h2 className="max-w-md text-[34px] font-semibold leading-[1.15] tracking-tight">
-            Your whole library, on hardware you own.
-          </h2>
-          <p className="mt-3 max-w-md text-sm text-white/65">
-            No subscription, no scanning, no one else holding your photos.
-          </p>
-
-          <ul className="mt-8 grid max-w-md gap-3">
-            {[
-              { icon: FolderTree, text: 'Folders and sub-folders that work like your desktop' },
-              { icon: Sparkles, text: 'Search by what is in the picture, not the file name' },
-              { icon: Users, text: 'Faces grouped automatically, albums shared by link' },
-              { icon: Lock, text: 'A password lock for the private ones' },
-            ].map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-sm text-white/85">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur">
-                  <Icon size={15} />
-                </span>
-                {text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
     </div>
   );
 }

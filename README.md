@@ -28,11 +28,14 @@ Imadeo is designed to run with Docker Compose. You need a server with Docker
 and Docker Compose installed, plus enough disk space for your originals and
 thumbnails.
 
-Download the [`docker` installation folder](https://github.com/eranabir/imadeo/tree/master/docker),
-keep all of its files together, then run:
+Download only the Docker installation files and keep them together:
 
 ```bash
-cd docker
+mkdir imadeo && cd imadeo
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/generate-secrets.sh
+curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/docker/.env.example -o .env.example
+chmod +x generate-secrets.sh
 ./generate-secrets.sh
 docker compose up -d
 ```

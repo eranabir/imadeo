@@ -167,11 +167,15 @@
       </p>
 
       <p>
-        Download the <a href="https://github.com/eranabir/imadeo/tree/master/docker">Docker installation folder</a>
-        and keep all of its files together. From that folder, run only:
+        Download only the Docker installation files and keep them together:
       </p>
 
-<pre><code>./generate-secrets.sh
+<pre><code>mkdir imadeo &amp;&amp; cd imadeo
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/generate-secrets.sh
+curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/docker/.env.example -o .env.example
+chmod +x generate-secrets.sh
+./generate-secrets.sh
 docker compose up -d</code></pre>
 
       <p>
@@ -266,7 +270,11 @@ DB_DATA_LOCATION=/mnt/tank/imadeo-postgres</code></pre>
         on any other machine:
       </p>
 
-<pre><code>cd /mnt/tank/apps/imadeo/docker
+<pre><code>mkdir -p /mnt/tank/apps/imadeo &amp;&amp; cd /mnt/tank/apps/imadeo
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/eranabir/imadeo/master/docker/generate-secrets.sh
+curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/docker/.env.example -o .env.example
+chmod +x generate-secrets.sh
 ./generate-secrets.sh
 docker compose up -d</code></pre>
 
