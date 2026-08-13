@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, FolderUp, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useParams } from 'react-router-dom';
+import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { Checkbox, Tooltip } from '../ui';
@@ -110,7 +110,15 @@ export function UploadButton({
   const folderInput = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const params = useParams();
+  const location = useLocation();
+  // This button lives in Layout, above the child route that owns albumId or
+  // folderId. useParams() therefore cannot see those child parameters.
+  const albumId =
+    matchPath('/albums/:albumId', location.pathname)?.params.albumId ??
+    matchPath('/browse/albums/:albumId', location.pathname)?.params.albumId;
+  const folderId =
+    matchPath('/folders/:folderId', location.pathname)?.params.folderId ??
+    matchPath('/browse/folders/:folderId', location.pathname)?.params.folderId;
   const [progress, setProgress] = useState<Progress | null>(null);
   const [externalDrag, setExternalDrag] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
@@ -194,8 +202,8 @@ export function UploadButton({
       if (relativePath) form.append('relativePath', relativePath);
 
       // Whatever is on screen is the destination.
-      if (params.folderId) form.append('folderId', params.folderId);
-      if (params.albumId) form.append('albumId', params.albumId);
+      if (folderId) form.append('folderId', folderId);
+      if (albumId) form.append('albumId', albumId);
 
       if (allowDuplicate || forceDuplicate) form.append('allowDuplicate', 'true');
 
@@ -218,7 +226,14 @@ export function UploadButton({
 
         if (data.status === 'duplicate') {
           duplicates += 1;
-          skipped.push(candidate);
+          if (albumId) {
+            // A duplicate means the bytes already exist in Photos, not that
+            // the existing asset is already in this album. Link it instead of
+            // asking the user to create another physical copy.
+            await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
+          } else {
+            skipped.push(candidate);
+          }
         } else created += 1;
       } catch (error) {
         if (!cancelled.current) {
