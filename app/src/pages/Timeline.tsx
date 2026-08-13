@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Images } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
@@ -59,6 +59,45 @@ export function PhotosPage() {
   const isLoading = library.isLoading;
 
   const groups = sortBy === 'date' ? groupByDay(assets) : [{ day: '', items: assets }];
+  const { data: timelineBuckets = [] } = useQuery({
+    queryKey: ['assets', 'timeline', 'buckets'],
+    queryFn: async () =>
+      (await api.get<{ timeBucket: string; count: number }[]>('/assets/timeline/buckets')).data,
+    enabled: sortBy === 'date',
+  });
+
+  const scrubberSections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const bucket of timelineBuckets) {
+      const year = bucket.timeBucket.slice(0, 4);
+      counts.set(year, (counts.get(year) ?? 0) + bucket.count);
+    }
+
+    const entries = [...counts.entries()];
+    if (order === 'asc') entries.reverse();
+    const totalCount = entries.reduce((sum, [, count]) => sum + count, 0);
+    let cumulative = 0;
+    return entries.map(([year, count]) => {
+      const position = totalCount > 0 ? cumulative / totalCount : 0;
+      cumulative += count;
+      return { id: year, label: year, count, position };
+    });
+  }, [timelineBuckets, order]);
+
+  const loadThroughYear = useCallback(
+    async (year: string) => {
+      let result = await library.fetchNextPage();
+      while (
+        result.hasNextPage &&
+        !result.data?.pages.some((page) =>
+          page.items.some((asset) => asset.localDateTime.startsWith(year)),
+        )
+      ) {
+        result = await library.fetchNextPage();
+      }
+    },
+    [library],
+  );
   const actions = useLibraryActions({ onShowDetails: setViewing, selectedIds: [...selected] });
 
   const afterChange = () => {
@@ -78,16 +117,7 @@ export function PhotosPage() {
   });
 
   return (
-    /**
-     * The rail is a flex sibling of everything else, including the header, so
-     * its sticky box starts at the very top of the scroll area. Nested below the
-     * header it could not rise past its parent's top edge, so it sat one header
-     * lower until the first scroll and then jumped up — it appeared to move with
-     * the page.
-     */
     <div className="min-h-full">
-      <div className="flex min-h-full">
-      <div className="min-w-0 flex-1">
       <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Photos</h1>
@@ -130,6 +160,11 @@ export function PhotosPage() {
         </div>
       </header>
 
+      {/* The header spans the photo grid and scrubber. Keeping the rail only in
+          the content row below prevents the page body from appearing wider
+          than its header while still reserving a dedicated rail column. */}
+      <div className="flex min-h-full">
+      <div className="min-w-0 flex-1">
       {isLoading && <GridSkeleton />}
 
       {!isLoading && assets.length === 0 && (
@@ -211,13 +246,11 @@ export function PhotosPage() {
 
       {/* Only meaningful when the groups are dates — sorting by name or size
           leaves nothing for a date rail to point at. */}
-      {sortBy === 'date' && groups.length > 1 && (
+      {sortBy === 'date' && scrubberSections.length > 1 && (
         <TimelineScrubber
-          sections={groups.map(({ day, items }) => ({
-            id: day,
-            label: formatDate(day, user?.preferences.locale),
-            count: items.length,
-          }))}
+          sections={scrubberSections}
+          onLoadSection={loadThroughYear}
+          contentVersion={assets.length}
         />
       )}
       </div>

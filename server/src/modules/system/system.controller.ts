@@ -1,6 +1,8 @@
-import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Put, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { createReadStream } from 'node:fs';
 import { Auth, AuthedUserId } from '../../common/decorators';
 import { JobService } from '../../infra/job/job.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -8,6 +10,7 @@ import type { AppConfig } from '../../config/configuration';
 import { MailSettingsService } from '../../infra/mail/mail-settings.service';
 import { FaceRecognitionSettingsService } from '../../infra/ml/face-recognition-settings.service';
 import { StorageLocationService } from './storage-location.service';
+import { DatabaseBackupService } from './database-backup.service';
 import { UpdateFaceRecognitionDto, UpdateMailDto } from './system.dto';
 
 @ApiTags('System')
@@ -20,6 +23,7 @@ export class SystemController {
     private readonly mailSettings: MailSettingsService,
     private readonly faceRecognition: FaceRecognitionSettingsService,
     private readonly jobs: JobService,
+    private readonly databaseBackup: DatabaseBackupService,
   ) {}
 
   @Auth({ public: true })
@@ -100,6 +104,30 @@ export class SystemController {
   @ApiOperation({ summary: 'Save SMTP settings. Takes effect on the next message.' })
   saveMailSettings(@Body() dto: UpdateMailDto) {
     return this.mailSettings.save(dto);
+  }
+
+  @Auth({ admin: true })
+  @Post('admin/database/backup')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Create and download a PostgreSQL database backup' })
+  async downloadDatabaseBackup(@Res() res: Response) {
+    const backup = await this.databaseBackup.create();
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', backup.size);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="${backup.fileName}"`);
+
+    const stream = createReadStream(backup.path);
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      void backup.cleanup();
+    };
+    stream.once('error', () => res.destroy());
+    res.once('close', cleanup);
+    res.once('finish', cleanup);
+    stream.pipe(res);
   }
 
   @Auth()

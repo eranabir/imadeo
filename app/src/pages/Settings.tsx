@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
+  DatabaseBackup,
+  Download,
   HardDrive,
   Info,
   KeyRound,
@@ -59,6 +61,7 @@ const SECTIONS = [
   { id: 'recognition', label: 'Recognition', icon: ScanFace, adminOnly: true },
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
+  { id: 'backups', label: 'Backups', icon: DatabaseBackup, adminOnly: true },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'devices', label: 'Devices', icon: Smartphone },
   { id: 'about', label: 'About', icon: Info },
@@ -136,6 +139,7 @@ export function SettingsPage() {
           {section === 'recognition' && <PeopleAndPetsRecognition />}
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
+          {section === 'backups' && <Backups />}
           {section === 'storage' && <Storage />}
           {section === 'devices' && <Devices />}
           {section === 'about' && <About />}
@@ -1830,6 +1834,68 @@ function Storage() {
 
     <StorageLocationCard />
     </>
+  );
+}
+
+function Backups() {
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const download = useMutation({
+    mutationFn: async () =>
+      api.post<Blob>('/admin/database/backup', undefined, { responseType: 'blob' }),
+    onSuccess: (response) => {
+      const disposition = response.headers['content-disposition'] as string | undefined;
+      const fileName = disposition?.match(/filename="([^"]+)"/)?.[1] ?? 'imadeo-database.dump';
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setMessage({ ok: true, text: 'Database backup downloaded.' });
+    },
+    onError: (error) => setMessage({ ok: false, text: errorMessage(error) }),
+  });
+
+  return (
+    <Card
+      title="Database backup"
+      description="Download the accounts, albums, metadata, settings and sharing records stored in PostgreSQL."
+    >
+      <div className="space-y-4">
+        <p className="rounded-control border border-warning/40 bg-surface-sunken p-3 text-xs leading-relaxed text-content-muted">
+          <span className="font-medium text-warning">Photos and videos are not inside this file.</span>{' '}
+          Back up the media root shown under Settings → Storage as well; a complete recovery needs
+          both parts.
+        </p>
+
+        <Row
+          label="PostgreSQL database"
+          hint="Custom-format dump that can be restored with pg_restore. Only administrators can create it."
+        >
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Download size={15} />}
+            disabled={download.isPending}
+            onClick={() => {
+              setMessage(null);
+              download.mutate();
+            }}
+          >
+            {download.isPending ? 'Creating backup…' : 'Download backup'}
+          </Button>
+        </Row>
+
+        {message && (
+          <p className={clsx('text-xs', message.ok ? 'text-success' : 'text-danger')}>
+            {message.text}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
 

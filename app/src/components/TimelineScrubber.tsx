@@ -1,19 +1,50 @@
 import clsx from 'clsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export interface ScrubberSection {
-  /** Matches the `data-section` attribute on the rendered group. */
+  /** Matches, or prefixes, the `data-section` attribute on the rendered group. */
   id: string;
   label: string;
   count: number;
+  /** Stable fallback while the corresponding photos have not been downloaded. */
+  position?: number;
 }
 
 interface Props {
   sections: ScrubberSection[];
+  onLoadSection?: (id: string) => Promise<void>;
+  /** Changes whenever newly downloaded content adds section elements. */
+  contentVersion?: number;
 }
 
 /** Room left above a jumped-to date so it does not sit under the page header. */
 const HEADER_CLEARANCE = 64;
+
+/** Keep every year legible while retaining its proportional place on the rail. */
+const MARKER_EDGE_CLEARANCE = 10;
+const MARKER_SPACING = 24;
+
+function spreadMarkers(raw: number[], railHeight: number) {
+  if (raw.length === 0 || railHeight <= 0) return raw;
+
+  const min = MARKER_EDGE_CLEARANCE;
+  const max = Math.max(min, railHeight - MARKER_EDGE_CLEARANCE);
+  const spacing = Math.min(MARKER_SPACING, (max - min) / Math.max(1, raw.length - 1));
+  const positions = raw.map((position) => Math.min(max, Math.max(min, position)));
+
+  for (let index = 1; index < positions.length; index++) {
+    positions[index] = Math.max(positions[index], positions[index - 1] + spacing);
+  }
+
+  if (positions.at(-1)! > max) {
+    positions[positions.length - 1] = max;
+    for (let index = positions.length - 2; index >= 0; index--) {
+      positions[index] = Math.min(positions[index], positions[index + 1] - spacing);
+    }
+  }
+
+  return positions;
+}
 
 /** Nearest ancestor that actually scrolls — the page shell, in practice. */
 function findScrollParent(node: HTMLElement | null): HTMLElement | null {
@@ -32,6 +63,14 @@ function findScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
+function findSection(container: HTMLElement, id: string) {
+  const escaped = CSS.escape(id);
+  return (
+    container.querySelector<HTMLElement>(`[data-section="${escaped}"]`) ??
+    container.querySelector<HTMLElement>(`[data-section^="${escaped}"]`)
+  );
+}
+
 /**
  * A date rail down the right edge, like the scrubber in a phone gallery.
  *
@@ -40,10 +79,11 @@ function findScrollParent(node: HTMLElement | null): HTMLElement | null {
  * will actually land on. Labels are thinned out when they would collide,
  * because a rail of overlapping months is unreadable and unclickable.
  */
-export function TimelineScrubber({ sections }: Props) {
+export function TimelineScrubber({ sections, onLoadSection, contentVersion }: Props) {
   const rail = useRef<HTMLDivElement>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [offsets, setOffsets] = useState<number[]>([]);
+  const [railHeight, setRailHeight] = useState(0);
   const [sectionTops, setSectionTops] = useState<number[]>([]);
   const [active, setActive] = useState(0);
   const [hovering, setHovering] = useState(false);
@@ -63,18 +103,21 @@ export function TimelineScrubber({ sections }: Props) {
     if (!container || sections.length === 0) return;
 
     const measure = () => {
+      setRailHeight(rail.current?.clientHeight ?? 0);
       const maxScroll = container.scrollHeight - container.clientHeight;
       if (maxScroll <= 0) {
-        const fallback = sections.map((_, index) => index / Math.max(1, sections.length - 1));
-        setSectionTops(fallback);
+        const fallback = sections.map(
+          (section, index) => section.position ?? index / Math.max(1, sections.length - 1),
+        );
+        setSectionTops(sections.map(() => Number.POSITIVE_INFINITY));
         setOffsets(fallback);
         return;
       }
 
       const containerTop = container.getBoundingClientRect().top;
       const tops = sections.map((section) => {
-        const element = container.querySelector<HTMLElement>(`[data-section="${section.id}"]`);
-        if (!element) return 0;
+        const element = findSection(container, section.id);
+        if (!element) return Number.POSITIVE_INFINITY;
         return element.getBoundingClientRect().top - containerTop + container.scrollTop;
       });
 
@@ -82,18 +125,25 @@ export function TimelineScrubber({ sections }: Props) {
       // The rail is a miniature of the full page, not the scrollbar thumb.
       // Its markers therefore use content height, while active state below
       // still uses the sticky heading line where a date becomes visible.
-      setOffsets(tops.map((top) => Math.min(1, Math.max(0, top / container.scrollHeight))));
+      setOffsets(
+        tops.map((top, index) =>
+          Number.isFinite(top)
+            ? Math.min(1, Math.max(0, top / container.scrollHeight))
+            : (sections[index].position ?? index / Math.max(1, sections.length - 1)),
+        ),
+      );
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(container);
+    if (rail.current) observer.observe(rail.current);
     sections.forEach((section) => {
-      const element = container.querySelector<HTMLElement>(`[data-section="${section.id}"]`);
+      const element = findSection(container, section.id);
       if (element) observer.observe(element);
     });
     return () => observer.disconnect();
-  }, [sections, container]);
+  }, [sections, container, contentVersion]);
 
   // Keep the highlighted date in step with the section that has reached the
   // sticky heading line, rather than approximating it from page progress.
@@ -102,7 +152,11 @@ export function TimelineScrubber({ sections }: Props) {
 
     const onScroll = () => {
       const maxScroll = container.scrollHeight - container.clientHeight;
-      if (container.scrollTop >= maxScroll - 1) {
+      if (
+        container.scrollTop >= maxScroll - 1 &&
+        sections.at(-1) &&
+        findSection(container, sections.at(-1)!.id)
+      ) {
         setActive(Math.max(0, sections.length - 1));
         return;
       }
@@ -128,12 +182,24 @@ export function TimelineScrubber({ sections }: Props) {
    * the offset ourselves also lets the target clear the sticky header instead of
    * hiding underneath it.
    */
-  const jump = (index: number) => {
+  const jump = async (index: number) => {
     const section = sections[index];
     if (!container || !section) return;
 
-    const element = container.querySelector<HTMLElement>(`[data-section="${section.id}"]`);
+    let element = findSection(container, section.id);
+    if (!element && onLoadSection) {
+      await onLoadSection(section.id);
+
+      // React still needs a paint after the query resolves before the new day
+      // group exists in the DOM.
+      for (let frame = 0; frame < 20 && !element; frame++) {
+        await new Promise(requestAnimationFrame);
+        element = findSection(container, section.id);
+      }
+    }
     if (!element) return;
+
+    setActive(index);
 
     const top =
       element.getBoundingClientRect().top -
@@ -144,8 +210,6 @@ export function TimelineScrubber({ sections }: Props) {
     container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   };
 
-  if (sections.length < 2) return null;
-
   /**
    * One marker per year, not per day.
    *
@@ -154,13 +218,23 @@ export function TimelineScrubber({ sections }: Props) {
    * fits inside the rail's own width, so nothing escapes it. Each year points at
    * the first section belonging to it, which is where a jump should land.
    */
-  const years: { year: string; index: number; count: number }[] = [];
-  sections.forEach((section, index) => {
-    const year = section.id.slice(0, 4);
-    const existing = years.find((entry) => entry.year === year);
-    if (existing) existing.count += section.count;
-    else years.push({ year, index, count: section.count });
-  });
+  const years = useMemo(() => {
+    const entries: { year: string; index: number; count: number }[] = [];
+    sections.forEach((section, index) => {
+      const year = section.id.slice(0, 4);
+      const existing = entries.find((entry) => entry.year === year);
+      if (existing) existing.count += section.count;
+      else entries.push({ year, index, count: section.count });
+    });
+    return entries;
+  }, [sections]);
+
+  const markerPositions = useMemo(
+    () => spreadMarkers(years.map(({ index }) => (offsets[index] ?? 0) * railHeight), railHeight),
+    [years, offsets, railHeight],
+  );
+
+  if (sections.length < 2) return null;
 
   const activeYear = sections[active]?.id.slice(0, 4);
 
@@ -174,16 +248,16 @@ export function TimelineScrubber({ sections }: Props) {
       className="pointer-events-auto sticky top-16 z-20 hidden h-[calc(100vh-8rem)] w-14 shrink-0 select-none overflow-hidden lg:block"
     >
       <div className="relative h-full">
-        {years.map(({ year, index, count }) => {
+        {years.map(({ year, index, count }, markerIndex) => {
           const isActive = year === activeYear;
 
           return (
             <button
               key={year}
               type="button"
-              onClick={() => jump(index)}
+              onClick={() => void jump(index)}
               aria-label={`Jump to ${year} — ${count} ${count === 1 ? 'item' : 'items'}`}
-              style={{ top: `${(offsets[index] ?? 0) * 100}%` }}
+              style={{ top: markerPositions[markerIndex] ?? MARKER_EDGE_CLEARANCE }}
               className={clsx(
                 'absolute right-2 flex -translate-y-1/2 items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1 text-[10px] tabular-nums transition',
                 isActive ? 'font-semibold text-primary' : 'text-content-muted hover:text-content',

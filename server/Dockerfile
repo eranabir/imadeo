@@ -64,7 +64,7 @@ ENV NODE_ENV=production
 # ffmpeg transcodes video and pulls poster frames; exiftool reads the metadata
 # the timeline groups by. Both are invoked as binaries, so they have to be in
 # the image rather than in a package.
-RUN apk add --no-cache libc6-compat openssl ffmpeg exiftool tini
+RUN apk add --no-cache libc6-compat openssl ffmpeg exiftool postgresql16-client tini
 
 # One hoisted tree at /src/node_modules; Node walks up from /src/server to
 # find it, so the app needs no node_modules of its own.
