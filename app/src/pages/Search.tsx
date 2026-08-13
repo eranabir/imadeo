@@ -22,7 +22,7 @@ interface PlaceResults extends Paginated<Asset> {
   folders: Pick<FolderNode, 'id' | 'name'>[];
   albums: (Pick<Album, 'id' | 'name'> & { assetCount: number })[];
 }
-import { Button, EmptyState } from '../ui';
+import { Button, EmptyState, Tooltip } from '../ui';
 
 export function SearchPage() {
   const [params] = useSearchParams();
@@ -162,7 +162,9 @@ export function SearchPage() {
               className="flex items-center gap-2 rounded-panel border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm transition hover:border-content-muted/50"
             >
               <FolderIcon size={16} className="text-nav-folders" />
-              {folder.name}
+              <Tooltip label={folder.name} onlyWhenOverflow>
+                <span className="max-w-64 truncate">{folder.name}</span>
+              </Tooltip>
             </Link>
           ))}
           {places.albums.map((album) => (
@@ -172,7 +174,9 @@ export function SearchPage() {
               className="flex items-center gap-2 rounded-panel border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm transition hover:border-content-muted/50"
             >
               <LayoutGrid size={16} className="text-amber-500" />
-              {album.name}
+              <Tooltip label={album.name} onlyWhenOverflow>
+                <span className="max-w-64 truncate">{album.name}</span>
+              </Tooltip>
               <span className="text-xs text-content-muted">{album.assetCount}</span>
             </Link>
           ))}

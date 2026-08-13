@@ -3,6 +3,7 @@ import { ArrowLeft, EyeOff, Image as ImageIcon, Pencil, UserRound, UserRoundX } 
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
+import { RetryingImage } from '../components/RetryingImage';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { SelectionBar } from '../components/SelectionBar';
 import { useLibraryActions } from '../components/useLibraryActions';
@@ -338,7 +339,7 @@ export function SubjectPage() {
               }}
               className="aspect-square overflow-hidden rounded-control border-2 border-transparent transition hover:border-primary"
             >
-              <img
+              <RetryingImage
                 src={mediaUrl(asset.id, 'thumbnail')}
                 alt={asset.originalFileName}
                 loading="lazy"

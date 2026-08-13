@@ -3,6 +3,7 @@ import { ArrowLeft, MapPin } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
+import { RetryingImage } from '../components/RetryingImage';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { PhotoMap, type MapPin as Pin } from '../components/PhotoMap';
 import { api } from '../lib/api';
@@ -109,7 +110,7 @@ function AllPlaces() {
                   to={`/places/${encodeURIComponent(place.city ?? '')}`}
                   className="group relative aspect-[4/3] overflow-hidden rounded-panel border border-border-subtle/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                 >
-                  <img
+                  <RetryingImage
                     src={`/api/assets/${place.coverAssetId}/thumbnail`}
                     alt=""
                     loading="lazy"

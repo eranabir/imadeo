@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { Check, CopyCheck, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { AssetViewer } from '../components/AssetViewer';
+import { RetryingImage } from '../components/RetryingImage';
 import { api, errorMessage, mediaUrl } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useAuth } from '../store/auth';
@@ -203,7 +204,7 @@ export function DuplicatesPage() {
                               : 'border-transparent opacity-55 hover:opacity-80',
                           )}
                         >
-                          <img
+                          <RetryingImage
                             src={mediaUrl(asset.id, 'thumbnail')}
                             alt={asset.originalFileName}
                             loading="lazy"

@@ -6,6 +6,7 @@ import { startDrag } from '../lib/dnd';
 import { formatDuration } from '../lib/format';
 import type { Asset } from '../types';
 import { SelectionCheck } from '../ui';
+import { RetryingImage } from './RetryingImage';
 
 interface Props {
   assets: Asset[];
@@ -237,7 +238,7 @@ export function JustifiedGrid({
                   onContextMenu(asset, event);
                 }}
               >
-                <img
+                <RetryingImage
                   src={mediaUrl(asset.id, 'thumbnail')}
                   alt={asset.originalFileName}
                   loading="lazy"

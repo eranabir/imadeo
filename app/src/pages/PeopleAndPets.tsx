@@ -47,6 +47,7 @@ export function PeopleAndPetsPage() {
   /** The subject whose name is currently being typed, edited inline on the card. */
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmMerge, setConfirmMerge] = useState(false);
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: status, dataUpdatedAt: statusUpdatedAt } = useQuery({
@@ -181,18 +182,22 @@ export function PeopleAndPetsPage() {
     onError,
   });
 
+  const forgetSelected = useMutation({
+    mutationFn: async (subjectIds: string[]) =>
+      (await api.delete('/people-and-pets', { data: { subjectIds } })).data,
+    onSuccess: () => {
+      setConfirmDeleteSelected(false);
+      setSelected(new Set());
+      setSelecting(false);
+      return invalidate();
+    },
+    onError,
+  });
+
   const visible = subjects;
 
 
   const toggle = (subject: Subject) => {
-    const hasDifferentKindSelected = visible.some(
-      (selectedSubject) => selected.has(selectedSubject.id) && selectedSubject.kind !== subject.kind,
-    );
-    if (!selected.has(subject.id) && hasDifferentKindSelected) {
-      setError('People and pets cannot be merged. Select groups of the same type.');
-      return;
-    }
-
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(subject.id)) next.delete(subject.id);
@@ -211,6 +216,7 @@ export function PeopleAndPetsPage() {
   };
 
   const target = mergeTarget();
+  const selectedSubjects = visible.filter((subject) => selected.has(subject.id));
 
   /**
    * Only subjects of the target's own kind. Showing people and pets in one list
@@ -220,6 +226,9 @@ export function PeopleAndPetsPage() {
   const mergeSources = visible
     .filter((subject) => selected.has(subject.id) && subject.id !== target?.id)
     .filter((subject) => subject.kind === target?.kind);
+  const canMerge =
+    selectedSubjects.length >= 2 &&
+    selectedSubjects.every((subject) => subject.kind === target?.kind);
 
   return (
     <div className="min-h-full">
@@ -239,26 +248,25 @@ export function PeopleAndPetsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {status?.ready && (
-              <Button
-                size="sm"
-                icon={<ScanFace size={14} />}
-                disabled={scanning}
-                onClick={() => scan.mutate(true)}
-              >
-                {scanning ? 'Scanning…' : 'Scan again'}
-              </Button>
-            )}
             {selecting ? (
               <>
                 <Button
                   size="sm"
                   variant="primary"
                   icon={<Merge size={14} />}
-                  disabled={selected.size < 2 || mergeSources.length === 0}
+                  disabled={!canMerge || mergeSources.length === 0}
                   onClick={() => setConfirmMerge(true)}
                 >
                   Merge {selected.size > 0 ? selected.size : ''}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={<Trash2 size={14} />}
+                  disabled={selected.size === 0}
+                  onClick={() => setConfirmDeleteSelected(true)}
+                >
+                  Remove {selected.size > 0 ? selected.size : ''}
                 </Button>
                 <Button
                   size="sm"
@@ -273,11 +281,11 @@ export function PeopleAndPetsPage() {
             ) : (
               <Button
                 size="sm"
-                icon={<Merge size={14} />}
-                disabled={visible.length < 2}
+                icon={<Check size={14} />}
+                disabled={visible.length < 1}
                 onClick={() => setSelecting(true)}
               >
-                Merge
+                Select
               </Button>
             )}
           </div>
@@ -534,6 +542,16 @@ export function PeopleAndPetsPage() {
           merge.mutate({ targetId: target.id, sourceIds: mergeSources.map((p) => p.id) });
         }}
         onClose={() => setConfirmMerge(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteSelected}
+        title={`Remove ${selected.size} ${selected.size === 1 ? 'group' : 'groups'}?`}
+        description="The groupings are discarded, but every photo stays exactly where it is. They may be regrouped the next time recognition is scanned."
+        confirmLabel={`Remove ${selected.size}`}
+        destructive
+        onConfirm={() => forgetSelected.mutate([...selected])}
+        onClose={() => setConfirmDeleteSelected(false)}
       />
 
       <ConfirmDialog

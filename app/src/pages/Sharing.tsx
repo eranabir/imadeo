@@ -8,7 +8,7 @@ import { JustifiedGrid } from '../components/JustifiedGrid';
 import { api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import type { Album, Asset, FolderNode, Paginated } from '../types';
-import { Chip, EmptyState, Loading } from '../ui';
+import { Chip, EmptyState, Loading, Tooltip } from '../ui';
 
 const flatten = (nodes: FolderNode[]): FolderNode[] =>
   nodes.flatMap((folder) => [folder, ...flatten(folder.children)]);
@@ -147,7 +147,9 @@ export function SharingPage() {
                   >
                     <span className="block aspect-[4/3] overflow-hidden bg-surface-sunken"><AlbumCover album={album} /></span>
                     <span className="block px-3 py-2.5">
-                      <span className="block truncate text-sm font-medium">{album.name}</span>
+                      <Tooltip label={album.name} onlyWhenOverflow>
+                        <span className="block truncate text-sm font-medium">{album.name}</span>
+                      </Tooltip>
                       <span className="mt-0.5 block text-xs text-content-muted">
                         {album.assetCount} items · {recipientLabel(album.recipients)}
                       </span>
@@ -204,7 +206,9 @@ export function SharingPage() {
                   >
                     <Folder size={18} className="shrink-0 text-nav-folders" />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{folder.name}</span>
+                      <Tooltip label={folder.name} onlyWhenOverflow>
+                        <span className="block truncate text-sm font-medium">{folder.name}</span>
+                      </Tooltip>
                       <span className="block text-xs text-content-muted">Shared folder · {folder.assetCount} items</span>
                     </span>
                   </Link>
@@ -224,7 +228,9 @@ export function SharingPage() {
                   >
                     <span className="block aspect-[4/3] overflow-hidden bg-surface-sunken"><AlbumCover album={album} /></span>
                     <span className="block px-3 py-2.5">
-                      <span className="block truncate text-sm font-medium">{album.name}</span>
+                      <Tooltip label={album.name} onlyWhenOverflow>
+                        <span className="block truncate text-sm font-medium">{album.name}</span>
+                      </Tooltip>
                       <span className="mt-0.5 block text-xs text-content-muted">Shared album · {album.assetCount} items</span>
                     </span>
                   </Link>
@@ -275,7 +281,9 @@ function SharedPlaceCard({
     >
       {icon}
       <span className="min-w-0">
-        <span className="block truncate text-sm font-medium">{name}</span>
+        <Tooltip label={name} onlyWhenOverflow>
+          <span className="block truncate text-sm font-medium">{name}</span>
+        </Tooltip>
         <span className="block text-xs text-content-muted">{detail} · {recipientLabel(recipients)}</span>
       </span>
     </Link>

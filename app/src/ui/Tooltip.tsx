@@ -13,6 +13,8 @@ interface Props {
   }>;
   side?: 'top' | 'bottom';
   delay?: number;
+  /** Show only when the wrapped label is visually clipped by ellipsis. */
+  onlyWhenOverflow?: boolean;
 }
 
 const OFFSET = 6;
@@ -28,7 +30,13 @@ const EDGE = 8;
  * Removing it in one place is safer than remembering to omit it at every call
  * site.
  */
-export function Tooltip({ label, children, side = 'bottom', delay = 350 }: Props) {
+export function Tooltip({
+  label,
+  children,
+  side = 'bottom',
+  delay = 350,
+  onlyWhenOverflow = false,
+}: Props) {
   const [box, setBox] = useState<{ x: number; y: number; above: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const target = useRef<HTMLElement | null>(null);
@@ -37,6 +45,11 @@ export function Tooltip({ label, children, side = 'bottom', delay = 350 }: Props
     timer.current = setTimeout(() => {
       const element = target.current;
       if (!element) return;
+      if (
+        onlyWhenOverflow &&
+        element.scrollWidth <= element.clientWidth &&
+        element.scrollHeight <= element.clientHeight
+      ) return;
 
       const rect = element.getBoundingClientRect();
 
@@ -81,7 +94,7 @@ export function Tooltip({ label, children, side = 'bottom', delay = 350 }: Props
         createPortal(
           <span
             role="tooltip"
-            className="fade-in pointer-events-none fixed z-[80] inline-flex h-7 items-center whitespace-nowrap rounded-lg bg-neutral-900 px-2.5 text-[13px] font-medium text-white shadow-popover dark:bg-neutral-700"
+            className="fade-in pointer-events-none fixed z-[80] inline-flex min-h-7 max-w-[calc(100vw-1rem)] items-center whitespace-normal break-words rounded-lg bg-neutral-900 px-2.5 py-1 text-center text-[13px] font-medium text-white shadow-popover dark:bg-neutral-700"
             style={{
               left: box.x,
               top: box.y,

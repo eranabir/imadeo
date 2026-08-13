@@ -5,6 +5,8 @@ import { startDrag, type DragPayload } from '../lib/dnd';
 import { useDropTarget } from '../lib/useDropTarget';
 import { useTree } from '../store/tree';
 import type { FolderNode } from '../types';
+import { Tooltip } from '../ui';
+import { RetryingImage } from './RetryingImage';
 
 type TreeAlbum = NonNullable<FolderNode['albums']>[number];
 
@@ -151,7 +153,9 @@ function FolderRow({
           ) : (
             <Folder size={15} className="shrink-0 text-nav-folders" />
           )}
-          <span className="truncate">{folder.name}</span>
+          <Tooltip label={folder.name} onlyWhenOverflow>
+            <span className="truncate">{folder.name}</span>
+          </Tooltip>
         </NavLink>
 
         {folder.assetCount > 0 && (
@@ -232,7 +236,9 @@ function AlbumRow({
         }
       >
         <AlbumThumb album={album} />
-        <span className="min-w-0 flex-1 truncate">{album.name}</span>
+        <Tooltip label={album.name} onlyWhenOverflow>
+          <span className="min-w-0 flex-1 truncate">{album.name}</span>
+        </Tooltip>
         <span className="shrink-0 text-[11px] tabular-nums opacity-70">{album.assetCount}</span>
       </NavLink>
     </li>
@@ -269,7 +275,7 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
 
   if (ids.length < 4) {
     return (
-      <img
+      <RetryingImage
         src={`/api/assets/${ids[0]}/thumbnail`}
         alt=""
         loading="lazy"
@@ -282,7 +288,7 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
   return (
     <span className="grid h-[18px] w-[18px] shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded">
       {ids.slice(0, 4).map((id) => (
-        <img
+        <RetryingImage
           key={id}
           src={`/api/assets/${id}/thumbnail`}
           alt=""

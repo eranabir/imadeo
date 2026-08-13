@@ -340,13 +340,25 @@ export class SubjectService {
   }
 
   async remove(userId: string, personId: string) {
-    const person = await this.get(userId, personId);
-
-    // Deleting a person is about the grouping, never the photos.
-    await this.prisma.person.delete({ where: { id: personId } });
-    await this.storage.removeMany([person.thumbnailPath || null]);
-
+    const result = await this.removeMany(userId, [personId]);
+    if (result.removed === 0) throw new NotFoundException('Person or pet not found');
     return { successful: true };
+  }
+
+  async removeMany(userId: string, personIds: string[]) {
+    const ids = [...new Set(personIds)];
+    const people = await this.prisma.person.findMany({
+      where: { id: { in: ids }, ownerId: userId },
+      select: { id: true, thumbnailPath: true },
+    });
+    if (people.length !== ids.length) throw new NotFoundException('Some people or pets were not found');
+
+    // Deleting a subject only releases its detections for future clustering;
+    // the original photos and detections remain untouched.
+    await this.prisma.person.deleteMany({ where: { id: { in: ids }, ownerId: userId } });
+    await this.storage.removeMany(people.map((person) => person.thumbnailPath || null));
+
+    return { removed: people.length };
   }
 
   /**

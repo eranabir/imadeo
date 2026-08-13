@@ -123,6 +123,12 @@ export class FaceIdsDto {
   faceIds!: string[];
 }
 
+export class SubjectIdsDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  subjectIds!: string[];
+}
+
 export class ReassignFacesDto extends FaceIdsDto {
   @IsUUID()
   personId!: string;

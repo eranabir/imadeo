@@ -1041,9 +1041,12 @@ export class AssetService {
       throw new ForbiddenException('Downloads are disabled for this link');
     }
 
+    // A video original cannot render in an <img>. Returning a MOV while its
+    // poster is processing made browsers cache a permanent broken thumbnail.
+    const imageFallback = asset.type === AssetType.VIDEO ? [] : [asset.originalPath];
     const candidates: Record<typeof size, (string | null)[]> = {
-      thumbnail: [asset.thumbnailPath, asset.previewPath, asset.originalPath],
-      preview: [asset.previewPath, asset.thumbnailPath, asset.originalPath],
+      thumbnail: [asset.thumbnailPath, asset.previewPath, ...imageFallback],
+      preview: [asset.previewPath, asset.thumbnailPath, ...imageFallback],
       original: [asset.originalPath],
       video: [asset.encodedVideoPath, asset.originalPath],
     };

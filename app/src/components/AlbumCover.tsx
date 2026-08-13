@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import type { Album } from '../types';
+import { RetryingImage } from './RetryingImage';
 
 /**
  * The one way an album is ever pictured — folder view, Albums page, anywhere.
@@ -29,7 +30,7 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
   // hijacks the card's own drag and blocks drops over the cover.
   if (ids.length === 1) {
     return (
-      <img
+      <RetryingImage
         src={src(ids[0])}
         alt=""
         loading="lazy"
@@ -42,7 +43,7 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
   if (ids.length < 4) {
     return (
       <span className={clsx('flex h-full w-full gap-px', className)}>
-        <img
+        <RetryingImage
           src={src(ids[0])}
           alt=""
           loading="lazy"
@@ -51,7 +52,7 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
         />
         <span className="flex w-1/3 flex-col gap-px">
           {ids.slice(1, 3).map((id) => (
-            <img
+            <RetryingImage
               key={id}
               src={src(id)}
               alt=""
@@ -68,7 +69,7 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
   return (
     <span className={clsx('grid h-full w-full grid-cols-2 grid-rows-2 gap-px', className)}>
       {ids.slice(0, 4).map((id) => (
-        <img
+        <RetryingImage
           key={id}
           src={src(id)}
           alt=""

@@ -31,6 +31,7 @@ import {
   SubjectQueryDto,
   ReassignFacesDto,
   SetCoverDto,
+  SubjectIdsDto,
   UpdateSubjectDto,
 } from './person.dto';
 import { SubjectService } from './subject.service';
@@ -159,6 +160,12 @@ export class PeopleAndPetsController {
   async recluster(@AuthedUserId() userId: string) {
     await this.jobs.enqueue(QUEUE.FACE_CLUSTER, JOB.CLUSTER_FACES, { userId });
     return { queued: true };
+  }
+
+  @Delete()
+  @ApiOperation({ summary: 'Forget several people or pet groupings. Photos are untouched.' })
+  removeMany(@AuthedUserId() userId: string, @Body() dto: SubjectIdsDto) {
+    return this.subjects.removeMany(userId, dto.subjectIds);
   }
 
   @Get(':id/thumbnail.jpg')

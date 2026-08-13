@@ -27,7 +27,9 @@ export class MediaController {
   @Auth({ sharedLink: true })
   @Get(':id/thumbnail')
   @ApiOperation({ summary: 'Grid thumbnail. Falls back to the original until one is generated.' })
-  @Header('Cache-Control', 'private, max-age=31536000, immutable')
+  // A derivative may not exist on the first request immediately after upload.
+  // Revalidation prevents that temporary response becoming permanent.
+  @Header('Cache-Control', 'private, no-cache')
   async thumbnail(
     @Authed() auth: AuthDto,
     @Param('id') id: string,

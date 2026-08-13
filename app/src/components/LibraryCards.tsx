@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { startDrag, type DragPayload } from '../lib/dnd';
 import { useDropTarget } from '../lib/useDropTarget';
 import type { Album, FolderNode } from '../types';
-import { IconButton } from '../ui';
+import { IconButton, Tooltip } from '../ui';
 import { AlbumCover } from './AlbumCover';
 
 /**
@@ -61,8 +61,10 @@ export function FolderCard({ folder, basePath = '/folders', onDrop, onContextMen
       ) : (
         <FolderOpen size={18} className="pointer-events-none shrink-0 text-nav-folders" />
       )}
-      <span className="pointer-events-none min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{folder.name}</span>
+      <span className="min-w-0 flex-1">
+        <Tooltip label={folder.name} onlyWhenOverflow>
+          <span className="block truncate text-sm font-medium">{folder.name}</span>
+        </Tooltip>
         <span className="block text-xs text-content-muted">{summary}</span>
       </span>
     </Link>
@@ -117,7 +119,9 @@ export function AlbumCard({
         </span>
 
         <span className="block px-3 py-2.5">
-          <span className="block truncate text-sm font-medium">{album.name}</span>
+          <Tooltip label={album.name} onlyWhenOverflow>
+            <span className="block truncate text-sm font-medium">{album.name}</span>
+          </Tooltip>
           <span className="mt-0.5 block truncate text-xs text-content-muted">
             {meta ?? `${album.assetCount} items`}
           </span>

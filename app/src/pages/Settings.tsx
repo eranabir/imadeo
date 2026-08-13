@@ -618,12 +618,23 @@ interface PeopleAndPetsRecognitionSettings {
   fromEnv: boolean;
 }
 
+interface PeopleAndPetsRecognitionStatus {
+  ready: boolean;
+  totalAssets: number;
+}
+
 function PeopleAndPetsRecognition() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'people-and-pets-recognition'],
     queryFn: async () =>
       (await api.get<PeopleAndPetsRecognitionSettings>('/admin/people-and-pets-recognition')).data,
+  });
+  const { data: status } = useQuery({
+    queryKey: ['subjects', 'status'],
+    queryFn: async () =>
+      (await api.get<PeopleAndPetsRecognitionStatus>('/people-and-pets/status')).data,
+    refetchInterval: 4000,
   });
 
   const save = useMutation({
@@ -640,10 +651,20 @@ function PeopleAndPetsRecognition() {
     },
   });
 
+  const rescan = useMutation({
+    mutationFn: async () =>
+      (await api.post<{ queued: number }>('/people-and-pets/scan', undefined, {
+        params: { force: true },
+      })).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['subjects'] });
+    },
+  });
+
   return (
     <Card
       title="People & Pets recognition"
-      description="Find people and pets in new photos, or scan the library from People & Pets."
+      description="Find people and pets in new photos, or rescan the complete library here."
     >
       <Row
         label="Recognise people and pets"
@@ -660,6 +681,25 @@ function PeopleAndPetsRecognition() {
           onChange={(enabled) => save.mutate(enabled)}
         />
       </Row>
+      <Row
+        label="Rescan library"
+        hint="Run recognition again after changing settings or correcting older results."
+      >
+        <Button
+          size="sm"
+          icon={<ScanFace size={14} />}
+          disabled={!data?.enabled || !status?.ready || rescan.isPending}
+          onClick={() => rescan.mutate()}
+        >
+          {rescan.isPending ? 'Starting…' : 'Scan again'}
+        </Button>
+      </Row>
+      {rescan.isSuccess && (
+        <p className="mt-3 text-xs text-success">
+          {rescan.data.queued.toLocaleString()} of {status?.totalAssets.toLocaleString() ?? '0'} photos queued.
+        </p>
+      )}
+      {rescan.isError && <p className="mt-3 text-xs text-danger">{errorMessage(rescan.error)}</p>}
       {data?.fromEnv && (
         <p className="mt-3 text-xs text-content-muted">
           Currently using the server’s startup default. Changing this saves a server setting.
