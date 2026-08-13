@@ -3,6 +3,7 @@ dist/
 build/
 # Prisma 7 emits the client into the source tree; it is a build artifact.
 server/src/generated/
+/mobile/android/imadeo-service-account.json
 
 # Yarn 4: keep the pinned release, ignore its caches.
 .yarn/*
