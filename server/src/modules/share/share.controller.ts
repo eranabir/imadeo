@@ -17,6 +17,13 @@ export class ShareController {
   }
 
   @Auth()
+  @Get('overview')
+  @ApiOperation({ summary: 'Everything this account shares with people or by public link' })
+  overview(@AuthedUserId() userId: string) {
+    return this.shareService.overview(userId);
+  }
+
+  @Auth()
   @Post()
   @ApiOperation({ summary: 'Create a public link to an album or a set of photos' })
   create(@AuthedUserId() userId: string, @Body() dto: CreateSharedLinkDto) {

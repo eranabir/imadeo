@@ -2,21 +2,23 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   FolderPlus,
+  LayoutGrid,
   MapPin,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { useAuth } from '../store/auth';
 import { useTree } from '../store/tree';
-import type { FolderNode, UserStatistics } from '../types';
+import type { Album, FolderNode, UserStatistics } from '../types';
 import { isDragging, readDrag } from '../lib/dnd';
 import { PromptDialog } from '../ui';
 import { FolderTree } from './FolderTree';
 import { useVaultStatus } from './VaultGate';
 import {
   AlbumsIcon,
+  BrowseIcon,
   DuplicatesIcon,
   FavoritesIcon,
   FoldersIcon,
@@ -32,14 +34,15 @@ import { useLibraryActions } from './useLibraryActions';
 
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
 export const NAV = [
+  { to: '/browse', label: 'Browse', icon: BrowseIcon, tint: 'text-primary', end: false },
   { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
   { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
-  { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },
   // Folders is an ordinary destination like the rest; the tree below it is
   // just a shortcut into that page, not a separate concept.
   // `end: false` so viewing any folder keeps this entry marked, the way an
   // album keeps Albums marked.
-  { to: '/folders', label: 'Folders', icon: FoldersIcon, tint: 'text-violet-500', end: false },
+  { to: '/folders', label: 'Folders', icon: FoldersIcon, tint: 'text-nav-folders', end: false },
+  { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },
   // ScanFace rather than a group-of-people glyph: the section is about
   // recognition, and any icon showing people would quietly imply pets are a
   // lesser guest there.
@@ -58,12 +61,14 @@ export const NAV = [
 
 export function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { data: vault } = useVaultStatus();
   const [error, setError] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newAlbumOpen, setNewAlbumOpen] = useState(false);
 
   const { data: duplicateGroups } = useQuery({
     queryKey: ['assets', 'duplicates', 'count'],
@@ -74,6 +79,12 @@ export function Layout() {
     queryKey: ['folders', 'tree'],
     queryFn: async () =>
       (await api.get<FolderNode[]>('/folders/tree', { params: { recursiveCounts: true } })).data,
+  });
+
+  const { data: rootAlbums = [] } = useQuery({
+    queryKey: ['albums', 'browse-tree', 'root'],
+    queryFn: async () =>
+      (await api.get<Album[]>('/albums')).data.filter((album) => !album.folderId),
   });
 
   // The user endpoint carries disk numbers as well as the library counts.
@@ -103,6 +114,15 @@ export function Layout() {
     onSuccess: (folder: FolderNode) => {
       void queryClient.invalidateQueries({ queryKey: ['folders'] });
       navigate(`/folders/${folder.id}`);
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  const createAlbum = useMutation({
+    mutationFn: async (albumName: string) => (await api.post('/albums', { albumName, folderId: null })).data,
+    onSuccess: (album: Album) => {
+      void queryClient.invalidateQueries({ queryKey: ['albums'] });
+      navigate(`/browse/albums/${album.id}`);
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -202,27 +222,27 @@ export function Layout() {
                       )}
                       <span className="flex-1">{label}</span>
 
-                      {/* Creating a folder belongs on the Folders row rather
-                          than in a heading of its own. */}
-                      {to === '/folders' && (
+                      {(to === '/folders' || to === '/albums') && (
                         <span
                           role="button"
                           tabIndex={0}
-                          aria-label="New folder"
-                          title="New folder"
+                          aria-label={to === '/folders' ? 'New folder' : 'New album'}
+                          title={to === '/folders' ? 'New folder' : 'New album'}
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
-                            setNewFolderOpen(true);
+                            if (to === '/folders') setNewFolderOpen(true);
+                            else setNewAlbumOpen(true);
                           }}
                           onKeyDown={(event) => {
                             if (event.key !== 'Enter' && event.key !== ' ') return;
                             event.preventDefault();
-                            setNewFolderOpen(true);
+                            if (to === '/folders') setNewFolderOpen(true);
+                            else setNewAlbumOpen(true);
                           }}
                           className="grid h-6 w-6 place-items-center rounded-full text-content-muted opacity-0 transition hover:bg-surface-raised hover:text-content group-hover:opacity-100 focus-visible:opacity-100"
                         >
-                          <FolderPlus size={14} />
+                          {to === '/folders' ? <FolderPlus size={14} /> : <LayoutGrid size={14} />}
                         </span>
                       )}
 
@@ -237,9 +257,9 @@ export function Layout() {
                   )}
                 </NavLink>
 
-                {/* The tree belongs to the Folders entry, so it is rendered
-                    inline underneath it rather than at the foot of the rail. */}
-                {to === '/folders' && (
+                {/* Browse owns the complete structural tree, so folders and
+                    albums stay together without cluttering their focused pages. */}
+                {to === '/browse' && (
                   // A little breathing room so the tree reads as belonging to
                   // the Folders row rather than colliding with it. No scroller
                   // of its own — the nav around it already scrolls, and nesting
@@ -248,7 +268,10 @@ export function Layout() {
                   <div className="mt-1.5 pb-2">
                     <FolderTree
                       folders={folders}
-                      activeId={params.folderId}
+                      rootAlbums={rootAlbums}
+                      activeId={location.pathname.startsWith('/browse/folders/') ? params.folderId : undefined}
+                      folderBasePath="/browse/folders"
+                      albumBasePath="/browse/albums"
                       onDropOnFolder={actions.dropOnFolder}
                       onDropOnAlbum={actions.dropOnAlbum}
                       onFolderContextMenu={actions.onFolderContextMenu}
@@ -347,6 +370,15 @@ export function Layout() {
         placeholder="Holidays"
         onSubmit={(name) => createFolder.mutate(name)}
         onClose={() => setNewFolderOpen(false)}
+      />
+      <PromptDialog
+        open={newAlbumOpen}
+        title="New album"
+        description="Albums group photos without moving them from their folders."
+        label="Album name"
+        placeholder="Best of the trip"
+        onSubmit={(name) => createAlbum.mutate(name)}
+        onClose={() => setNewAlbumOpen(false)}
       />
     </div>
   );

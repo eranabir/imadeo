@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, Plus, Search, X } from 'lucide-react';
 import { useState } from 'react';
 import { AlbumCard } from '../components/LibraryCards';
+import { VirtualGrid } from '../components/VirtualGrid';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
 import { formatDate } from '../lib/format';
@@ -181,24 +182,30 @@ export function Albums() {
           }
         />
       ) : (
-        <div className="grid gap-4 px-5 pb-24 pt-4 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
-          {visible.map((album) => (
-            <AlbumCard
-              key={album.id}
-              album={album}
-              withMenuButton
-              onDrop={actions.dropOnAlbum}
-              onContextMenu={actions.onAlbumContextMenu}
-              meta={
-                <>
-                  {album.assetCount} items
-                  {/* Where it is filed, so the folder context is not lost here. */}
-                  {album.folder && ` · ${album.folder.name}`}
-                  {` · ${formatDate(album.updatedAt, user?.preferences.locale)}`}
-                </>
-              }
-            />
-          ))}
+        <div className="px-5 pb-24 pt-4">
+          <VirtualGrid
+            items={visible}
+            getKey={(album) => album.id}
+            minItemWidth={210}
+            itemHeight={(width) => width * 0.75 + 63}
+            gap={16}
+            renderItem={(album) => (
+              <AlbumCard
+                album={album}
+                withMenuButton
+                onDrop={actions.dropOnAlbum}
+                onContextMenu={actions.onAlbumContextMenu}
+                meta={
+                  <>
+                    {album.assetCount} items
+                    {/* Where it is filed, so the folder context is not lost here. */}
+                    {album.folder && ` · ${album.folder.name}`}
+                    {` · ${formatDate(album.updatedAt, user?.preferences.locale)}`}
+                  </>
+                }
+              />
+            )}
+          />
         </div>
       )}
 

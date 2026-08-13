@@ -30,7 +30,9 @@ import {
 } from '../ui';
 import { AssignSubjectDialog } from './AssignSubjectDialog';
 import { AssetShareDialog } from './AssetShareDialog';
+import { FolderShareDialog } from './FolderShareDialog';
 import { MoveDialog } from './MoveDialog';
+import { ShareDialog } from './ShareDialog';
 import { VaultDialog } from './VaultGate';
 
 type Target =
@@ -74,6 +76,8 @@ export function useLibraryActions({
   /** Photos whose detections are being assigned to a person or pet. */
   const [assigning, setAssigning] = useState<string[] | null>(null);
   const [sharing, setSharing] = useState<string[] | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<Extract<Target, { kind: 'folder' }> | null>(null);
+  const [sharingAlbum, setSharingAlbum] = useState<Extract<Target, { kind: 'album' }> | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
   const [newFolderIn, setNewFolderIn] = useState<string | null>(null);
@@ -391,6 +395,13 @@ export function useLibraryActions({
           onSelect: () => setMoving(item),
         },
         {
+          id: 'share',
+          label: 'Share',
+          icon: <Share2 size={15} />,
+          hint: 'Choose accounts on this server',
+          onSelect: () => setSharingFolder(item),
+        },
+        {
           id: 'new-folder',
           label: 'New folder',
           icon: <FolderPlus size={15} />,
@@ -443,6 +454,13 @@ export function useLibraryActions({
         onSelect: () => setMoving(item),
       },
       {
+        id: 'share',
+        label: 'Share',
+        icon: <Share2 size={15} />,
+        hint: 'Invite people or create a link',
+        onSelect: () => setSharingAlbum(item),
+      },
+      {
         id: 'lock',
         label: locked ? 'Unlock' : 'Lock',
         icon: locked ? <Unlock size={15} /> : <Lock size={15} />,
@@ -487,6 +505,17 @@ export function useLibraryActions({
         open={sharing !== null}
         assetIds={sharing ?? []}
         onClose={() => setSharing(null)}
+      />
+      <FolderShareDialog
+        open={sharingFolder !== null}
+        folderId={sharingFolder?.folder.id ?? ''}
+        folderName={sharingFolder?.folder.name ?? ''}
+        onClose={() => setSharingFolder(null)}
+      />
+      <ShareDialog
+        open={sharingAlbum !== null}
+        album={sharingAlbum?.album ?? { id: '', name: '' }}
+        onClose={() => setSharingAlbum(null)}
       />
       {target && (
         <Menu

@@ -1,8 +1,7 @@
-import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 interface Props {
-  icon: LucideIcon;
+  icon: ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
   title: string;
   description?: ReactNode;
   action?: ReactNode;

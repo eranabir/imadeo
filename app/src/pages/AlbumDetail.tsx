@@ -26,7 +26,7 @@ interface AlbumDetailResponse extends Album {
   access: 'owner' | 'editor' | 'viewer';
 }
 
-export function AlbumDetail() {
+export function AlbumDetail({ rootMode = 'albums' }: { rootMode?: 'browse' | 'albums' }) {
   const { albumId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -59,7 +59,7 @@ export function AlbumDetail() {
     mutationFn: async () => (await api.delete(`/albums/${albumId}`)).data,
     onSuccess: () => {
       void invalidate();
-      navigate('/albums');
+      navigate(rootMode === 'browse' ? '/browse' : '/albums');
     },
     onError,
   });
@@ -81,15 +81,15 @@ export function AlbumDetail() {
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <nav className="mb-1 flex items-center gap-1 text-xs text-content-muted">
-          <Link to="/albums" className="flex items-center gap-1 transition hover:text-content">
+          <Link to={rootMode === 'browse' ? '/browse' : '/albums'} className="flex items-center gap-1 transition hover:text-content">
             <ArrowLeft size={12} />
-            Albums
+            {rootMode === 'browse' ? 'Browse' : 'Albums'}
           </Link>
           {album.folder && (
             <>
               <span>·</span>
               <Link
-                to={`/folders/${album.folder.id}`}
+                to={`${rootMode === 'browse' ? '/browse/folders' : '/folders'}/${album.folder.id}`}
                 className="flex items-center gap-1 transition hover:text-content"
               >
                 <Folder size={11} />

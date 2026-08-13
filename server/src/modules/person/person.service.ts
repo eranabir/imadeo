@@ -367,7 +367,10 @@ export class PersonService {
       throw new BadRequestException('That photo is not one of this person’s');
     }
 
-    await this.prisma.person.update({ where: { id: personId }, data: { faceAssetId: assetId } });
+    await this.prisma.person.update({
+      where: { id: personId },
+      data: { faceAssetId: assetId, thumbnailIsCustom: true },
+    });
 
     // Remove the old crop so the new one is not served from cache.
     const person = await this.prisma.person.findUniqueOrThrow({
@@ -392,7 +395,7 @@ export class PersonService {
   async generateThumbnail(personId: string) {
     const chosen = await this.prisma.person.findUnique({
       where: { id: personId },
-      select: { faceAssetId: true },
+      select: { faceAssetId: true, thumbnailIsCustom: true },
     });
 
     const usable = {
@@ -408,7 +411,7 @@ export class PersonService {
      * disappears is worse than one that reverts to the automatic pick.
      */
     const face =
-      (chosen?.faceAssetId
+      (chosen?.thumbnailIsCustom && chosen.faceAssetId
         ? await this.prisma.assetFace.findFirst({
             where: { ...usable, assetId: chosen.faceAssetId },
             include: { asset: true, person: true },
@@ -418,8 +421,10 @@ export class PersonService {
       (await this.prisma.assetFace.findFirst({
         where: usable,
         include: { asset: true, person: true },
-        // The largest, most confident detection makes the clearest avatar.
-        orderBy: [{ score: 'desc' }],
+        // An automatic cover follows the newest recognised photo. This makes
+        // a successful upload visible on the People & Pets page instead of
+        // leaving an old avatar that makes the scan look unchanged.
+        orderBy: [{ asset: { createdAt: 'desc' } }, { score: 'desc' }],
       }));
 
     if (!face?.asset.previewPath || !face.person) return null;
@@ -470,6 +475,22 @@ export class PersonService {
     }
   }
 
+  /** Replaces an automatic cover while leaving a user-picked one protected. */
+  async refreshThumbnail(personId: string) {
+    const person = await this.prisma.person.findUnique({
+      where: { id: personId },
+      select: { thumbnailPath: true, thumbnailIsCustom: true },
+    });
+    if (!person || person.thumbnailIsCustom) return person?.thumbnailPath ?? null;
+
+    await this.storage.removeMany([person.thumbnailPath || null]);
+    await this.prisma.person.update({
+      where: { id: personId },
+      data: { thumbnailPath: '' },
+    });
+    return this.generateThumbnail(personId);
+  }
+
   /**
    * Rebuild covers for groups touched by a visibility change.
    *
@@ -492,12 +513,7 @@ export class PersonService {
     });
 
     for (const person of people) {
-      await this.storage.removeMany([person.thumbnailPath || null]);
-      await this.prisma.person.update({
-        where: { id: person.id },
-        data: { thumbnailPath: '' },
-      });
-      await this.generateThumbnail(person.id);
+      await this.refreshThumbnail(person.id);
     }
   }
 

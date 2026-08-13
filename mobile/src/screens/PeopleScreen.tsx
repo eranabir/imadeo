@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { FlatList, Text, useWindowDimensions, View } from 'react-native';
 import { Empty } from '../components/AssetGrid';
 import { Loading } from '../components/Loading';
@@ -47,6 +47,7 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
   const { data, loadedPath, token, error, loading, reload } = useResource<Person[]>(
     serverUrl,
     peoplePath,
+    4000,
   );
   /*
    * Polled only while there is something to watch.
@@ -56,18 +57,7 @@ export function PeopleScreen({ serverUrl }: { serverUrl: string }) {
    * rather than wait to be told. Once nothing is outstanding the timer stops
    * and the screen goes quiet again.
    */
-  const [watching, setWatching] = useState(false);
-  const status = useResource<Status>(serverUrl, '/people/status', watching ? 4000 : null);
-
-  useEffect(() => {
-    const outstanding = (status.data?.pendingAssets ?? 0) > 0;
-    setWatching((was) => {
-      // The moment the last photo is scanned is the moment there are new faces
-      // to show, and nobody is going to pull the grid down to find out.
-      if (was && !outstanding) void reload();
-      return outstanding;
-    });
-  }, [status.data, reload]);
+  const status = useResource<Status>(serverUrl, '/people/status', 4000);
 
   const clearance = useHeaderClearance(54);
 

@@ -22,14 +22,24 @@ interface Handlers {
 
 interface Props extends Handlers {
   folders: FolderNode[];
+  rootAlbums?: TreeAlbum[];
   activeId?: string;
+  folderBasePath?: string;
+  albumBasePath?: string;
 }
 
-export function FolderTree({ folders, activeId, ...handlers }: Props) {
-  if (folders.length === 0) {
+export function FolderTree({
+  folders,
+  rootAlbums = [],
+  activeId,
+  folderBasePath = '/folders',
+  albumBasePath = '/albums',
+  ...handlers
+}: Props) {
+  if (folders.length === 0 && rootAlbums.length === 0) {
     return (
       <p className="px-3 py-2 text-xs text-content-muted">
-        No folders yet. Create one to start organising.
+        Nothing in Browse yet. Create a folder or album to start organising.
       </p>
     );
   }
@@ -37,7 +47,24 @@ export function FolderTree({ folders, activeId, ...handlers }: Props) {
   return (
     <ul className="space-y-0.5">
       {folders.map((folder) => (
-        <FolderRow key={folder.id} folder={folder} activeId={activeId} {...handlers} />
+        <FolderRow
+          key={folder.id}
+          folder={folder}
+          activeId={activeId}
+          folderBasePath={folderBasePath}
+          albumBasePath={albumBasePath}
+          {...handlers}
+        />
+      ))}
+      {rootAlbums.map((album) => (
+        <AlbumRow
+          key={album.id}
+          album={album}
+          depth={0}
+          albumBasePath={albumBasePath}
+          onDropOnAlbum={handlers.onDropOnAlbum}
+          onAlbumContextMenu={handlers.onAlbumContextMenu}
+        />
       ))}
     </ul>
   );
@@ -46,11 +73,18 @@ export function FolderTree({ folders, activeId, ...handlers }: Props) {
 function FolderRow({
   folder,
   activeId,
+  folderBasePath = '/folders',
+  albumBasePath = '/albums',
   onDropOnFolder,
   onDropOnAlbum,
   onFolderContextMenu,
   onAlbumContextMenu,
-}: Handlers & { folder: FolderNode; activeId?: string }) {
+}: Handlers & {
+  folder: FolderNode;
+  activeId?: string;
+  folderBasePath?: string;
+  albumBasePath?: string;
+}) {
   // Expansion lives in a store so it survives navigation and page reloads.
   const open = useTree((state) => state.expanded.has(folder.id));
   const toggle = useTree((state) => state.toggle);
@@ -107,15 +141,15 @@ function FolderRow({
         </button>
 
         <NavLink
-          to={`/folders/${folder.id}`}
+          to={`${folderBasePath}/${folder.id}`}
           className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-sm"
         >
           {folder.isLocked ? (
             <Lock size={15} className="shrink-0 opacity-70" />
           ) : open && hasChildren ? (
-            <FolderOpen size={15} className="shrink-0 opacity-70" />
+            <FolderOpen size={15} className="shrink-0 text-nav-folders" />
           ) : (
-            <Folder size={15} className="shrink-0 opacity-70" />
+            <Folder size={15} className="shrink-0 text-nav-folders" />
           )}
           <span className="truncate">{folder.name}</span>
         </NavLink>
@@ -132,6 +166,8 @@ function FolderRow({
               key={child.id}
               folder={child}
               activeId={activeId}
+              folderBasePath={folderBasePath}
+              albumBasePath={albumBasePath}
               onDropOnFolder={onDropOnFolder}
               onDropOnAlbum={onDropOnAlbum}
               onFolderContextMenu={onFolderContextMenu}
@@ -144,6 +180,7 @@ function FolderRow({
               key={album.id}
               album={album}
               depth={folder.depth + 1}
+              albumBasePath={albumBasePath}
               onDropOnAlbum={onDropOnAlbum}
               onAlbumContextMenu={onAlbumContextMenu}
             />
@@ -157,11 +194,13 @@ function FolderRow({
 function AlbumRow({
   album,
   depth,
+  albumBasePath = '/albums',
   onDropOnAlbum,
   onAlbumContextMenu,
 }: {
   album: TreeAlbum;
   depth: number;
+  albumBasePath?: string;
   onDropOnAlbum?: (albumId: string, payload: DragPayload) => void;
   onAlbumContextMenu?: (album: { id: string; name: string }, event: React.MouseEvent) => void;
 }) {
@@ -175,7 +214,7 @@ function AlbumRow({
   return (
     <li>
       <NavLink
-        to={`/albums/${album.id}`}
+        to={`${albumBasePath}/${album.id}`}
         style={{ paddingLeft: `${depth * 12 + 24}px` }}
         draggable
         onDragStart={(event) => {
@@ -218,7 +257,7 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
 
     return (
       <span
-        className="grid h-6 w-6 shrink-0 place-items-center rounded-[5px] text-[10px] font-semibold text-white/90"
+        className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded text-[9px] font-semibold text-white/90"
         style={{
           background: `linear-gradient(140deg, oklch(72% 0.11 ${hue}), oklch(46% 0.13 ${(hue + 40) % 360}))`,
         }}
@@ -235,13 +274,13 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
         alt=""
         loading="lazy"
         draggable={false}
-        className="h-6 w-6 shrink-0 rounded-[5px] object-cover"
+        className="h-[18px] w-[18px] shrink-0 rounded object-cover"
       />
     );
   }
 
   return (
-    <span className="grid h-6 w-6 shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded-[5px]">
+    <span className="grid h-[18px] w-[18px] shrink-0 grid-cols-2 grid-rows-2 gap-px overflow-hidden rounded">
       {ids.slice(0, 4).map((id) => (
         <img
           key={id}

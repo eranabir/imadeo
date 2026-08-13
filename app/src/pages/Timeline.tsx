@@ -1,18 +1,20 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Images } from 'lucide-react';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
+import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { SelectionBar } from '../components/SelectionBar';
 import { TimelineScrubber } from '../components/TimelineScrubber';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api } from '../lib/api';
+import { useInfiniteAssets } from '../lib/useInfiniteAssets';
 import { formatDate, groupByDay } from '../lib/format';
 import { useSelection } from '../lib/useSelection';
 import { useAuth } from '../store/auth';
-import type { Asset, Paginated } from '../types';
+import type { Asset } from '../types';
 import { EmptyState, GridSkeleton, IconButton, Select, SelectionCheck, Tooltip } from '../ui';
 
 export function Timeline() {
@@ -42,13 +44,20 @@ export function Timeline() {
   };
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['assets', 'timeline', sortBy, order],
-    queryFn: async () =>
-      (await api.get<Paginated<Asset>>('/assets', { params: { sortBy, order, size: 500 } })).data,
+  const library = useInfiniteAssets(['assets', 'timeline', sortBy, order], {
+    sortBy,
+    order,
   });
+  const pages = library.data?.pages ?? [];
+  const assets = pages.flatMap((page) => page.items);
+  const total = pages[0]?.pagination.total ?? 0;
 
-  const assets = data?.items ?? [];
+  /*
+   * The old request used `size: 500`, so photo 501 silently did not exist in
+   * the timeline. Pages arrive as the end of the mounted grid nears instead.
+   */
+  const isLoading = library.isLoading;
+
   const groups = sortBy === 'date' ? groupByDay(assets) : [{ day: '', items: assets }];
   const actions = useLibraryActions({ onShowDetails: setViewing, selectedIds: [...selected] });
 
@@ -83,7 +92,7 @@ export function Timeline() {
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Photos</h1>
           <span className="text-xs text-content-muted tabular-nums">
-            {data ? `${data.pagination.total.toLocaleString()} items` : ''}
+            {pages.length ? `${total.toLocaleString()} items` : ''}
           </span>
         </div>
 
@@ -192,6 +201,11 @@ export function Timeline() {
           </section>
           );
         })}
+        <InfiniteScrollSentinel
+          enabled={Boolean(library.hasNextPage)}
+          loading={library.isFetchingNextPage}
+          onVisible={() => void library.fetchNextPage()}
+        />
         </div>
       </div>
 

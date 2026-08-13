@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 /**
  * Imadeo mark: a photo and a video, overlapping like prints on a table.
  *
@@ -40,12 +42,43 @@ export function Logo({ size = 36, rounded = 'rounded-[29%]' }: { size?: number; 
   );
 }
 
+const WORDMARK = 'Imadeo'.split('');
+
 /** Mark plus wordmark, for the top bar and the login screen. */
-export function LogoLockup({ size = 36, showText = true }: { size?: number; showText?: boolean }) {
+export function LogoLockup({
+  size = 36,
+  showText = true,
+  textSize = 17,
+  animated = false,
+}: {
+  size?: number;
+  showText?: boolean;
+  textSize?: number;
+  animated?: boolean;
+}) {
   return (
-    <span className="flex items-center gap-2.5">
+    <span className="flex items-center gap-3">
       <Logo size={size} />
-      {showText && <span className="text-[17px] font-semibold tracking-tight">Imadeo</span>}
+      {showText && (
+        <span
+          aria-label="Imadeo"
+          className="font-bold tracking-[-0.025em]"
+          style={{ fontSize: textSize }}
+        >
+          {animated
+            ? WORDMARK.map((letter, index) => (
+                <span
+                  key={index}
+                  aria-hidden
+                  className="imadeo-word-wave"
+                  style={{ '--word-index': index } as CSSProperties}
+                >
+                  {letter}
+                </span>
+              ))
+            : 'Imadeo'}
+        </span>
+      )}
     </span>
   );
 }

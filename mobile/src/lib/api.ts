@@ -284,6 +284,75 @@ export function useResource<T>(
   return { data, loadedPath, token, error, loading, reload };
 }
 
+/**
+ * A paged resource for long photo collections. Native lists already recycle
+ * cells; this keeps their backing array bounded to the pages the user reached
+ * instead of downloading a fixed, incomplete first 300 or 500 photos.
+ */
+export function usePagedResource<T>(serverUrl: string, path: string | null, size = 150) {
+  const [items, setItems] = useState<T[]>([]);
+  const [pagination, setPagination] = useState<Paged<T>['pagination'] | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(path !== null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const page = useRef(0);
+  const generation = useRef(0);
+  const seen = useRevision();
+
+  const load = useCallback(
+    async (nextPage: number, replace: boolean) => {
+      if (path === null) return;
+      const mine = ++generation.current;
+      replace ? setLoading(true) : setLoadingMore(true);
+      setError(null);
+      try {
+        const separator = path.includes('?') ? '&' : '?';
+        const [body, auth] = await Promise.all([
+          request<Paged<T>>(serverUrl, `${path}${separator}page=${nextPage}&size=${size}`),
+          storedToken(),
+        ]);
+        if (mine !== generation.current) return;
+        page.current = nextPage;
+        setItems((current) => (replace ? body.items : [...current, ...body.items]));
+        setPagination(body.pagination ?? null);
+        setToken(auth);
+      } catch (cause) {
+        if (mine !== generation.current) return;
+        setError(reachable ? (cause instanceof Error ? cause.message : 'Something went wrong.') : null);
+      } finally {
+        if (mine === generation.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
+      }
+    },
+    [path, serverUrl, size],
+  );
+
+  const reload = useCallback(async () => {
+    if (path === null) {
+      setItems([]);
+      setPagination(null);
+      setLoading(false);
+      return;
+    }
+    await load(1, true);
+  }, [path, load]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload, seen]);
+
+  const hasMore = Boolean(pagination && page.current < (pagination.pages ?? 1));
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore || loading) return;
+    void load(page.current + 1, false);
+  }, [hasMore, loadingMore, loading, load]);
+
+  return { items, pagination, token, error, loading, loadingMore, hasMore, reload, loadMore };
+}
+
 /** The session token on its own, for screens that only render thumbnails. */
 export function useToken() {
   const [token, setToken] = useState<string | null>(null);

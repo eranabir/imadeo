@@ -164,7 +164,7 @@ export const configuration = () => {
       /// Tighter than faces on purpose. Pets are matched on how they look rather
       /// than on facial geometry, so a loose threshold folds every black cat in
       /// the library into one animal.
-      petClusterDistance: num(process.env.ML_PET_CLUSTER_DISTANCE, 0.18),
+      petClusterDistance: num(process.env.ML_PET_CLUSTER_DISTANCE, 0.12),
       /// A person is only surfaced in the UI once it has this many faces.
       faceMinCount: int(process.env.ML_FACE_MIN_COUNT, 3),
     },

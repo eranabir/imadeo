@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { BRAND } from '../theme';
+import { BRAND, colors } from '../theme';
 
 interface Props {
   size?: number;
@@ -74,51 +74,43 @@ const WORD = 'Imadeo'.split('');
 // The tile's own range — emerald through teal and cyan into sky — rather than
 // a full spectrum. Violet, amber and rose belonged to the sidebar icons, not
 // to the brand, and pulled the wordmark away from everything around it.
-const HUES = ['#e8eff2', '#7cdbff', '#3fc9ff', '#0ea5e9', '#3fc9ff', '#7cdbff', '#e8eff2'];
-
-export function LogoLockup({ size = 48 }: Props) {
-  const wave = useRef(new Animated.Value(0)).current;
+function AnimatedLetter({ letter, index }: { letter: string; index: number }) {
+  const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(wave, {
-        toValue: 1,
-        duration: 4200,
-        easing: Easing.linear,
-        // Colour cannot be driven natively, but one interpolation per letter at
-        // this duration is far below anything the JS thread notices.
-        useNativeDriver: false,
-      }),
-    );
+    const loop = Animated.sequence([
+      Animated.delay(index * 120),
+      Animated.loop(
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: 4200,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        }),
+      ),
+    ]);
     loop.start();
     return () => loop.stop();
-  }, [wave]);
+  }, [index, progress]);
 
+  const color = progress.interpolate({
+    inputRange: [0, 0.01, 0.28, 0.52, 0.76, 1],
+    outputRange: [colors.text, colors.text, colors.secondary, colors.primary, colors.secondary, colors.text],
+  });
+
+  return (
+    <Animated.Text style={{ color, fontSize: 32, fontWeight: '700', letterSpacing: -0.8 }}>
+      {letter}
+    </Animated.Text>
+  );
+}
+
+export function LogoLockup({ size = 48 }: Props) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
       <Logo size={size} />
       <View style={{ flexDirection: 'row' }}>
-        {WORD.map((letter, index) => {
-          // Each letter starts a fraction later, which is what makes the colour
-          // sweep along the word instead of landing on all of it together.
-          const shift = index / (WORD.length * 1.6);
-          const color = wave.interpolate({
-            inputRange: HUES.map((_, i) => {
-              const at = i / (HUES.length - 1) + shift;
-              return at > 1 ? at - 1 : at;
-            }).sort((a, b) => a - b),
-            outputRange: HUES,
-          });
-
-          return (
-            <Animated.Text
-              key={index}
-              style={{ color, fontSize: 32, fontWeight: '700', letterSpacing: -0.8 }}
-            >
-              {letter}
-            </Animated.Text>
-          );
-        })}
+        {WORD.map((letter, index) => <AnimatedLetter key={index} letter={letter} index={index} />)}
       </View>
     </View>
   );

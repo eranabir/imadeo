@@ -124,7 +124,7 @@ export function MoveDialog({
             }}
             className="flex min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 py-2 text-left text-sm transition hover:bg-surface-sunken"
           >
-            <Folder size={15} className="shrink-0 text-content-muted" />
+            <Folder size={15} className="shrink-0 text-nav-folders" />
             <span className="min-w-0 flex-1 truncate">{folder.name}</span>
             <span className="shrink-0 text-[11px] text-content-muted">Folder</span>
           </button>

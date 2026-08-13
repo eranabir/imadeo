@@ -31,6 +31,32 @@ interface Tile {
   height: number;
 }
 
+/**
+ * Finds the scroll container that owns this grid. Pages scroll inside Layout's
+ * main element, not the browser window, so listening to `window` leaves the
+ * virtual range frozen while the library moves.
+ */
+function scrollParent(element: HTMLElement) {
+  let parent = element.parentElement;
+  while (parent) {
+    const overflow = getComputedStyle(parent).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll') return parent;
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
+function firstAtOrAfter(offsets: number[], value: number) {
+  let low = 0;
+  let high = offsets.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (offsets[middle] < value) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
 const DEFAULT_RATIO = 3 / 2;
 
 const ratioOf = (asset: Asset) => {
@@ -118,12 +144,72 @@ export function JustifiedGrid({
     [assets, width, targetRowHeight, gap],
   );
 
+  const rowOffsets = useMemo(() => {
+    let offset = 0;
+    return rows.map((row) => {
+      const current = offset;
+      offset += (row[0]?.height ?? 0) + gap;
+      return current;
+    });
+  }, [rows, gap]);
+  const totalHeight =
+    rows.length === 0 ? 0 : (rowOffsets.at(-1) ?? 0) + (rows.at(-1)?.[0]?.height ?? 0);
+
+  /*
+   * A library can hold tens of thousands of photographs. Keep its geometry in
+   * memory, but only mount the rows around the viewport (plus a generous
+   * buffer for fast trackpad flings). This is deliberately local rather than a
+   * second scroll box: pages retain their existing sticky headers and timeline
+   * scrubber.
+   */
+  const [range, setRange] = useState({ start: 0, end: rows.length });
+  useEffect(() => {
+    const element = container.current;
+    if (!element || rows.length === 0) return;
+    const parent = scrollParent(element);
+
+    const update = () => {
+      const elementRect = element.getBoundingClientRect();
+      const parentRect = parent?.getBoundingClientRect();
+      const viewportTop = parent ? parent.scrollTop : window.scrollY;
+      const viewportHeight = parent ? parent.clientHeight : window.innerHeight;
+      const elementTop = parent
+        ? parent.scrollTop + elementRect.top - (parentRect?.top ?? 0)
+        : window.scrollY + elementRect.top;
+      const localTop = Math.max(0, viewportTop - elementTop - viewportHeight * 1.5);
+      const localBottom = viewportTop - elementTop + viewportHeight * 2.5;
+      const start = Math.max(0, firstAtOrAfter(rowOffsets, localTop) - 1);
+      const end = Math.min(rows.length, firstAtOrAfter(rowOffsets, localBottom) + 1);
+      setRange((current) => (current.start === start && current.end === end ? current : { start, end }));
+    };
+
+    update();
+    parent?.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    if (parent) observer.observe(parent);
+    return () => {
+      parent?.removeEventListener('scroll', update);
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      observer.disconnect();
+    };
+  }, [rows.length, rowOffsets, totalHeight]);
+
   const selecting = (selected?.size ?? 0) > 0;
 
   return (
-    <div ref={container} className="w-full">
-      {rows.map((row, rowIndex) => (
-        <div key={rowIndex} className="flex" style={{ gap, marginBottom: gap }}>
+    <div ref={container} className="relative w-full" style={{ height: totalHeight }}>
+      {rows.slice(range.start, range.end).map((row, index) => {
+        const rowIndex = range.start + index;
+        return (
+        <div
+          key={rowIndex}
+          className="absolute left-0 flex w-full"
+          style={{ gap, top: rowOffsets[rowIndex] }}
+        >
           {row.map(({ asset, width: w, height: h }) => {
             const isSelected = selected?.has(asset.id) ?? false;
 
@@ -225,7 +311,8 @@ export function JustifiedGrid({
             );
           })}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

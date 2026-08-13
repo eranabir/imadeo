@@ -12,7 +12,7 @@ import { SharingShelf } from './SharingScreen';
 import { ConfirmSheet, MoveSheet, PromptSheet, ShareSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
-import { useResource, type Album, type Asset, type FolderContents, type Paged } from '../lib/api';
+import { usePagedResource, useResource, type Album, type Asset, type FolderContents } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 
@@ -62,7 +62,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
 
   // Three questions, one of which is live at a time. The other two are handed a
   // null path, which `useResource` treats as "do not ask".
-  const timeline = useResource<Paged<Asset>>(
+  const timeline = usePagedResource<Asset>(
     serverUrl,
     /**
      * Newest upload first, not newest photograph first.
@@ -72,7 +72,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
      * fresh backup of an old camera roll somewhere in the middle, so a backup
      * that had just finished looked as though nothing had happened.
      */
-    atRoot && showing === 'photos' ? '/assets?size=300&sortBy=date&order=desc' : null,
+    atRoot && showing === 'photos' ? '/assets?sortBy=date&order=desc' : null,
   );
   const allAlbums = useResource<Album[]>(
     serverUrl,
@@ -107,14 +107,14 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     showing === 'albums' ? allAlbums.data ?? [] : showing === 'folders' ? contents.data?.albums ?? [] : [];
   const assets =
     showing === 'photos'
-      ? timeline.data?.items ?? []
+      ? timeline.items
       : showing === 'folders' && !atRoot
         ? contents.data?.assets ?? []
         : [];
 
   const total =
     showing === 'photos'
-      ? timeline.data?.pagination?.total ?? null
+      ? timeline.pagination?.total ?? null
       : contents.data?.pagination?.total ?? null;
 
   const trail = contents.data?.breadcrumbs ?? [];
@@ -291,6 +291,9 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         onToggleDay={selection.toggleMany}
         onStartSelecting={selection.start}
         onChanged={reload}
+        hasMore={showing === 'photos' && timeline.hasMore}
+        loadingMore={showing === 'photos' && timeline.loadingMore}
+        onLoadMore={showing === 'photos' ? timeline.loadMore : undefined}
         emptyIcon={showing === 'albums' ? 'album' : showing === 'photos' ? 'library' : 'folder'}
         emptyTitle={
           loading

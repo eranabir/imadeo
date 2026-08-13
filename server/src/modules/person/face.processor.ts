@@ -125,14 +125,17 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     const people = await this.clustering.assignFacesForAsset(asset.id, asset.ownerId);
 
-    // A person's avatar is only regenerated when they do not have one, so a
-    // deliberate choice is not overwritten by the next upload.
+    // Automatic avatars follow the latest recognised photo, so a successful
+    // upload is visible immediately. A cover deliberately chosen by the user
+    // remains untouched.
     for (const personId of people) {
       const person = await this.prisma.person.findUnique({
         where: { id: personId },
-        select: { thumbnailPath: true },
+        select: { thumbnailPath: true, thumbnailIsCustom: true },
       });
-      if (!person?.thumbnailPath) await this.people.generateThumbnail(personId);
+      if (!person?.thumbnailIsCustom) {
+        await this.people.refreshThumbnail(personId);
+      }
     }
 
     const recognisedAt = new Date();

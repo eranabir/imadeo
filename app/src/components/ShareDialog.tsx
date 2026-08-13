@@ -2,8 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Link2, Mail, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { api, errorMessage } from '../lib/api';
-import type { Album } from '../types';
 import { Button, Dialog, IconButton, Input, Select } from '../ui';
+
+type ShareableAlbum = {
+  id: string;
+  name: string;
+  albumUsers?: { userId: string; role: string; user: { id: string; name: string; email?: string } }[];
+};
 
 interface InviteResult {
   user: { id: string; email: string; name: string };
@@ -25,7 +30,7 @@ export function ShareDialog({
   open,
   onClose,
 }: {
-  album: Album & { albumUsers?: { userId: string; role: string; user: { id: string; name: string; email?: string } }[] };
+  album: ShareableAlbum;
   open: boolean;
   onClose: () => void;
 }) {

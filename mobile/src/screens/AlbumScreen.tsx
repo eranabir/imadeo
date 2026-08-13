@@ -6,7 +6,7 @@ import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
 import { ShareSheet } from '../components/sheets';
 import { actions } from '../lib/actions';
-import { useResource, type Asset } from '../lib/api';
+import { usePagedResource, useResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
 interface AlbumDetail {
@@ -31,10 +31,13 @@ interface Props {
 
 /** Everything inside one album. */
 export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) {
-  const { data, token, error, loading, reload } = useResource<AlbumDetail>(
+  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
-    `/albums/${albumId}?size=500&sortBy=date&order=desc`,
+    `/albums/${albumId}?sortBy=date&order=desc`,
   );
+  // Album metadata is small but the photos are paged independently. Keeping
+  // it in the first response avoids a second endpoint just for its title.
+  const { data } = useResource<AlbumDetail>(serverUrl, `/albums/${albumId}?size=1&sortBy=date&order=desc`);
   const clearance = useHeaderClearance();
   const selection = useSelection();
   const [sharing, setSharing] = useState(false);
@@ -67,7 +70,7 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AssetGrid
         serverUrl={serverUrl}
-        assets={data?.assets ?? []}
+        assets={items}
         token={token}
         loading={loading}
         onRefresh={reload}
@@ -89,6 +92,9 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={loadMore}
         emptyIcon="album"
         emptyTitle={loading ? 'Loading…' : 'This album is empty'}
         emptyBody="Photos added to it, here or on the web, show up in this grid."
@@ -99,7 +105,7 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
         ids={selection.ids}
         allFavorite={
           selection.ids.length > 0 &&
-          selection.ids.every((id) => data?.assets.find((a) => a.id === id)?.isFavorite)
+          selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)
         }
         onClear={selection.clear}
         onDone={() => {

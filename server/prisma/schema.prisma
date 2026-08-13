@@ -576,6 +576,8 @@ model Person {
   birthDate       DateTime?   @db.Date
   thumbnailPath   String      @default("")
   faceAssetId     String?     @db.Uuid
+  /// True only after the user explicitly chooses a cover photo.
+  thumbnailIsCustom Boolean   @default(false)
   isHidden        Boolean     @default(false)
   isFavorite      Boolean     @default(false)
   color           String?

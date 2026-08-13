@@ -236,20 +236,24 @@
 
   /* The same per-destination tints the app uses, so the sidebar is
      recognisable at a glance rather than a column of grey glyphs. */
-  .side-item:nth-child(1)  { --ic: #06b6d4; } /* Photos        — cyan   */
-  .side-item:nth-child(2)  { --ic: #f59e0b; } /* Albums        — amber  */
-  .side-item:nth-child(3)  { --ic: #7cdbff; } /* Sharing       — sky    */
-  .side-item:nth-child(4)  { --ic: #8b5cf6; } /* Folders       — violet */
-  .side-item:nth-child(5)  { --ic: #8b5cf6; } /* nested folder         */
-  .side-item:nth-child(6)  { --ic: #7cdbff; } /* Places        — sky    */
-  .side-item:nth-child(7)  { --ic: #0ea5e9; } /* People & Pets — sky    */
-  .side-item:nth-child(8)  { --ic: #f43f5e; } /* Favorites     — rose   */
-  .side-item:nth-child(9)  { --ic: #818cf8; } /* Locked        — indigo */
-  .side-item:nth-child(10) { --ic: #f97316; } /* Duplicates    — orange */
-  .side-item:nth-child(11) { --ic: #94a3b8; } /* Trash         — slate  */
-  .side-item:nth-child(12) { --ic: #10b981; } /* Settings      — emerald*/
+  .side-item.browse  { --ic: #3fc9ff; }
+  .side-item.photos  { --ic: #06b6d4; }
+  .side-item.albums  { --ic: #f59e0b; }
+  .side-item.folders { --ic: #8b5cf6; }
+  .side-item.sharing { --ic: #7cdbff; }
+  .side-item.places  { --ic: #7cdbff; }
+  .side-item.people  { --ic: #0ea5e9; }
+  .side-item.favorites { --ic: #f43f5e; }
+  .side-item.locked  { --ic: #818cf8; }
+  .side-item.duplicates { --ic: #f97316; }
+  .side-item.trash   { --ic: #94a3b8; }
+  .side-item.settings { --ic: #10b981; }
   .side-item b { margin-left: auto; font-weight: 500; font-size: 11px; opacity: .8; font-variant-numeric: tabular-nums; }
   .side-item.nest { padding-left: 26px; font-size: 14px; }
+  .album-thumb {
+    width: 18px; height: 18px; border-radius: 4px; flex: none;
+    object-fit: cover;
+  }
 
   /* storage widget, pinned to the bottom of the sidebar like the app */
   .storage {
@@ -289,6 +293,19 @@
     height: 100%;
     object-fit: cover;
   }
+
+  .browse-section { margin: 0 20px 22px; }
+  .browse-label { margin-bottom: 9px; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  .browse-folders { display: grid; grid-template-columns: repeat(2, minmax(180px, 244px)); gap: 9px; }
+  .browse-folder { display: flex; align-items: center; gap: 11px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 12px 14px; }
+  .browse-folder svg { width: 18px; height: 18px; color: #8b5cf6; flex: none; }
+  .browse-folder strong, .browse-album strong { display: block; font-size: 13px; font-weight: 600; }
+  .browse-folder small, .browse-album small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+  .browse-albums { display: grid; grid-template-columns: repeat(3, minmax(120px, 176px)); gap: 12px; }
+  .browse-album { overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+  .browse-album img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+  .browse-album span { display: block; padding: 9px 11px; }
+  .head-actions { display: flex; gap: 7px; }
 
   /* No rule on the year rail either — like the sidebar, it sits on the same
      surface as the grid rather than in a pane of its own. */
@@ -449,51 +466,59 @@
 
     <div class="shot-body">
       <aside class="side">
-        <div class="side-item on">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
-          Photos
+        <div class="side-item browse on">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><rect x="13" y="11" width="3" height="3" rx=".5"/><rect x="17" y="11" width="3" height="3" rx=".5"/></svg>
+          Browse
         </div>
-        <div class="side-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          Albums
-        </div>
-        <div class="side-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.5-4.4M8.2 13.2l7.5 4.4"/></svg>
-          Sharing
-        </div>
-        <div class="side-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-          Folders
-        </div>
-        <div class="side-item nest">
+        <div class="side-item nest folders">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           Travel <b>17</b>
         </div>
-        <div class="side-item">
+        <div class="side-item nest albums">
+          <img class="album-thumb" src="assets/demo-photos/01.webp" alt="" />
+          Summer 2026 <b>24</b>
+        </div>
+        <div class="side-item photos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>
+          Photos
+        </div>
+        <div class="side-item albums">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Albums
+        </div>
+        <div class="side-item folders">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Folders
+        </div>
+        <div class="side-item sharing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.5-4.4M8.2 13.2l7.5 4.4"/></svg>
+          Sharing
+        </div>
+        <div class="side-item places">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>
           Places
         </div>
-        <div class="side-item">
+        <div class="side-item people">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
           People &amp; Pets
         </div>
-        <div class="side-item">
+        <div class="side-item favorites">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6c0 4.8-7 9.4-7 9.4z"/></svg>
           Favorites
         </div>
-        <div class="side-item">
+        <div class="side-item locked">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
           Locked
         </div>
-        <div class="side-item">
+        <div class="side-item duplicates">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="13" height="13" rx="2"/><path d="M8 21h11a2 2 0 0 0 2-2V8"/></svg>
           Duplicates <b>2</b>
         </div>
-        <div class="side-item">
+        <div class="side-item trash">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/></svg>
           Trash
         </div>
-        <div class="side-item">
+        <div class="side-item settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14.4a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.3-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1.3z"/></svg>
           Settings
         </div>
@@ -507,34 +532,24 @@
 
       <div class="canvas">
         <div class="page-head">
-          <span class="t">Photos <span class="n">248 items</span></span>
-          <span class="sort">Sort by <b>Date taken</b></span>
+          <span class="t">Browse <span class="n">5 items</span></span>
+          <span class="head-actions"><span class="sort"><b>＋ New folder</b></span><span class="sort"><b>▦ New album</b></span></span>
         </div>
-
-        <p class="day">Aug 5, 2026</p>
-        <div class="tiles">
-          <img class="tile" src="assets/demo-photos/01.webp" alt="Golden retriever running on a beach" />
-          <img class="tile" src="assets/demo-photos/02.webp" alt="Tabby cat on a windowsill" />
-          <img class="tile" src="assets/demo-photos/03.webp" alt="Friends at an outdoor café" />
-          <img class="tile" src="assets/demo-photos/04.webp" alt="Parent and child hiking in the mountains" />
-          <img class="tile" src="assets/demo-photos/05.webp" alt="Colorful street market" />
+        <div class="browse-section">
+          <div class="browse-label">Folders</div>
+          <div class="browse-folders">
+            <div class="browse-folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span><strong>Travel</strong><small>3 albums · 127 items</small></span></div>
+            <div class="browse-folder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span><strong>Family</strong><small>2 folders · 84 items</small></span></div>
+          </div>
         </div>
-        <p class="day">Nov 21, 2025</p>
-        <div class="tiles">
-          <img class="tile" src="assets/demo-photos/06.webp" alt="Mountain lake" />
-          <img class="tile" src="assets/demo-photos/07.webp" alt="Wildflowers in a meadow" />
-          <img class="tile" src="assets/demo-photos/08.webp" alt="City skyline at blue hour" />
-          <img class="tile" src="assets/demo-photos/09.webp" alt="Cooking pasta" />
-          <img class="tile" src="assets/demo-photos/10.webp" alt="Sailboat on bright water" />
-          <img class="tile" src="assets/demo-photos/11.webp" alt="Snowy cabin" />
-          <img class="tile" src="assets/demo-photos/12.webp" alt="Cyclist on a country road" />
-          <img class="tile" src="assets/demo-photos/13.webp" alt="Dog and owner in autumn leaves" />
-          <img class="tile" src="assets/demo-photos/14.webp" alt="Family picnic in a park" />
-          <img class="tile" src="assets/demo-photos/15.webp" alt="Sunset over the sea" />
+        <div class="browse-section">
+          <div class="browse-label">Albums</div>
+          <div class="browse-albums">
+            <div class="browse-album"><img src="assets/demo-photos/01.webp" alt="Dog at the beach"/><span><strong>Summer 2026</strong><small>24 items</small></span></div>
+            <div class="browse-album"><img src="assets/demo-photos/03.webp" alt="Friends outdoors"/><span><strong>Friends</strong><small>18 items</small></span></div>
+            <div class="browse-album"><img src="assets/demo-photos/11.webp" alt="Snowy cabin"/><span><strong>Winter</strong><small>31 items</small></span></div>
+          </div>
         </div>
-      </div>
-      <div class="rail">
-        <div class="on">2026</div><div>2025</div><div>2024</div><div>2023</div><div>2020</div>
       </div>
     </div>
   </div>

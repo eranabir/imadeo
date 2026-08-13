@@ -31,6 +31,10 @@ export function AlbumsIcon(props: NavigationIconProps) {
   return <Glyph {...props}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Glyph>;
 }
 
+export function BrowseIcon(props: NavigationIconProps) {
+  return <Glyph {...props}><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><rect x="13" y="11" width="3" height="3" rx=".5" /><rect x="17" y="11" width="3" height="3" rx=".5" /></Glyph>;
+}
+
 export function FoldersIcon(props: NavigationIconProps) {
   return <Glyph {...props}><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Glyph>;
 }

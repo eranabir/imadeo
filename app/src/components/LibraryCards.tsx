@@ -18,6 +18,7 @@ import { AlbumCover } from './AlbumCover';
 
 interface FolderCardProps {
   folder: FolderNode;
+  basePath?: string;
   onDrop: (folderId: string, payload: DragPayload) => void;
   onContextMenu: (
     folder: Pick<FolderNode, 'id' | 'name' | 'isLocked'>,
@@ -25,7 +26,7 @@ interface FolderCardProps {
   ) => void;
 }
 
-export function FolderCard({ folder, onDrop, onContextMenu }: FolderCardProps) {
+export function FolderCard({ folder, basePath = '/folders', onDrop, onContextMenu }: FolderCardProps) {
   const { isOver, dropProps } = useDropTarget({
     effect: 'move',
     onDrop: (payload) => onDrop(folder.id, payload),
@@ -41,7 +42,7 @@ export function FolderCard({ folder, onDrop, onContextMenu }: FolderCardProps) {
 
   return (
     <Link
-      to={`/folders/${folder.id}`}
+      to={`${basePath}/${folder.id}`}
       draggable
       onDragStart={(event) =>
         startDrag(event, { kind: 'folder', ids: [folder.id], label: folder.name })
@@ -58,7 +59,7 @@ export function FolderCard({ folder, onDrop, onContextMenu }: FolderCardProps) {
       {folder.isLocked ? (
         <Lock size={18} className="pointer-events-none shrink-0 text-content-muted" />
       ) : (
-        <FolderOpen size={18} className="pointer-events-none shrink-0 text-primary" />
+        <FolderOpen size={18} className="pointer-events-none shrink-0 text-nav-folders" />
       )}
       <span className="pointer-events-none min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{folder.name}</span>
@@ -70,6 +71,7 @@ export function FolderCard({ folder, onDrop, onContextMenu }: FolderCardProps) {
 
 interface AlbumCardProps {
   album: Album;
+  basePath?: string;
   onDrop: (albumId: string, payload: DragPayload) => void;
   onContextMenu: (album: Pick<Album, 'id' | 'name'>, event: React.MouseEvent) => void;
   /** Extra line under the title, e.g. the folder it is filed in. */
@@ -80,6 +82,7 @@ interface AlbumCardProps {
 
 export function AlbumCard({
   album,
+  basePath = '/albums',
   onDrop,
   onContextMenu,
   meta,
@@ -108,7 +111,7 @@ export function AlbumCard({
     >
       {/* The link fills the card but ignores pointer events during a drag, so
           the drop target is the whole box rather than the strip below it. */}
-      <Link to={`/albums/${album.id}`} className="block">
+      <Link to={`${basePath}/${album.id}`} className="block">
         <span className="block aspect-[4/3] overflow-hidden bg-surface-sunken">
           <AlbumCover album={album} />
         </span>

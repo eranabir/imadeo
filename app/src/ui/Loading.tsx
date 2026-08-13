@@ -29,8 +29,8 @@ export function Opening() {
                 className="imadeo-opening-piece absolute block"
                 style={
                   {
-                    left: piece.left,
-                    top: piece.top,
+                    left: -piece.left,
+                    top: -piece.top,
                     '--opening-x': `${piece.x}px`,
                     '--opening-y': `${piece.y}px`,
                     '--opening-delay': `${piece.delay}ms`,

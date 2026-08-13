@@ -104,6 +104,67 @@ export class ShareService {
     }));
   }
 
+  /** Owned items that currently grant access to another account or a public link. */
+  async overview(userId: string) {
+    const [assetRows, albumRows, folderRows, links] = await Promise.all([
+      this.prisma.assetUser.findMany({
+        where: { asset: { ownerId: userId, deletedAt: null, visibility: { not: 'LOCKED' } } },
+        include: {
+          asset: { include: { exif: true } },
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.album.findMany({
+        where: { ownerId: userId, deletedAt: null, albumUsers: { some: {} } },
+        include: {
+          albumUsers: { include: { user: { select: { id: true, name: true, email: true } } } },
+          _count: { select: { assets: true } },
+          assets: {
+            where: { asset: { deletedAt: null } },
+            orderBy: { asset: { localDateTime: 'desc' } },
+            take: 8,
+            select: { assetId: true },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.folder.findMany({
+        where: { ownerId: userId, deletedAt: null, sharedWith: { some: {} } },
+        include: {
+          sharedWith: { include: { user: { select: { id: true, name: true, email: true } } } },
+          _count: { select: { assets: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.list(userId),
+    ]);
+
+    const assets = new Map<string, { asset: (typeof assetRows)[number]['asset']; recipients: (typeof assetRows)[number]['user'][] }>();
+    for (const row of assetRows) {
+      const item = assets.get(row.assetId) ?? { asset: row.asset, recipients: [] };
+      item.recipients.push(row.user);
+      assets.set(row.assetId, item);
+    }
+
+    return {
+      assets: [...assets.values()],
+      albums: albumRows.map(({ _count, assets: coverAssets, albumUsers, ...album }) => ({
+        ...album,
+        assetCount: _count.assets,
+        coverAssetId: album.thumbnailAssetId ?? coverAssets[0]?.assetId ?? null,
+        coverAssetIds: coverAssets.map((asset) => asset.assetId).slice(0, 4),
+        recipients: albumUsers.map((member) => ({ ...member.user, role: member.role })),
+      })),
+      folders: folderRows.map(({ _count, sharedWith, ...folder }) => ({
+        ...folder,
+        assetCount: _count.assets,
+        recipients: sharedWith.map((member) => member.user),
+      })),
+      links,
+    };
+  }
+
   async update(userId: string, id: string, dto: UpdateSharedLinkDto) {
     const link = await this.prisma.sharedLink.findFirst({ where: { id, userId } });
     if (!link) throw new NotFoundException('Share link not found');

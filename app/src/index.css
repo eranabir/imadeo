@@ -47,6 +47,7 @@
   --color-warning: oklch(62% 0.15 68);
   /* Sidebar destinations keep their identity even when selected. */
   --color-nav-photos: oklch(71.5% 0.143 215.221);
+  --color-nav-folders: oklch(62.7% 0.232 303.9);
 
   --radius-control: 0.625rem;
   --radius-panel: 1rem;
@@ -81,6 +82,7 @@
   --color-success: oklch(74% 0.13 160);
   --color-warning: oklch(80% 0.13 72);
   --color-nav-photos: oklch(71.5% 0.143 215.221);
+  --color-nav-folders: oklch(70.2% 0.183 304.8);
 
   --shadow-popover: 0 10px 38px -10px oklch(0% 0 0 / 0.6), 0 8px 12px -8px oklch(0% 0 0 / 0.5);
 }
@@ -161,6 +163,19 @@ body {
   50% { transform: translateY(-14px) scale(1.03); }
 }
 
+/* The mobile connection screen's wordmark wave: the brand colour travels one
+   letter at a time instead of flashing the whole title like a status light. */
+@keyframes imadeo-word-wave {
+  0%, 100% { color: var(--color-content); }
+  28% { color: var(--color-secondary); }
+  52% { color: var(--color-primary); }
+  76% { color: var(--color-secondary); }
+}
+
+.imadeo-word-wave {
+  animation: imadeo-word-wave 4.2s linear calc(var(--word-index) * 120ms) infinite;
+}
+
 /* The opening mark assembles from four corners, then keeps a restrained pulse
    and turn while a slow server is still starting — the same motion as mobile. */
 @keyframes imadeo-opening-piece {
@@ -175,8 +190,7 @@ body {
 
 @keyframes imadeo-opening-turn {
   0%, 16% { transform: rotate(0deg); }
-  65% { transform: rotate(360deg); }
-  66%, 100% { transform: rotate(0deg); }
+  65%, 100% { transform: rotate(360deg); }
 }
 
 .imadeo-opening-piece {
@@ -199,7 +213,8 @@ body {
   [style*='imadeo-pulse'],
   .imadeo-opening-piece,
   .imadeo-opening-breathe,
-  .imadeo-opening-turn {
+  .imadeo-opening-turn,
+  .imadeo-word-wave {
     animation: none !important;
   }
 }

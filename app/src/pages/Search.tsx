@@ -161,7 +161,7 @@ export function Search() {
               to={`/folders/${folder.id}`}
               className="flex items-center gap-2 rounded-panel border border-border-subtle bg-surface-raised px-3.5 py-2.5 text-sm transition hover:border-content-muted/50"
             >
-              <FolderIcon size={16} className="text-violet-500" />
+              <FolderIcon size={16} className="text-nav-folders" />
               {folder.name}
             </Link>
           ))}

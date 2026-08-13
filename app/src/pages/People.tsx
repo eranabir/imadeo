@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Check, Eye, EyeOff, Merge, PawPrint, Pencil, ScanFace, Star, Trash2, UserRound } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { Button, Chip, ConfirmDialog, EmptyState, Input, Menu, Progress, Tooltip } from '../ui';
@@ -52,8 +52,9 @@ export function People() {
   const { data: status, dataUpdatedAt: statusUpdatedAt } = useQuery({
     queryKey: ['people', 'status'],
     queryFn: async () => (await api.get<FaceStatus>('/people/status')).data,
-    // While a scan is running the pending count is what changes.
-    refetchInterval: (query) => (query.state.data?.pendingAssets ? 4000 : false),
+    // Uploads can start recognition after this page has already loaded. Keep
+    // watching even at zero or a fast background job is never observed.
+    refetchInterval: 4000,
   });
 
   /**
@@ -69,8 +70,21 @@ export function People() {
   const [scanning, setScanning] = useState(false);
   /** Ignore the stale zero from before this particular scan was submitted. */
   const [scanStartedAt, setScanStartedAt] = useState(0);
+  /**
+   * Uploads start recognition in the background too, without this page's Scan
+   * button being involved. Remember the outstanding count so finishing that
+   * work refreshes the cards and their photo counts just like a manual scan.
+   */
+  const previousPending = useRef<number | null>(null);
 
   useEffect(() => {
+    if (status) {
+      if (previousPending.current !== null && previousPending.current > 0 && status.pendingAssets === 0) {
+        void queryClient.invalidateQueries({ queryKey: ['people'] });
+      }
+      previousPending.current = status.pendingAssets;
+    }
+
     if (scanning && status && statusUpdatedAt >= scanStartedAt && status.pendingAssets === 0) {
       setScanning(false);
       void queryClient.invalidateQueries({ queryKey: ['people'] });
@@ -91,6 +105,10 @@ export function People() {
           params: { withHidden: showHidden, minFaces: 1, ...(kind === 'ALL' ? {} : { kind }) },
         })
       ).data,
+    // Recognition finishes independently of React Query. Polling this small
+    // summary prevents a newly recognised pet from sitting behind a stale
+    // card until the whole page is reloaded.
+    refetchInterval: 4000,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['people'] });

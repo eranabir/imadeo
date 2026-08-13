@@ -60,6 +60,10 @@ interface Props {
   onStartSelecting?: (id: string) => void;
   /** Something was changed from the viewer, so this list is stale. */
   onChanged?: () => void;
+  /** API pagination follows the native list's recycled cells. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   /**
    * Cuts the grid into days, with the date above each.
    *
@@ -97,6 +101,9 @@ export function AssetGrid({
   onToggleDay,
   onStartSelecting,
   onChanged,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   groupByDay = false,
 }: Props) {
   const selecting = (selected?.length ?? 0) > 0;
@@ -347,6 +354,8 @@ export function AssetGrid({
         {emptyExtra}
       </Empty>
     ),
+    onEndReached: hasMore && !loadingMore ? onLoadMore : undefined,
+    onEndReachedThreshold: 1.5,
   };
 
   if (groupByDay) {
@@ -465,6 +474,8 @@ export function AssetGrid({
         ) : undefined
       }
       renderItem={({ item, index }) => renderTile(item, index)}
+      onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
+      onEndReachedThreshold={1.5}
       ListEmptyComponent={
         !showEmptyState ? null : loading ? (
           // The shape of the grid that is arriving, not a spinner over a void.

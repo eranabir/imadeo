@@ -72,6 +72,12 @@ function App() {
     staleTime: 60_000,
   });
 
+  // Local visual preview for reviewing the opening animation without racing
+  // the normally fast session restore. It is never available in production.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('loading-preview')) {
+    return <Opening />;
+  }
+
   if (status === 'unknown' || !setupChecked) {
     return <Opening />;
   }
@@ -112,6 +118,9 @@ function App() {
         }
       >
         <Route path="/" element={<Timeline />} />
+        <Route path="/browse" element={<FolderView rootMode="browse" />} />
+        <Route path="/browse/folders/:folderId" element={<FolderView rootMode="browse" />} />
+        <Route path="/browse/albums/:albumId" element={<AlbumDetail rootMode="browse" />} />
         <Route path="/folders" element={<FolderView />} />
         <Route path="/folders/:folderId" element={<FolderView />} />
         <Route path="/albums" element={<Albums />} />

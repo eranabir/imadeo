@@ -17,6 +17,8 @@ import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
 import { FolderShareDialog } from '../components/FolderShareDialog';
+import { BrowseIcon } from '../components/NavigationIcons';
+import { VirtualGrid } from '../components/VirtualGrid';
 import { SelectionBar } from '../components/SelectionBar';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
@@ -34,7 +36,7 @@ import {
   Loading,
 } from '../ui';
 
-export function FolderView() {
+export function FolderView({ rootMode = 'folders' }: { rootMode?: 'browse' | 'folders' }) {
   const { user } = useAuth();
   const { folderId } = useParams();
   const navigate = useNavigate();
@@ -93,6 +95,8 @@ export function FolderView() {
 
   const shownFolders = (data?.folders ?? []).filter((f) => matches(f.name));
   const shownAlbums = (data?.albums ?? []).filter((a) => matches(a.name));
+  const showAlbums = Boolean(folderId) || rootMode === 'browse';
+  const visibleAlbums = showAlbums ? shownAlbums : [];
   const invalidate = () => queryClient.invalidateQueries();
   const onError = (e: unknown) => setError(errorMessage(e));
 
@@ -113,7 +117,7 @@ export function FolderView() {
     mutationFn: async () => (await api.delete(`/folders/${folderId}`)).data,
     onSuccess: () => {
       void invalidate();
-      navigate('/folders');
+      navigate(rootMode === 'browse' ? '/browse' : '/folders');
     },
     onError,
   });
@@ -133,20 +137,24 @@ export function FolderView() {
 
   const isEmpty =
     shownFolders.length === 0 &&
-    shownAlbums.length === 0 &&
+    visibleAlbums.length === 0 &&
     (!folderId || shownAssets.length === 0);
+  const visibleCount = shownFolders.length + visibleAlbums.length + (folderId ? shownAssets.length : 0);
+  const rootTitle = rootMode === 'browse' ? 'Browse' : 'Folders';
+  const folderBasePath = rootMode === 'browse' ? '/browse/folders' : '/folders';
+  const albumBasePath = rootMode === 'browse' ? '/browse/albums' : '/albums';
 
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <nav className="mb-1 flex flex-wrap items-center gap-1 text-xs text-content-muted">
-          <Link to="/folders" className="transition hover:text-content">
-            Folders
+          <Link to={rootMode === 'browse' ? '/browse' : '/folders'} className="transition hover:text-content">
+            {rootTitle}
           </Link>
           {data.breadcrumbs.map((crumb) => (
             <span key={crumb.id} className="flex items-center gap-1">
               <ChevronRight size={12} />
-              <Link to={`/folders/${crumb.id}`} className="transition hover:text-content">
+              <Link to={`${folderBasePath}/${crumb.id}`} className="transition hover:text-content">
                 {crumb.name}
               </Link>
             </span>
@@ -156,17 +164,17 @@ export function FolderView() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold tracking-tight">
-              {data.folder?.name ?? 'All folders'}
+              {data.folder?.name ?? rootTitle}
             </h1>
             {data.folder?.isLocked && <Lock size={15} className="text-content-muted" />}
             <span className="text-xs tabular-nums text-content-muted">
-              {data.pagination.total} {data.pagination.total === 1 ? 'item' : 'items'}
+              {visibleCount} {visibleCount === 1 ? 'item' : 'items'}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Input
-              placeholder="Search this folder…"
+              placeholder={folderId ? 'Search this folder…' : `Search ${rootTitle.toLowerCase()}…`}
               adornment={<Search size={14} />}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -186,7 +194,7 @@ export function FolderView() {
             {canManage && <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
               New folder
             </Button>}
-            {canManage && <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
+            {showAlbums && canManage && <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
               New album
             </Button>}
 
@@ -234,20 +242,25 @@ export function FolderView() {
       <div className="px-5 pb-24 pt-4">
         {shownFolders.length > 0 && (
           <Section title="Folders">
-            <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
-              {shownFolders.map((folder) => (
+            <VirtualGrid
+              items={shownFolders}
+              getKey={(folder) => folder.id}
+              minItemWidth={200}
+              itemHeight={58}
+              gap={8}
+              renderItem={(folder) => (
                 <FolderCard
-                  key={folder.id}
                   folder={folder}
+                  basePath={folderBasePath}
                   onDrop={actions.dropOnFolder}
                   onContextMenu={actions.onFolderContextMenu}
                 />
-              ))}
-            </div>
+              )}
+            />
           </Section>
         )}
 
-        {shownAlbums.length > 0 && (
+        {visibleAlbums.length > 0 && (
           <Section
             title="Albums"
             note={
@@ -256,16 +269,21 @@ export function FolderView() {
               </Link>
             }
           >
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
-              {shownAlbums.map((album) => (
+            <VirtualGrid
+              items={visibleAlbums}
+              getKey={(album) => album.id}
+              minItemWidth={200}
+              itemHeight={(width) => width * 0.75 + 63}
+              gap={12}
+              renderItem={(album) => (
                 <AlbumCard
-                  key={album.id}
                   album={album}
+                  basePath={albumBasePath}
                   onDrop={actions.dropOnAlbum}
                   onContextMenu={actions.onAlbumContextMenu}
                 />
-              ))}
-            </div>
+              )}
+            />
           </Section>
         )}
 
@@ -290,9 +308,9 @@ export function FolderView() {
 
         {isEmpty && (
           <EmptyState
-            icon={Folder}
-            title="This folder is empty"
-            description="Upload photos here, or create a sub-folder to keep things organised."
+            icon={!folderId && rootMode === 'browse' ? BrowseIcon : Folder}
+            title={folderId ? 'This folder is empty' : rootMode === 'browse' ? 'Nothing here yet' : 'No folders yet'}
+            description={folderId ? 'Upload photos here, or create a sub-folder to keep things organised.' : rootMode === 'browse' ? 'Create a folder or album to start organising your library.' : 'Create a folder to start organising your library.'}
             action={
               canManage ? (
               <div className="flex gap-2">
@@ -303,9 +321,11 @@ export function FolderView() {
                 >
                   New folder
                 </Button>
-                <Button icon={<LayoutGrid size={15} />} onClick={() => setDialog('album')}>
-                  New album
-                </Button>
+                {showAlbums && (
+                  <Button icon={<LayoutGrid size={15} />} onClick={() => setDialog('album')}>
+                    New album
+                  </Button>
+                )}
               </div>
               ) : undefined
             }

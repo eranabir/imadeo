@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FolderTree, Lock, Monitor, Moon, Sparkles, Sun, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Logo } from '../components/Logo';
+import { LogoLockup } from '../components/Logo';
 import { AppleMark, GoogleMark } from '../components/ProviderMarks';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../store/auth';
@@ -77,21 +77,15 @@ export function Login() {
     label: string,
     mark: React.ReactNode,
   ) => {
-    const enabled = providers?.[id] ?? false;
     return (
       <button
         key={id}
         type="button"
-        disabled={!enabled}
-        title={
-          enabled
-            ? `Continue with ${label}`
-            : `${label} sign-in has not been configured on this server`
-        }
+        title={`Continue with ${label}`}
         onClick={() => {
           window.location.href = `/api/auth/oauth/${id}/authorize`;
         }}
-        className="flex h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium transition hover:border-content-muted/50 hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border-subtle disabled:hover:bg-surface-raised"
+        className="flex h-11 flex-1 items-center justify-center gap-2.5 rounded-xl border border-border-subtle bg-surface-raised text-sm font-medium transition hover:border-content-muted/50 hover:bg-surface-sunken"
       >
         {mark}
         {label}
@@ -99,7 +93,7 @@ export function Login() {
     );
   };
 
-  const noProviders = providers && !providers.google && !providers.apple;
+  const hasProviders = providers?.google || providers?.apple;
 
   return (
     <div className="grid h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -122,7 +116,7 @@ export function Login() {
         <div className="mx-auto w-full max-w-sm fade-in">
           <div className="mb-8">
             <span className="mb-5 block">
-              <Logo size={48} />
+              <LogoLockup size={48} textSize={32} animated />
             </span>
             <h1 className="text-[26px] font-semibold tracking-tight">Welcome back</h1>
             <p className="mt-1 text-sm text-content-muted">
@@ -130,25 +124,22 @@ export function Login() {
             </p>
           </div>
 
-          <div className="flex gap-2.5">
-            {providerButton('google', 'Google', <GoogleMark />)}
-            {providerButton('apple', 'Apple', <AppleMark />)}
-          </div>
+          {hasProviders && (
+            <>
+              <div className="flex gap-2.5">
+                {providers.google && providerButton('google', 'Google', <GoogleMark />)}
+                {providers.apple && providerButton('apple', 'Apple', <AppleMark />)}
+              </div>
 
-          {noProviders && (
-            <p className="mt-2.5 text-[11px] leading-relaxed text-content-muted">
-              Social sign-in is switched off. An administrator can turn it on under{' '}
-              <span className="font-medium">Settings → Sign-in</span>.
-            </p>
+              <div className="my-6 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border-subtle" />
+                <span className="text-[11px] uppercase tracking-wider text-content-muted">
+                  or use your email
+                </span>
+                <span className="h-px flex-1 bg-border-subtle" />
+              </div>
+            </>
           )}
-
-          <div className="my-6 flex items-center gap-3">
-            <span className="h-px flex-1 bg-border-subtle" />
-            <span className="text-[11px] uppercase tracking-wider text-content-muted">
-              or use your email
-            </span>
-            <span className="h-px flex-1 bg-border-subtle" />
-          </div>
 
           <form onSubmit={submit} className="space-y-3">
             <Input
@@ -182,7 +173,7 @@ export function Login() {
               </p>
             )}
 
-            <Button type="submit" variant="primary" size="lg" block disabled={busy}>
+            <Button type="submit" variant="primary" size="lg" block detached disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
