@@ -250,6 +250,24 @@ export class AlbumService {
     return { owned, shared, notShared };
   }
 
+  async listTrash(userId: string) {
+    const albums = await this.prisma.album.findMany({
+      where: {
+        ownerId: userId,
+        deletedAt: { not: null },
+        OR: [{ folderId: null }, { folder: { deletedAt: null } }],
+      },
+      include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+      orderBy: { deletedAt: 'desc' },
+    });
+
+    return albums.map(({ _count, assets, ...album }) => ({
+      ...album,
+      assetCount: _count.assets,
+      ...pickCover(album.thumbnailAssetId, assets),
+    }));
+  }
+
   // -- writes ---------------------------------------------------------------
 
   async create(userId: string, dto: CreateAlbumDto) {
@@ -320,6 +338,26 @@ export class AlbumService {
     // Deleting an album never deletes the photos in it.
     await this.prisma.album.update({ where: { id: albumId }, data: { deletedAt: new Date() } });
     return { successful: true };
+  }
+
+  async restore(userId: string, albumId: string) {
+    const album = await this.prisma.album.findFirst({
+      where: { id: albumId, ownerId: userId, deletedAt: { not: null } },
+      include: { folder: { select: { deletedAt: true } } },
+    });
+    if (!album) throw new NotFoundException('Album not found in Trash');
+    if (album.folder?.deletedAt) {
+      throw new BadRequestException('Restore the containing folder instead');
+    }
+    return this.prisma.album.update({ where: { id: albumId }, data: { deletedAt: null } });
+  }
+
+  async deletePermanently(userId: string, albumId: string) {
+    const { count } = await this.prisma.album.deleteMany({
+      where: { id: albumId, ownerId: userId, deletedAt: { not: null } },
+    });
+    if (!count) throw new NotFoundException('Album not found in Trash');
+    return { deleted: count };
   }
 
   // -- album contents -------------------------------------------------------

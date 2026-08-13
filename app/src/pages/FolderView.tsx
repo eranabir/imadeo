@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
+  CheckCheck,
   Folder,
   FolderPlus,
   LayoutGrid,
@@ -55,13 +56,15 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const [shareOpen, setShareOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
+  const { selected, toggle, selectRange, setAnchor, clear, setSelected } = useSelection<Asset>();
   const [viewing, setViewing] = useState<Asset | null>(null);
 
   const actions = useLibraryActions({
     onShowDetails: setViewing,
     onError: setError,
     selectedIds: [...selected],
+    onFolderConverted: (album) =>
+      navigate(`${rootMode === 'browse' ? '/browse/albums' : '/albums'}/${album.id}`),
   });
 
   const afterBulk = () => {
@@ -79,6 +82,13 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const trashSelected = useMutation({
     mutationFn: async (ids: string[]) => (await api.post('/assets/trash', { ids })).data,
     onSuccess: afterBulk,
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  const selectAllPhotos = useMutation({
+    mutationFn: async () =>
+      (await api.get<{ ids: string[] }>(`/folders/${folderId}/assets/ids`)).data.ids,
+    onSuccess: (ids) => setSelected(new Set(ids)),
     onError: (e) => setError(errorMessage(e)),
   });
 
@@ -142,6 +152,12 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
 
   const shownAssets = (data?.assets ?? []).filter((asset) => matches(asset.originalFileName));
   const canManage = !data.folder || data.folder.ownerId === user?.id;
+  const allFolderPhotosSelected =
+    data.pagination.total > 0 &&
+    selected.size === data.pagination.total &&
+    shownAssets.every((asset) => selected.has(asset.id));
+  const canConvertFolder =
+    data.pagination.total > 0 && data.folders.length === 0 && data.albums.length === 0;
 
   const isEmpty =
     shownFolders.length === 0 &&
@@ -201,14 +217,25 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
               }
             />
 
-            {canManage && <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
+            {selected.size === 0 && canManage && <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
               New folder
             </Button>}
-            {showAlbums && canManage && <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
+            {selected.size === 0 && showAlbums && canManage && <Button size="sm" icon={<LayoutGrid size={14} />} onClick={() => setDialog('album')}>
               New album
             </Button>}
 
-            {data.folder && canManage && (
+            {folderId && canManage && data.pagination.total > 0 && (
+              <Button
+                size="sm"
+                icon={<CheckCheck size={14} />}
+                disabled={selectAllPhotos.isPending}
+                onClick={() => (allFolderPhotosSelected ? clear() : selectAllPhotos.mutate())}
+              >
+                {allFolderPhotosSelected ? 'Deselect all photos' : 'Select all photos'}
+              </Button>
+            )}
+
+            {selected.size === 0 && data.folder && canManage && (
               <>
                 <Tooltip label="Share folder">
                   <IconButton label="Share folder" variant="secondary" size="sm" round={false} onClick={() => setShareOpen(true)}>
@@ -226,6 +253,19 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
                     <Pencil size={14} />
                   </IconButton>
                 </Tooltip>
+                {canConvertFolder && (
+                  <Tooltip label="Convert to album">
+                    <IconButton
+                      label="Convert to album"
+                      variant="secondary"
+                      size="sm"
+                      round={false}
+                      onClick={() => actions.onConvertFolder(data.folder!)}
+                    >
+                      <LayoutGrid size={14} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip label="Delete folder">
                   <IconButton
                     label="Delete folder"
@@ -410,7 +450,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
       <ConfirmDialog
         open={dialog === 'delete'}
         title={`Delete “${data.folder?.name ?? ''}”?`}
-        description="Sub-folders go with it and the photos inside move to the trash, where you can restore them for 30 days."
+        description="The folder, its sub-folders, albums and photos move to Trash and can be restored together for 30 days."
         confirmLabel="Delete folder"
         destructive
         onConfirm={() => remove.mutate()}

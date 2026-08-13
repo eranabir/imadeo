@@ -34,6 +34,11 @@ export class AlbumController {
     return this.albumService.statistics(userId);
   }
 
+  @Get('trash')
+  trash(@AuthedUserId() userId: string) {
+    return this.albumService.listTrash(userId);
+  }
+
   @Post()
   create(@AuthedUserId() userId: string, @Body() dto: CreateAlbumDto) {
     return this.albumService.create(userId, dto);
@@ -58,6 +63,16 @@ export class AlbumController {
   @ApiOperation({ summary: 'Delete an album. The photos inside are not deleted.' })
   remove(@Authed() auth: AuthDto, @Param('id') id: string) {
     return this.albumService.remove(auth, id);
+  }
+
+  @Post(':id/restore')
+  restore(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.albumService.restore(userId, id);
+  }
+
+  @Delete(':id/permanent')
+  deletePermanently(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.albumService.deletePermanently(userId, id);
   }
 
   @Auth({ sharedLink: true })

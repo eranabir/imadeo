@@ -346,6 +346,19 @@ export class FolderService {
       }
     }
 
+    // Folder names are unique even after a soft delete. Reusing the same name
+    // therefore means reviving that exact location; this also lets a repeated
+    // directory upload rebuild its path without hitting the database index.
+    const deleted = await this.prisma.folder.findFirst({
+      where: {
+        ownerId: userId,
+        parentId: parent?.id ?? null,
+        name,
+        deletedAt: { not: null },
+      },
+    });
+    if (deleted) return this.restore(userId, deleted.id);
+
     await this.assertNameFree(userId, dto.parentId ?? null, name);
 
     // The path contains the folder's own id, which only exists after the insert,
@@ -386,6 +399,77 @@ export class FolderService {
     return this.prisma.folder.update({
       where: { id },
       data: { name: dto.name, color: dto.color, icon: dto.icon, sortOrder: dto.sortOrder },
+    });
+  }
+
+  /**
+   * Replaces one leaf folder with an album in the same parent.
+   *
+   * Albums cannot contain structural children, so conversion is deliberately
+   * limited to a folder whose only contents are direct photos. Everything is
+   * changed in one transaction so a failed conversion leaves the folder intact.
+   */
+  async convertToAlbum(userId: string, id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const folder = await tx.folder.findFirst({
+        where: { id, ownerId: userId, deletedAt: null },
+      });
+      if (!folder) throw new NotFoundException('Folder not found');
+
+      const [childFolder, childAlbum, share] = await Promise.all([
+        tx.folder.findFirst({
+          where: { ownerId: userId, parentId: id, deletedAt: null },
+          select: { id: true },
+        }),
+        tx.album.findFirst({
+          where: { ownerId: userId, folderId: id, deletedAt: null },
+          select: { id: true },
+        }),
+        tx.folderUser.findFirst({ where: { folderId: id }, select: { userId: true } }),
+      ]);
+
+      if (childFolder || childAlbum) {
+        throw new BadRequestException(
+          'Move or delete the sub-folders and albums inside this folder before converting it',
+        );
+      }
+      if (share) {
+        throw new BadRequestException('Stop sharing this folder before converting it to an album');
+      }
+
+      const assets = await tx.asset.findMany({
+        where: { ownerId: userId, folderId: id, deletedAt: null },
+        select: { id: true },
+        orderBy: [{ localDateTime: 'desc' }, { id: 'desc' }],
+      });
+      if (assets.length === 0) {
+        throw new BadRequestException('Only a folder containing photos can be converted to an album');
+      }
+
+      const album = await tx.album.create({
+        data: {
+          ownerId: userId,
+          folderId: folder.parentId,
+          name: folder.name,
+          isLocked: folder.isLocked,
+          ...(assets.length > 0 && {
+            assets: {
+              create: assets.map((asset) => ({ assetId: asset.id, addedById: userId })),
+            },
+          }),
+        },
+      });
+
+      // The album replaces the folder in Browse. Keep its photos unfiled rather
+      // than moving them beside the album in the parent folder; they remain in
+      // the main Photos timeline and are reached structurally through the album.
+      await tx.asset.updateMany({
+        where: { ownerId: userId, folderId: id },
+        data: { folderId: null },
+      });
+      await tx.folder.update({ where: { id }, data: { deletedAt: new Date() } });
+
+      return { ...album, assetCount: assets.length };
     });
   }
 
@@ -479,11 +563,21 @@ export class FolderService {
         });
       }
 
-      // Albums inside the folder survive; they just become loose.
-      await tx.album.updateMany({
-        where: { ownerId: userId, folderId: { in: ids } },
-        data: { folderId: null },
-      });
+      if (options.keepAssets) {
+        // Explicitly keeping contents means both loose photos and albums move
+        // to the parent level rather than entering Trash with the folder.
+        await tx.album.updateMany({
+          where: { ownerId: userId, folderId: { in: ids }, deletedAt: null },
+          data: { folderId: null },
+        });
+      } else {
+        // Keep folderId intact: it is the information needed to reconstruct
+        // the complete hierarchy when the folder is restored.
+        await tx.album.updateMany({
+          where: { ownerId: userId, folderId: { in: ids }, deletedAt: null },
+          data: { deletedAt: now },
+        });
+      }
 
       await tx.folder.updateMany({ where: { id: { in: ids } }, data: { deletedAt: now } });
 
@@ -494,22 +588,127 @@ export class FolderService {
   async restore(userId: string, id: string) {
     const folder = await this.prisma.folder.findFirst({ where: { id, ownerId: userId } });
     if (!folder) throw new NotFoundException('Folder not found');
+    if (!folder.deletedAt) return folder;
+
+    const deletedAt = folder.deletedAt;
+    const batch = await this.prisma.folder.findMany({
+      where: { ownerId: userId, deletedAt },
+      orderBy: { depth: 'asc' },
+    });
+    // If a child is selected in Trash, restore the top of the hierarchy that
+    // was removed in the same delete operation.
+    const root = batch.find((candidate) => folder.path.startsWith(candidate.path)) ?? folder;
+    const subtree = batch.filter((candidate) => candidate.path.startsWith(root.path));
+    const folderIds = subtree.map((candidate) => candidate.id);
 
     // Restoring a child of a still-deleted parent would leave it unreachable.
-    if (folder.parentId) {
+    if (root.parentId) {
       const parent = await this.prisma.folder.findFirst({
-        where: { id: folder.parentId, ownerId: userId, deletedAt: null },
+        where: { id: root.parentId, ownerId: userId, deletedAt: null },
       });
       if (!parent) {
         throw new BadRequestException('Restore the parent folder first');
       }
     }
 
-    await this.prisma.folder.updateMany({
-      where: { ownerId: userId, path: { startsWith: folder.path } },
-      data: { deletedAt: null },
+    const assetRows = await this.prisma.asset.findMany({
+      where: { ownerId: userId, folderId: { in: folderIds }, deletedAt },
+      select: { id: true },
     });
-    return this.prisma.folder.findUniqueOrThrow({ where: { id } });
+
+    const [restoredAlbums, restoredAssets, restoredFolders] = await this.prisma.$transaction([
+      this.prisma.album.updateMany({
+        where: { ownerId: userId, folderId: { in: folderIds }, deletedAt },
+        data: { deletedAt: null },
+      }),
+      this.prisma.asset.updateMany({
+        where: { ownerId: userId, folderId: { in: folderIds }, deletedAt },
+        data: { deletedAt: null, status: 'ACTIVE' },
+      }),
+      this.prisma.folder.updateMany({
+        where: { id: { in: folderIds }, ownerId: userId, deletedAt },
+        data: { deletedAt: null },
+      }),
+    ]);
+
+    const restored = await this.prisma.folder.findUniqueOrThrow({ where: { id: root.id } });
+    return {
+      ...restored,
+      restoredFolders: restoredFolders.count,
+      restoredAlbums: restoredAlbums.count,
+      restoredAssets: restoredAssets.count,
+      restoredAssetIds: assetRows.map((asset) => asset.id),
+    };
+  }
+
+  async listTrash(userId: string) {
+    const deleted = await this.prisma.folder.findMany({
+      where: { ownerId: userId, deletedAt: { not: null } },
+      orderBy: { deletedAt: 'desc' },
+    });
+
+    const roots = deleted.filter(
+      (folder) =>
+        !deleted.some(
+          (candidate) =>
+            candidate.id !== folder.id &&
+            candidate.deletedAt?.getTime() === folder.deletedAt?.getTime() &&
+            folder.path.startsWith(candidate.path),
+        ),
+    );
+
+    return Promise.all(
+      roots.map(async (folder) => {
+        const folderIds = deleted
+          .filter(
+            (candidate) =>
+              candidate.deletedAt?.getTime() === folder.deletedAt?.getTime() &&
+              candidate.path.startsWith(folder.path),
+          )
+          .map((candidate) => candidate.id);
+        const [assetCount, albumCount] = await Promise.all([
+          this.prisma.asset.count({
+            where: { ownerId: userId, folderId: { in: folderIds }, deletedAt: folder.deletedAt },
+          }),
+          this.prisma.album.count({
+            where: { ownerId: userId, folderId: { in: folderIds }, deletedAt: folder.deletedAt },
+          }),
+        ]);
+        return {
+          id: folder.id,
+          name: folder.name,
+          depth: folder.depth,
+          deletedAt: folder.deletedAt,
+          folderCount: folderIds.length,
+          albumCount,
+          assetCount,
+        };
+      }),
+    );
+  }
+
+  async deletePermanently(userId: string, id: string) {
+    const folder = await this.prisma.folder.findFirst({
+      where: { id, ownerId: userId, deletedAt: { not: null } },
+    });
+    if (!folder) throw new NotFoundException('Folder not found in Trash');
+
+    const batch = await this.prisma.folder.findMany({
+      where: { ownerId: userId, deletedAt: folder.deletedAt },
+      orderBy: { depth: 'asc' },
+    });
+    const root = batch.find((candidate) => folder.path.startsWith(candidate.path)) ?? folder;
+    const folderIds = batch
+      .filter((candidate) => candidate.path.startsWith(root.path))
+      .map((candidate) => candidate.id);
+
+    const [albums, folders] = await this.prisma.$transaction([
+      this.prisma.album.deleteMany({
+        where: { ownerId: userId, folderId: { in: folderIds }, deletedAt: { not: null } },
+      }),
+      this.prisma.folder.deleteMany({ where: { id: { in: folderIds }, ownerId: userId } }),
+    ]);
+    return { deletedFolders: folders.count, deletedAlbums: albums.count };
   }
 
   // -- assets in folders ----------------------------------------------------
@@ -533,6 +732,16 @@ export class FolderService {
       data: { folderId: null },
     });
     return { removed: count };
+  }
+
+  async getAssetIds(userId: string, folderId: string) {
+    await this.getOwnedById(userId, folderId);
+    const assets = await this.prisma.asset.findMany({
+      where: { ownerId: userId, folderId, deletedAt: null },
+      select: { id: true },
+      orderBy: [{ localDateTime: 'desc' }, { id: 'desc' }],
+    });
+    return { ids: assets.map((asset) => asset.id) };
   }
 
   // -- sharing --------------------------------------------------------------

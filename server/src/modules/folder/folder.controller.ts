@@ -41,6 +41,12 @@ export class FolderController {
     return this.folderService.getContents(userId, null, query);
   }
 
+  @Get('trash')
+  @ApiOperation({ summary: 'Deleted folder trees that can be restored' })
+  trash(@AuthedUserId() userId: string) {
+    return this.folderService.listTrash(userId);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a folder, optionally inside another folder' })
   create(@AuthedUserId() userId: string, @Body() dto: CreateFolderDto) {
@@ -76,6 +82,12 @@ export class FolderController {
     @Param('userId') recipientId: string,
   ) {
     return this.folderService.removeShare(userId, id, recipientId);
+  }
+
+  @Post(':id/convert-to-album')
+  @ApiOperation({ summary: 'Replace a leaf folder with an album containing its direct photos' })
+  convertToAlbum(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.folderService.convertToAlbum(userId, id);
   }
 
   @Get(':id')
@@ -128,6 +140,12 @@ export class FolderController {
     return this.folderService.restore(userId, id);
   }
 
+  @Delete(':id/permanent')
+  @ApiOperation({ summary: 'Permanently remove a folder tree from Trash' })
+  deletePermanently(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.folderService.deletePermanently(userId, id);
+  }
+
   @Put(':id/assets')
   @ApiOperation({ summary: 'Move assets into this folder' })
   addAssets(
@@ -136,6 +154,12 @@ export class FolderController {
     @Body() dto: FolderAssetsDto,
   ) {
     return this.folderService.addAssets(userId, id, dto.assetIds);
+  }
+
+  @Get(':id/assets/ids')
+  @ApiOperation({ summary: 'Every live photo id directly inside this folder' })
+  assetIds(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.folderService.getAssetIds(userId, id);
   }
 
   @Delete(':id/assets')

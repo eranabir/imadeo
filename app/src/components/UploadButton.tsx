@@ -225,16 +225,24 @@ export function UploadButton({
         });
 
         if (data.status === 'duplicate') {
-          duplicates += 1;
           if (albumId) {
             // A duplicate means the bytes already exist in Photos, not that
             // the existing asset is already in this album. Link it instead of
             // asking the user to create another physical copy.
             await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
+            created += 1;
           } else {
+            duplicates += 1;
             skipped.push(candidate);
           }
-        } else created += 1;
+        } else {
+          // A restored/organised asset already has bytes on disk, but it was
+          // still added to the destination the user chose.
+          if (albumId && data.status !== 'created') {
+            await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
+          }
+          created += 1;
+        }
       } catch (error) {
         if (!cancelled.current) {
           failed += 1;

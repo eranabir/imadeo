@@ -71,32 +71,65 @@ export class AssetService {
    *
    * The checksum is the contract that makes re-running a phone backup safe: the
    * same bytes from the same owner can only ever produce one asset, so an
-   * interrupted upload can simply be retried.
-   */
+  * interrupted upload can simply be retried.
+  */
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
-    await this.users.assertQuota(userId, file.size);
-
     const checksum = await this.hashFile(file.path);
 
     // Skipped entirely when the caller has asked for a second copy on purpose.
     const existing = dto.allowDuplicate
-      ? null
-      : await this.prisma.asset.findFirst({
-          where: { ownerId: userId, checksum },
-          select: { id: true, deletedAt: true },
+        ? null
+        : await this.prisma.asset.findFirst({
+            where: { ownerId: userId, checksum },
+          select: {
+            id: true,
+            deletedAt: true,
+            folderId: true,
+            folder: { select: { deletedAt: true } },
+          },
         });
 
     if (existing) {
-      // The bytes are already here; drop the temporary copy and tell the client.
+      // The bytes are already here, but the requested destination still
+      // matters. Re-uploading a deleted directory must rebuild its folder tree
+      // instead of restoring assets underneath the old, deleted folder.
       await this.storage.remove(file.path);
-      if (existing.deletedAt) {
-        // Re-uploading something the user trashed should bring it back rather
-        // than silently doing nothing.
-        await this.restore(userId, [existing.id]);
-        return { id: existing.id, status: 'restored' as const };
+
+      const hasFolderDestination = Boolean(dto.folderId || dto.relativePath);
+      const destinationFolderId = hasFolderDestination
+        ? await this.resolveFolder(userId, dto)
+        : undefined;
+      const wasOrphaned = Boolean(existing.folder?.deletedAt);
+      const folderChanged =
+        destinationFolderId !== undefined && destinationFolderId !== existing.folderId;
+
+      if (existing.deletedAt || wasOrphaned || folderChanged) {
+        await this.prisma.asset.update({
+          where: { id: existing.id },
+          data: {
+            deletedAt: null,
+            status: 'ACTIVE',
+            // With no explicit destination, an asset restored from a deleted
+            // folder becomes loose rather than remaining invisible there.
+            folderId:
+              destinationFolderId !== undefined
+                ? destinationFolderId
+                : wasOrphaned
+                  ? null
+                  : undefined,
+          },
+        });
+        if (existing.deletedAt) {
+          await this.subjects.refreshThumbnailsForAssets([existing.id]);
+          return { id: existing.id, status: 'restored' as const };
+        }
+        return { id: existing.id, status: 'organized' as const };
       }
+
       return { id: existing.id, status: 'duplicate' as const };
     }
+
+    await this.users.assertQuota(userId, file.size);
 
     const type = this.detectType(file.originalname, file.mimetype);
     const fileCreatedAt = dto.fileCreatedAt ? new Date(dto.fileCreatedAt) : new Date();
@@ -183,7 +216,11 @@ export class AssetService {
         return folder?.id ?? dto.folderId ?? null;
       }
     }
-    return dto.folderId ?? null;
+    if (!dto.folderId) return null;
+
+    const folder = await this.folders.getById(userId, dto.folderId);
+    if (folder.shared) throw new ForbiddenException('Shared folders are read-only');
+    return folder.id;
   }
 
   private hashFile(path: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -965,30 +1002,69 @@ export class AssetService {
   async restore(userId: string, ids: string[]) {
     const assets = await this.prisma.asset.findMany({
       where: { id: { in: ids }, ownerId: userId, deletedAt: { not: null } },
-      select: { id: true },
+      select: {
+        id: true,
+        folderId: true,
+        folder: { select: { deletedAt: true } },
+      },
     });
-    const affectedIds = assets.map((asset) => asset.id);
-    const { count } = await this.prisma.asset.updateMany({
-      where: { id: { in: affectedIds } },
+    const restoredFromFolders: string[] = [];
+    const deletedFolderIds = [
+      ...new Set(
+        assets
+          .filter((asset) => asset.folder?.deletedAt && asset.folderId)
+          .map((asset) => asset.folderId!),
+      ),
+    ];
+    for (const folderId of deletedFolderIds) {
+      const restored = await this.folders.restore(userId, folderId);
+      if ('restoredAssetIds' in restored) restoredFromFolders.push(...restored.restoredAssetIds);
+    }
+
+    const affectedIds = [...new Set([...assets.map((asset) => asset.id), ...restoredFromFolders])];
+    await this.prisma.asset.updateMany({
+      where: { id: { in: affectedIds }, deletedAt: { not: null } },
       data: { deletedAt: null, status: 'ACTIVE' },
     });
     await this.subjects.refreshThumbnailsForAssets(affectedIds);
-    return { restored: count };
+    return { restored: affectedIds.length };
   }
 
   async restoreAll(userId: string) {
-    const { count } = await this.prisma.asset.updateMany({
+    const assets = await this.prisma.asset.findMany({
+      where: { ownerId: userId, deletedAt: { not: null } },
+      select: { id: true, folderId: true, folder: { select: { deletedAt: true } } },
+    });
+    const deletedFolderIds = [
+      ...new Set(
+        assets
+          .filter((asset) => asset.folder?.deletedAt && asset.folderId)
+          .map((asset) => asset.folderId!),
+      ),
+    ];
+    for (const folderId of deletedFolderIds) await this.folders.restore(userId, folderId);
+
+    await this.prisma.asset.updateMany({
       where: { ownerId: userId, deletedAt: { not: null } },
       data: { deletedAt: null, status: 'ACTIVE' },
     });
-    return { restored: count };
+    const affectedIds = assets.map((asset) => asset.id);
+    await this.subjects.refreshThumbnailsForAssets(affectedIds);
+    return { restored: affectedIds.length };
   }
 
   listTrash(userId: string, page = 1, size = 250) {
     const retentionDays = this.config.get('trash.retentionDays', { infer: true });
     return this.prisma.asset
       .findMany({
-        where: { ownerId: userId, deletedAt: { not: null } },
+        // Photos removed as part of a folder deletion are represented by the
+        // single folder card in Trash. Only independently deleted photos are
+        // listed as individual items.
+        where: {
+          ownerId: userId,
+          deletedAt: { not: null },
+          OR: [{ folderId: null }, { folder: { deletedAt: null } }],
+        },
         include: { exif: true },
         orderBy: { deletedAt: 'desc' },
         skip: (page - 1) * size,

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { FolderOpen, LayoutGrid, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { useLibraryActions } from '../components/useLibraryActions';
@@ -7,8 +7,21 @@ import { api, errorMessage } from '../lib/api';
 import { useSelection } from '../lib/useSelection';
 import { formatDate } from '../lib/format';
 import { useAuth } from '../store/auth';
-import type { Asset } from '../types';
+import type { Album, Asset } from '../types';
 import { Button, ConfirmDialog, EmptyState } from '../ui';
+
+interface TrashedFolder {
+  id: string;
+  name: string;
+  depth: number;
+  folderCount: number;
+  albumCount: number;
+  assetCount: number;
+}
+
+interface TrashedAlbum extends Album {
+  deletedAt: string;
+}
 
 export function TrashPage() {
   const { user } = useAuth();
@@ -22,6 +35,14 @@ export function TrashPage() {
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['assets', 'trash'],
     queryFn: async () => (await api.get<Asset[]>('/assets/trash')).data,
+  });
+  const { data: folders = [], isLoading: foldersLoading } = useQuery({
+    queryKey: ['folders', 'trash'],
+    queryFn: async () => (await api.get<TrashedFolder[]>('/folders/trash')).data,
+  });
+  const { data: albums = [], isLoading: albumsLoading } = useQuery({
+    queryKey: ['albums', 'trash'],
+    queryFn: async () => (await api.get<TrashedAlbum[]>('/albums/trash')).data,
   });
 
   const afterChange = () => {
@@ -37,7 +58,27 @@ export function TrashPage() {
   });
 
   const restoreAll = useMutation({
-    mutationFn: async () => (await api.post('/assets/trash/restore-all')).data,
+    mutationFn: async () => {
+      // Parent folder trees first; independently deleted albums and loose
+      // photos can then be restored without pointing at missing structure.
+      for (const folder of [...folders].sort((a, b) => a.depth - b.depth)) {
+        await api.post(`/folders/${folder.id}/restore`);
+      }
+      await Promise.all(albums.map((album) => api.post(`/albums/${album.id}/restore`)));
+      return (await api.post('/assets/trash/restore-all')).data;
+    },
+    onSuccess: afterChange,
+    onError,
+  });
+
+  const restoreFolder = useMutation({
+    mutationFn: async (id: string) => (await api.post(`/folders/${id}/restore`)).data,
+    onSuccess: afterChange,
+    onError,
+  });
+
+  const restoreAlbum = useMutation({
+    mutationFn: async (id: string) => (await api.post(`/albums/${id}/restore`)).data,
     onSuccess: afterChange,
     onError,
   });
@@ -50,10 +91,20 @@ export function TrashPage() {
   });
 
   const emptyTrash = useMutation({
-    mutationFn: async () => (await api.post('/assets/trash/empty')).data,
+    mutationFn: async () => {
+      await api.post('/assets/trash/empty');
+      await Promise.all(albums.map((album) => api.delete(`/albums/${album.id}/permanent`)));
+      for (const folder of [...folders].sort((a, b) => b.depth - a.depth)) {
+        await api.delete(`/folders/${folder.id}/permanent`);
+      }
+    },
     onSuccess: afterChange,
     onError,
   });
+
+  const structureCount = folders.length + albums.length;
+  const totalCount = structureCount + assets.length;
+  const loading = isLoading || foldersLoading || albumsLoading;
 
   return (
     <div className="min-h-full">
@@ -61,15 +112,15 @@ export function TrashPage() {
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Trash</h1>
           <span className="text-xs text-content-muted">
-            {isLoading
+            {loading
               ? ''
-              : assets.length === 0
+              : totalCount === 0
                 ? 'Empty'
-                : `${assets.length} items · removed automatically after 30 days`}
+                : `${totalCount} items · removed automatically after 30 days`}
           </span>
         </div>
 
-        {assets.length > 0 && (
+        {totalCount > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             {selected.size > 0 ? (
               <>
@@ -118,13 +169,65 @@ export function TrashPage() {
         </p>
       )}
 
-      {assets.length === 0 && !isLoading ? (
+      {structureCount > 0 && (
+        <section className="mx-5 mt-4 rounded-panel border border-border-subtle bg-surface-raised p-3">
+          <h2 className="mb-2 text-sm font-semibold">Folders and albums</h2>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {folders.map((folder) => (
+              <div
+                key={folder.id}
+                className="flex items-center gap-3 rounded-control border border-border-subtle bg-surface px-3 py-2.5"
+              >
+                <FolderOpen size={18} className="shrink-0 text-nav-folders" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{folder.name}</span>
+                  <span className="block text-xs text-content-muted">
+                    {folder.folderCount} {folder.folderCount === 1 ? 'folder' : 'folders'} ·{' '}
+                    {folder.albumCount} {folder.albumCount === 1 ? 'album' : 'albums'} ·{' '}
+                    {folder.assetCount} items
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  icon={<RotateCcw size={13} />}
+                  disabled={restoreFolder.isPending}
+                  onClick={() => restoreFolder.mutate(folder.id)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+            {albums.map((album) => (
+              <div
+                key={album.id}
+                className="flex items-center gap-3 rounded-control border border-border-subtle bg-surface px-3 py-2.5"
+              >
+                <LayoutGrid size={18} className="shrink-0 text-nav-albums" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{album.name}</span>
+                  <span className="block text-xs text-content-muted">{album.assetCount} items</span>
+                </span>
+                <Button
+                  size="sm"
+                  icon={<RotateCcw size={13} />}
+                  disabled={restoreAlbum.isPending}
+                  onClick={() => restoreAlbum.mutate(album.id)}
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {totalCount === 0 && !loading ? (
         <EmptyState
           icon={Trash2}
           title="The trash is empty"
-          description="Deleted photos wait here for 30 days before they are removed for good."
+          description="Deleted folders, albums and photos wait here for 30 days before they are removed for good."
         />
-      ) : (
+      ) : assets.length > 0 ? (
         <div className="px-2 pb-24 pt-3">
           <p className="mb-3 px-3 text-xs text-content-muted">
             Click to select, or right-click a photo for more.
@@ -142,7 +245,7 @@ export function TrashPage() {
             onContextMenu={actions.onAssetContextMenu}
           />
         </div>
-      )}
+      ) : null}
 
       {actions.overlays}
 
@@ -159,7 +262,7 @@ export function TrashPage() {
       <ConfirmDialog
         open={confirm === 'all'}
         title="Empty the trash?"
-        description={`All ${assets.length} items are removed from disk. This cannot be undone.`}
+        description={`All ${totalCount} items are removed permanently. This cannot be undone.`}
         confirmLabel="Empty trash"
         destructive
         onConfirm={() => emptyTrash.mutate()}

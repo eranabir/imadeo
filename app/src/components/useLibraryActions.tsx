@@ -36,9 +36,12 @@ import { MoveDialog } from './MoveDialog';
 import { ShareDialog } from './ShareDialog';
 import { VaultDialog } from './VaultGate';
 
+type FolderActionTarget = Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'> &
+  Partial<Pick<FolderNode, 'assetCount' | 'albumCount' | 'childCount' | 'children'>>;
+
 type Target =
   | { kind: 'assets'; asset: Asset; ids: string[] }
-  | { kind: 'folder'; folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'> }
+  | { kind: 'folder'; folder: FolderActionTarget }
   | { kind: 'album'; album: Pick<Album, 'id' | 'name'> };
 
 interface Options {
@@ -54,6 +57,7 @@ interface Options {
    */
   extraAssetItems?: (asset: Asset, ids: string[]) => MenuItem[];
   onError?: (message: string) => void;
+  onFolderConverted?: (album: Album) => void;
 }
 
 /**
@@ -69,6 +73,7 @@ export function useLibraryActions({
   selectedIds,
   extraAssetItems,
   onError,
+  onFolderConverted,
 }: Options = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -82,6 +87,9 @@ export function useLibraryActions({
   const [sharingAlbum, setSharingAlbum] = useState<Extract<Target, { kind: 'album' }> | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
+  const [convertingFolder, setConvertingFolder] = useState<Extract<Target, { kind: 'folder' }> | null>(
+    null,
+  );
   const [trashingAssets, setTrashingAssets] = useState<string[] | null>(null);
   const [newFolderIn, setNewFolderIn] = useState<string | null>(null);
   const [newAlbumIn, setNewAlbumIn] = useState<string | null>(null);
@@ -191,6 +199,17 @@ export function useLibraryActions({
   const deleteFolder = useMutation(mutation(async (id: string) => api.delete(`/folders/${id}`)));
   const deleteAlbum = useMutation(mutation(async (id: string) => api.delete(`/albums/${id}`)));
 
+  const convertFolder = useMutation({
+    mutationFn: async (id: string) =>
+      (await api.post<Album>(`/folders/${id}/convert-to-album`)).data,
+    onSuccess: (album) => {
+      setConvertingFolder(null);
+      void invalidate();
+      onFolderConverted?.(album);
+    },
+    onError: fail,
+  });
+
   const setFolderLock = useMutation({
     mutationFn: async ({ id, isLocked }: { id: string; isLocked: boolean }) =>
       api.put(`/folders/${id}/lock`, { isLocked }),
@@ -234,7 +253,7 @@ export function useLibraryActions({
   );
 
   const onFolderContextMenu = useCallback(
-    (folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'>, event: React.MouseEvent) =>
+    (folder: FolderActionTarget, event: React.MouseEvent) =>
       openMenu({ kind: 'folder', folder }, event),
     [openMenu],
   );
@@ -388,6 +407,10 @@ export function useLibraryActions({
 
     if (item.kind === 'folder') {
       if (item.folder.shared) return [];
+      const canConvert =
+        (item.folder.assetCount ?? 0) > 0 &&
+        (item.folder.albumCount ?? 0) === 0 &&
+        (item.folder.childCount ?? item.folder.children?.length ?? 0) === 0;
       return [
         {
           id: 'rename',
@@ -402,6 +425,17 @@ export function useLibraryActions({
           hint: 'Another folder',
           onSelect: () => setMoving(item),
         },
+        ...(canConvert
+          ? [
+              {
+                id: 'convert-to-album',
+                label: 'Convert to album',
+                icon: <LayoutGrid size={15} />,
+                hint: 'Replace this folder with an album',
+                onSelect: () => setConvertingFolder(item),
+              },
+            ]
+          : []),
         {
           id: 'share',
           label: 'Share',
@@ -624,12 +658,21 @@ export function useLibraryActions({
       />
 
       <ConfirmDialog
+        open={convertingFolder !== null}
+        title={`Convert “${convertingFolder?.folder.name ?? ''}” to an album?`}
+        description="The folder will be replaced by an album in the same location. Its photos will appear only inside the album."
+        confirmLabel="Convert to album"
+        onConfirm={() => convertingFolder && convertFolder.mutate(convertingFolder.folder.id)}
+        onClose={() => setConvertingFolder(null)}
+      />
+
+      <ConfirmDialog
         open={Boolean(deleting)}
         title={`Delete “${labelOf(deleting)}”?`}
         description={
           deleting?.kind === 'folder'
-            ? 'Sub-folders go with it and the photos inside move to the trash, where you can restore them for 30 days.'
-            : 'The album is removed. The photos inside it stay in your library.'
+            ? 'The folder, its sub-folders, albums and photos move to Trash and can be restored together for 30 days.'
+            : 'The album moves to Trash. Its photos stay in your library.'
         }
         confirmLabel={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
         destructive
@@ -671,5 +714,7 @@ export function useLibraryActions({
     dropOnFolder,
     dropOnAlbum,
     dropOnRoot,
+    onConvertFolder: (folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'>) =>
+      setConvertingFolder({ kind: 'folder', folder }),
   };
 }
