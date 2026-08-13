@@ -20,6 +20,72 @@ interface Progress {
   bytesTotal: number;
 }
 
+interface UploadCandidate {
+  file: File;
+  /** Path inside a folder dropped from Finder or Explorer. */
+  relativePath?: string;
+}
+
+interface DroppedEntry {
+  isFile: boolean;
+  isDirectory: boolean;
+  name: string;
+  file?: (callback: (file: File) => void, onError?: (error: DOMException) => void) => void;
+  createReader?: () => {
+    readEntries: (
+      callback: (entries: DroppedEntry[]) => void,
+      onError?: (error: DOMException) => void,
+    ) => void;
+  };
+}
+
+const isMedia = (file: File) =>
+  file.type.startsWith('image/') ||
+  file.type.startsWith('video/') ||
+  /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp|3gp|avi|m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i.test(
+    file.name,
+  );
+
+async function filesFromEntry(entry: DroppedEntry, parent = ''): Promise<UploadCandidate[]> {
+  const path = parent ? `${parent}/${entry.name}` : entry.name;
+
+  if (entry.isFile && entry.file) {
+    const file = await new Promise<File>((resolve, reject) => entry.file!(resolve, reject));
+    return isMedia(file) ? [{ file, relativePath: path }] : [];
+  }
+
+  if (!entry.isDirectory || !entry.createReader) return [];
+  const reader = entry.createReader();
+  const children: DroppedEntry[] = [];
+
+  // DirectoryReader returns batches and an empty batch marks the end.
+  while (true) {
+    const batch = await new Promise<DroppedEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject),
+    );
+    if (batch.length === 0) break;
+    children.push(...batch);
+  }
+
+  return (await Promise.all(children.map((child) => filesFromEntry(child, path)))).flat();
+}
+
+async function filesFromDrop(dataTransfer: DataTransfer) {
+  const entries = [...dataTransfer.items]
+    .filter((item) => item.kind === 'file')
+    .map((item): DroppedEntry | null =>
+      (
+        item as DataTransferItem & {
+          webkitGetAsEntry?: () => FileSystemEntry | null;
+        }
+      ).webkitGetAsEntry?.() as DroppedEntry | null,
+    )
+    .filter((entry): entry is DroppedEntry => Boolean(entry));
+
+  if (entries.length > 0) return (await Promise.all(entries.map((entry) => filesFromEntry(entry)))).flat();
+  return [...dataTransfer.files].filter(isMedia).map((file) => ({ file }));
+}
+
 /**
  * Uploads files or a whole directory.
  *
@@ -30,11 +96,14 @@ interface Progress {
 export function UploadButton({
   compact = false,
   iconOnly = false,
+  externalDrop = false,
   onError,
 }: {
   compact?: boolean;
   /** Keeps the must-have upload action visible in a narrow top bar. */
   iconOnly?: boolean;
+  /** One mounted instance owns Finder/Explorer drops for the whole app. */
+  externalDrop?: boolean;
   onError?: (message: string) => void;
 }) {
   const filesInput = useRef<HTMLInputElement>(null);
@@ -43,6 +112,9 @@ export function UploadButton({
   const queryClient = useQueryClient();
   const params = useParams();
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [externalDrag, setExternalDrag] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
+  const externalDragDepth = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
   /**
    * Opt-in, because the common case is repeating a backup and expecting it not
@@ -50,7 +122,7 @@ export function UploadButton({
    */
   const [allowDuplicate, setAllowDuplicate] = useState(false);
   /** Files the server already had, kept so they can be sent again on request. */
-  const [skippedFiles, setSkippedFiles] = useState<File[]>([]);
+  const [skippedFiles, setSkippedFiles] = useState<UploadCandidate[]>([]);
   const cancelled = useRef(false);
   const controller = useRef<AbortController | null>(null);
 
@@ -70,11 +142,21 @@ export function UploadButton({
     return () => window.removeEventListener('beforeunload', warn);
   }, [progress]);
 
-  const uploadAll = async (fileList: FileList | File[] | null, forceDuplicate = false) => {
+  const uploadAll = async (
+    fileList: FileList | File[] | UploadCandidate[] | null,
+    forceDuplicate = false,
+  ) => {
     if (!fileList || fileList.length === 0) return;
 
-    const files = [...fileList];
-    const bytesTotal = files.reduce((sum, file) => sum + file.size, 0);
+    const files: UploadCandidate[] = [...fileList].map((item) =>
+      item instanceof File
+        ? {
+            file: item,
+            relativePath: (item as File & { webkitRelativePath?: string }).webkitRelativePath || undefined,
+          }
+        : item,
+    );
+    const bytesTotal = files.reduce((sum, { file }) => sum + file.size, 0);
     cancelled.current = false;
 
     let created = 0;
@@ -85,10 +167,11 @@ export function UploadButton({
     // Held so the finished panel can offer to send the skipped ones again as
     // deliberate copies — far easier to find than a checkbox you have to know
     // about before you start.
-    const skipped: File[] = [];
+    const skipped: UploadCandidate[] = [];
 
-    for (const [index, file] of files.entries()) {
+    for (const [index, candidate] of files.entries()) {
       if (cancelled.current) break;
+      const { file, relativePath } = candidate;
 
       const base: Progress = {
         total: files.length,
@@ -108,8 +191,7 @@ export function UploadButton({
       form.append('fileCreatedAt', new Date(file.lastModified).toISOString());
       form.append('fileModifiedAt', new Date(file.lastModified).toISOString());
 
-      const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath;
-      if (relative) form.append('relativePath', relative);
+      if (relativePath) form.append('relativePath', relativePath);
 
       // Whatever is on screen is the destination.
       if (params.folderId) form.append('folderId', params.folderId);
@@ -136,7 +218,7 @@ export function UploadButton({
 
         if (data.status === 'duplicate') {
           duplicates += 1;
-          skipped.push(file);
+          skipped.push(candidate);
         } else created += 1;
       } catch (error) {
         if (!cancelled.current) {
@@ -167,6 +249,60 @@ export function UploadButton({
     // something was skipped, because that panel is now asking a question.
     if (skipped.length === 0) setTimeout(() => setProgress(null), 3500);
   };
+
+  useEffect(() => {
+    if (!externalDrop) return;
+
+    const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false;
+    const enter = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      externalDragDepth.current += 1;
+      setExternalDrag(true);
+    };
+    const over = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    };
+    const leave = (event: DragEvent) => {
+      if (!hasFiles(event)) return;
+      externalDragDepth.current = Math.max(0, externalDragDepth.current - 1);
+      if (externalDragDepth.current === 0) setExternalDrag(false);
+    };
+    const drop = (event: DragEvent) => {
+      if (!hasFiles(event) || !event.dataTransfer) return;
+      event.preventDefault();
+      externalDragDepth.current = 0;
+      setExternalDrag(false);
+      void filesFromDrop(event.dataTransfer)
+        .then((files) => {
+          if (files.length === 0) {
+            const message = 'That folder does not contain supported photos or videos.';
+            if (onError) onError(message);
+            else setDropError(message);
+            return;
+          }
+          return uploadAll(files);
+        })
+        .catch((error) => {
+          const message = errorMessage(error);
+          if (onError) onError(message);
+          else setDropError(message);
+        });
+    };
+
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragover', over);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('drop', drop);
+    };
+  });
 
   const pick = (which: 'files' | 'folder') => {
     setMenuOpen(false);
@@ -285,6 +421,34 @@ export function UploadButton({
           event.target.value = '';
         }}
       />
+
+      {externalDrag &&
+        createPortal(
+          <div className="pointer-events-none fixed inset-3 z-[100] grid place-items-center rounded-panel border-2 border-dashed border-primary bg-surface/90 backdrop-blur-xl">
+            <div className="text-center">
+              <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-primary-soft text-primary">
+                <FolderUp size={30} />
+              </span>
+              <h2 className="mt-4 text-xl font-semibold">Drop to upload</h2>
+              <p className="mt-1 text-sm text-content-muted">
+                Photos, videos, or a whole folder
+              </p>
+              <p className="mt-1 text-xs text-content-muted">Folder structure will be preserved</p>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {dropError &&
+        createPortal(
+          <div className="fixed bottom-6 left-1/2 z-[101] flex -translate-x-1/2 items-center gap-3 rounded-control bg-danger-soft px-4 py-3 text-sm text-danger shadow-popover">
+            <span>{dropError}</span>
+            <button type="button" className="font-medium" onClick={() => setDropError(null)}>
+              Dismiss
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {/* Rendered into <body>, not in place.
 

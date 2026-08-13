@@ -163,7 +163,7 @@ export function TopBar({
         </div>
 
         <div className="hidden md:block">
-          <UploadButton compact />
+          <UploadButton compact externalDrop />
         </div>
 
         <div className="hidden sm:block">
