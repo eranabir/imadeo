@@ -152,6 +152,9 @@ export const configuration = () => {
       clipModel: process.env.ML_CLIP_MODEL ?? 'clip-ViT-B-32',
       faceModel: process.env.ML_FACE_MODEL ?? 'yunet+sface',
       faceMinScore: num(process.env.ML_FACE_MIN_SCORE, 0.7),
+      videoRecognitionEnabled: bool(process.env.ML_VIDEO_RECOGNITION_ENABLED, true),
+      videoSampleIntervalSeconds: int(process.env.ML_VIDEO_SAMPLE_INTERVAL_SECONDS, 10),
+      videoMaxFrames: int(process.env.ML_VIDEO_MAX_FRAMES, 60),
       // SFace keeps the same person close across photos, but a 0.50 limit
       // fragmented ordinary changes of angle and lighting into new people.
       faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),

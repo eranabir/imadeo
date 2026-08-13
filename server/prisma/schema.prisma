@@ -614,6 +614,8 @@ model AssetFace {
   imageWidth     Int
   imageHeight    Int
   score          Float                       @default(0)
+  /// Frame position for a detection sampled from a video. Null for still images.
+  sourceTimecodeMs Int?
 
   embedding      Unsupported("vector(512)")?
   sourceType     SourceType                  @default(MACHINE_LEARNING)

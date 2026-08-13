@@ -619,6 +619,7 @@ function ConnectedAccount() {
 
 interface PeopleAndPetsRecognitionSettings {
   enabled: boolean;
+  videosEnabled: boolean;
   fromEnv: boolean;
 }
 
@@ -626,6 +627,7 @@ interface PeopleAndPetsRecognitionStatus {
   ready: boolean;
   totalAssets: number;
   pendingAssets: number;
+  videosEnabled: boolean;
 }
 
 function PeopleAndPetsRecognition() {
@@ -643,11 +645,12 @@ function PeopleAndPetsRecognition() {
   });
 
   const save = useMutation({
-    mutationFn: async (enabled: boolean) =>
+    mutationFn: async (settings: Partial<PeopleAndPetsRecognitionSettings>) =>
       (
-        await api.put<PeopleAndPetsRecognitionSettings>('/admin/people-and-pets-recognition', {
-          enabled,
-        })
+        await api.put<PeopleAndPetsRecognitionSettings>(
+          '/admin/people-and-pets-recognition',
+          settings,
+        )
       ).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'people-and-pets-recognition'] });
@@ -671,13 +674,13 @@ function PeopleAndPetsRecognition() {
   return (
     <Card
       title="People & Pets recognition"
-      description="Find people and pets in new photos, or rescan the complete library here."
+      description="Find people and pets in photos and videos, or rescan the complete library here."
     >
       <Row
         label="Recognise people and pets"
         hint={
           data?.enabled
-            ? 'New photos are queued for recognition. Turn this off to pause future scans.'
+            ? 'New media is queued for recognition. Turn this off to pause future scans.'
             : 'No new face or pet scans will run until you turn this back on.'
         }
       >
@@ -685,14 +688,25 @@ function PeopleAndPetsRecognition() {
           label=""
           checked={data?.enabled ?? false}
           disabled={isLoading || save.isPending}
-          onChange={(enabled) => save.mutate(enabled)}
+          onChange={(enabled) => save.mutate({ enabled })}
+        />
+      </Row>
+      <Row
+        label="Recognise videos"
+        hint="Sample frames throughout each video and group repeated appearances as one result."
+      >
+        <Checkbox
+          label=""
+          checked={data?.videosEnabled ?? false}
+          disabled={!data?.enabled || isLoading || save.isPending}
+          onChange={(videosEnabled) => save.mutate({ videosEnabled })}
         />
       </Row>
       <Row
         label="Rescan library"
         hint={
           status?.pendingAssets
-            ? `Retry the ${status.pendingAssets.toLocaleString()} photos that did not finish.`
+            ? `Retry the ${status.pendingAssets.toLocaleString()} media items that did not finish.`
             : 'Run recognition again after changing settings or correcting older results.'
         }
       >
@@ -707,7 +721,7 @@ function PeopleAndPetsRecognition() {
       </Row>
       {rescan.isSuccess && (
         <p className="mt-3 text-xs text-success">
-          {rescan.data.queued.toLocaleString()} of {status?.totalAssets.toLocaleString() ?? '0'} photos queued.
+          {rescan.data.queued.toLocaleString()} of {status?.totalAssets.toLocaleString() ?? '0'} media items queued.
         </p>
       )}
       {rescan.isError && <p className="mt-3 text-xs text-danger">{errorMessage(rescan.error)}</p>}

@@ -3,8 +3,14 @@ import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Max, Min } from 'class
 
 export class UpdateFaceRecognitionDto {
   @ApiPropertyOptional({ description: 'Whether this server scans photos for people and pets' })
+  @IsOptional()
   @IsBoolean()
-  enabled!: boolean;
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Whether recognition also samples videos' })
+  @IsOptional()
+  @IsBoolean()
+  videosEnabled?: boolean;
 }
 
 export class UpdateMailDto {

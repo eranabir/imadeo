@@ -67,7 +67,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, slot, onBack 
     {
       title: name || 'Unnamed',
       subtitle: total
-        ? `${total.toLocaleString()} ${total === 1 ? 'photo' : 'photos'}`
+        ? `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
         : undefined,
       icon: is === 'PET' ? 'pet' : 'person',
       onBack,
@@ -113,7 +113,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, slot, onBack 
         onStartSelecting={selection.start}
         onChanged={reload}
         emptyIcon="person"
-        emptyTitle={loading ? 'Loading…' : 'No photos'}
+        emptyTitle={loading ? 'Loading…' : 'No media'}
         emptyBody="The faces that made up this group are no longer in your library."
       />
 

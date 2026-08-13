@@ -128,13 +128,13 @@ export class JobService {
     return removed;
   }
 
-  async enqueueMany(queue: QueueName, name: string, items: AssetJobData[]) {
+  async enqueueMany(queue: QueueName, name: string, items: AssetJobData[], priority?: number) {
     if (items.length === 0) return;
     await this.queues[queue].addBulk(
       items.map((data) => ({
         name,
         data,
-        opts: { ...this.optionsFor(queue), jobId: JobService.jobIdFor(name, data.assetId) },
+        opts: { ...this.optionsFor(queue), priority, jobId: JobService.jobIdFor(name, data.assetId) },
       })),
     );
   }

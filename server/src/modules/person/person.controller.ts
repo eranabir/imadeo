@@ -17,6 +17,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { Auth, AuthedUserId } from '../../common/decorators';
+import { AssetType } from '../../db';
 import { StorageService } from '../../infra/storage/storage.service';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
@@ -71,10 +72,11 @@ export class PeopleAndPetsController {
   @Get('status')
   @ApiOperation({ summary: 'Whether people and pet recognition is available and its progress' })
   async status(@AuthedUserId() userId: string) {
+    const videosEnabled = this.ml.videoRecognitionEnabled;
     // Everything a scan would look at, whether or not it has yet.
     const eligible = {
       ownerId: userId,
-      type: 'IMAGE' as const,
+      type: videosEnabled ? { in: [AssetType.IMAGE, AssetType.VIDEO] } : AssetType.IMAGE,
       deletedAt: null,
       visibility: { not: 'LOCKED' as const },
       previewPath: { not: null },
@@ -95,6 +97,7 @@ export class PeopleAndPetsController {
 
     return {
       enabled: this.ml.faceRecognitionEnabled,
+      videosEnabled,
       ready,
       petsReady,
       pendingAssets: pending,
@@ -105,7 +108,7 @@ export class PeopleAndPetsController {
 
   @Post('scan')
   @ApiOperation({
-    summary: 'Queue people and pet detection for every photo not scanned yet',
+    summary: 'Queue people and pet detection for every eligible photo and video not scanned yet',
   })
   async scan(@AuthedUserId() userId: string, @Query('force') force?: string) {
     if (!(await this.ml.isFaceRecognitionReady())) {
@@ -120,16 +123,24 @@ export class PeopleAndPetsController {
     const assets = await this.prisma.asset.findMany({
       where: {
         ownerId: userId,
-        type: 'IMAGE',
+        type: this.ml.videoRecognitionEnabled
+          ? { in: [AssetType.IMAGE, AssetType.VIDEO] }
+          : AssetType.IMAGE,
         deletedAt: null,
         visibility: { not: 'LOCKED' },
         previewPath: { not: null },
         ...(scanEverything ? {} : unrecognisedAssets(petsReady)),
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
 
     const ids = assets.map((asset) => asset.id);
+    const photoIds = assets
+      .filter((asset) => asset.type === AssetType.IMAGE)
+      .map((asset) => asset.id);
+    const videoIds = assets
+      .filter((asset) => asset.type === AssetType.VIDEO)
+      .map((asset) => asset.id);
 
     // A deliberate re-scan must look pending while its jobs are running.
     // Otherwise the UI sees zero outstanding work immediately and keeps the
@@ -148,7 +159,13 @@ export class PeopleAndPetsController {
     await this.jobs.enqueueMany(
       QUEUE.FACE_DETECTION,
       JOB.DETECT_FACES,
-      ids.map((assetId) => ({ assetId })),
+      photoIds.map((assetId) => ({ assetId })),
+    );
+    await this.jobs.enqueueMany(
+      QUEUE.FACE_DETECTION,
+      JOB.DETECT_FACES,
+      videoIds.map((assetId) => ({ assetId })),
+      20,
     );
 
     return { queued: ids.length, retried, forced: scanEverything };
@@ -166,7 +183,7 @@ export class PeopleAndPetsController {
   }
 
   @Delete()
-  @ApiOperation({ summary: 'Forget several people or pet groupings. Photos are untouched.' })
+  @ApiOperation({ summary: 'Forget several people or pet groupings. Media is untouched.' })
   removeMany(@AuthedUserId() userId: string, @Body() dto: SubjectIdsDto) {
     return this.subjects.removeMany(userId, dto.subjectIds);
   }
@@ -203,7 +220,7 @@ export class PeopleAndPetsController {
   }
 
   @Get(':id/assets')
-  @ApiOperation({ summary: 'Photos this person or pet appears in' })
+  @ApiOperation({ summary: 'Media this person or pet appears in' })
   getAssets(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
@@ -305,7 +322,7 @@ export class PeopleAndPetsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Forget this grouping. The photos are untouched.' })
+  @ApiOperation({ summary: 'Forget this grouping. The media is untouched.' })
   remove(@AuthedUserId() userId: string, @Param('id') id: string) {
     return this.subjects.remove(userId, id);
   }

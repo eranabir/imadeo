@@ -4,6 +4,8 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { Auth, AuthedUserId } from '../../common/decorators';
+import { AssetType } from '../../db';
+import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
@@ -88,8 +90,47 @@ export class SystemController {
   @Auth({ admin: true })
   @Put(['admin/people-and-pets-recognition', 'admin/face-recognition'])
   @ApiOperation({ summary: 'Enable or disable people and pets recognition immediately' })
-  saveFaceRecognitionSettings(@Body() dto: UpdateFaceRecognitionDto) {
-    return this.faceRecognition.save(dto.enabled);
+  async saveFaceRecognitionSettings(@Body() dto: UpdateFaceRecognitionDto) {
+    const previous = this.faceRecognition.view();
+    const settings = await this.faceRecognition.save(dto);
+
+    const recognitionJustEnabled = !previous.enabled && settings.enabled;
+    const videosJustEnabled = !previous.videosEnabled && settings.videosEnabled;
+    if (!settings.enabled || (!recognitionJustEnabled && !videosJustEnabled)) return settings;
+
+    const types = recognitionJustEnabled
+      ? settings.videosEnabled
+        ? [AssetType.IMAGE, AssetType.VIDEO]
+        : [AssetType.IMAGE]
+      : [AssetType.VIDEO];
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        type: { in: types },
+        deletedAt: null,
+        visibility: { not: 'LOCKED' },
+        previewPath: { not: null },
+        OR: [{ jobStatus: null }, { jobStatus: { facesRecognizedAt: null } }],
+      },
+      select: { id: true, type: true },
+    });
+
+    const photos = assets.filter((asset) => asset.type === AssetType.IMAGE).map(({ id }) => id);
+    const videos = assets.filter((asset) => asset.type === AssetType.VIDEO).map(({ id }) => id);
+    const ids = [...photos, ...videos];
+    await this.jobs.releaseJobIds(QUEUE.FACE_DETECTION, JOB.DETECT_FACES, ids);
+    await this.jobs.enqueueMany(
+      QUEUE.FACE_DETECTION,
+      JOB.DETECT_FACES,
+      photos.map((assetId) => ({ assetId })),
+    );
+    await this.jobs.enqueueMany(
+      QUEUE.FACE_DETECTION,
+      JOB.DETECT_FACES,
+      videos.map((assetId) => ({ assetId })),
+      20,
+    );
+
+    return { ...settings, queued: ids.length };
   }
 
   @Auth({ admin: true })

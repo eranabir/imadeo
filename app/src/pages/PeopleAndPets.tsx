@@ -23,8 +23,9 @@ interface Subject {
 interface FaceStatus {
   enabled: boolean;
   ready: boolean;
+  videosEnabled: boolean;
   pendingAssets: number;
-  /** Every photo a scan would look at, so the outstanding count means something. */
+  /** Every media item a scan would look at, so the outstanding count means something. */
   totalAssets: number;
   /** At least one recognition job is active, queued, or waiting to retry. */
   scanning: boolean;
@@ -76,6 +77,7 @@ export function PeopleAndPetsPage() {
   }, [queryClient, status]);
 
   const scanned = status ? status.totalAssets - status.pendingAssets : 0;
+  const mediaLabel = status?.videosEnabled ? 'photos and videos' : 'photos';
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects', showHidden, kind],
@@ -331,12 +333,12 @@ export function PeopleAndPetsPage() {
       {status?.ready && status.pendingAssets > 0 && status.scanning && (
         <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
           <p className="text-sm text-primary">
-            Scanning — {scanned.toLocaleString()} of {status.totalAssets.toLocaleString()} photos done ·{' '}
+            Scanning — {scanned.toLocaleString()} of {status.totalAssets.toLocaleString()} {mediaLabel} done ·{' '}
             {status.pendingAssets.toLocaleString()} remaining
           </p>
           <Progress
             value={scanned / Math.max(1, status.totalAssets)}
-            label={`Scanning photos for people and pets: ${scanned} of ${status.totalAssets} complete`}
+            label={`Scanning ${mediaLabel} for people and pets: ${scanned} of ${status.totalAssets} complete`}
             className="mt-2.5"
           />
         </div>
@@ -344,7 +346,7 @@ export function PeopleAndPetsPage() {
 
       {status?.ready && status.pendingAssets > 0 && !status.scanning && (
         <p className="mx-5 mt-4 rounded-control bg-surface-sunken px-3.5 py-2.5 text-sm text-warning">
-          Recognition needs attention — {status.pendingAssets.toLocaleString()} photos remain. Continue
+          Recognition needs attention — {status.pendingAssets.toLocaleString()} {mediaLabel} remain. Continue
           from Settings → Recognition.
         </p>
       )}
@@ -355,8 +357,8 @@ export function PeopleAndPetsPage() {
           title="No people or pets found yet"
           description={
             status?.ready
-              ? 'People and pets are grouped as photos are scanned. Once a group has a few photos in it, it shows up here.'
-              : 'Once the machine-learning service is running, people and pets in your photos are grouped here automatically.'
+              ? `People and pets are grouped as ${mediaLabel} are scanned. Once a group has a few items in it, it shows up here.`
+              : 'Once the machine-learning service is running, people and pets in your library are grouped here automatically.'
           }
         />
       ) : (
@@ -462,7 +464,7 @@ export function PeopleAndPetsPage() {
 
                 <span className="block text-center text-[11px] text-content-muted">
                   {subject.species ? `${subject.species} · ` : ''}
-                  {subject.faceCount} {subject.faceCount === 1 ? 'photo' : 'photos'}
+                  {subject.faceCount} {subject.faceCount === 1 ? 'item' : 'items'}
                 </span>
 
                 {/* No hover buttons over the face. Renaming is the name itself,
@@ -477,7 +479,7 @@ export function PeopleAndPetsPage() {
       <ConfirmDialog
         open={confirmMerge}
         title={`Merge ${selected.size} groups into “${target?.name || 'one group'}”?`}
-        description="Every photo moves into the one group. This cannot be undone automatically, though you can split faces out again afterwards."
+        description="Every matching item moves into the one group. This cannot be undone automatically, though you can split detections out again afterwards."
         confirmLabel="Merge"
         onConfirm={() => {
           if (!target) return;
@@ -489,7 +491,7 @@ export function PeopleAndPetsPage() {
       <ConfirmDialog
         open={confirmDeleteSelected}
         title={`Remove ${selected.size} ${selected.size === 1 ? 'group' : 'groups'}?`}
-        description="The groupings are discarded, but every photo stays exactly where it is. They may be regrouped the next time recognition is scanned."
+        description="The groupings are discarded, but every media item stays exactly where it is. They may be regrouped the next time recognition is scanned."
         confirmLabel={`Remove ${selected.size}`}
         destructive
         onConfirm={() => forgetSelected.mutate([...selected])}
@@ -501,7 +503,7 @@ export function PeopleAndPetsPage() {
         title={`Remove ${
           confirmForget?.name || (confirmForget?.kind === 'PET' ? 'this pet' : 'this person')
         }?`}
-        description="The grouping is discarded, but every photo stays exactly where it is. The faces may be regrouped the next time faces are scanned."
+        description="The grouping is discarded, but every media item stays exactly where it is. The detections may be regrouped the next time recognition runs."
         confirmLabel="Remove"
         destructive
         onConfirm={() => confirmForget && forget.mutate(confirmForget.id)}
@@ -566,7 +568,7 @@ export function PeopleAndPetsPage() {
               id: 'forget',
               label: menu.subject.kind === 'PET' ? 'Remove this pet' : 'Remove this person',
               icon: <Trash2 size={15} />,
-              hint: 'The photos are kept',
+              hint: 'The media items are kept',
               danger: true,
               onSelect: () => setConfirmForget(menu.subject),
             },

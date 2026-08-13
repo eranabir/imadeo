@@ -113,7 +113,14 @@ export class ThumbnailProcessor extends WorkerHost {
         await this.jobs.enqueue(QUEUE.SMART_SEARCH, JOB.ENCODE_CLIP, { assetId: asset.id });
       }
       if (this.ml.faceRecognitionEnabled) {
-        await this.jobs.enqueue(QUEUE.FACE_DETECTION, JOB.DETECT_FACES, { assetId: asset.id });
+        if (asset.type !== AssetType.VIDEO || this.ml.videoRecognitionEnabled) {
+          await this.jobs.enqueue(
+            QUEUE.FACE_DETECTION,
+            JOB.DETECT_FACES,
+            { assetId: asset.id },
+            asset.type === AssetType.VIDEO ? 20 : undefined,
+          );
+        }
       }
 
       return { thumbnailPath, previewPath };

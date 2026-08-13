@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import sharp from 'sharp';
 import { dirname } from 'node:path';
 import type { AppConfig } from '../../config/configuration';
-import { AssetVisibility, Prisma, SourceType } from '../../db';
+import { AssetType, AssetVisibility, Prisma, SourceType } from '../../db';
 import { SubjectKind } from '../../db';
+import { MediaService } from '../../infra/media/media.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import type { SubjectQueryDto, UpdateSubjectDto } from './person.dto';
@@ -16,6 +17,7 @@ export class SubjectService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly media: MediaService,
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
@@ -376,7 +378,7 @@ export class SubjectService {
       select: { id: true },
     });
     if (!face) {
-      throw new BadRequestException('That photo is not one of this person’s');
+      throw new BadRequestException('That media item is not part of this group');
     }
 
     await this.prisma.person.update({
@@ -441,8 +443,27 @@ export class SubjectService {
 
     if (!face?.asset.previewPath || !face.person) return null;
 
-    const source = face.asset.previewPath;
-    if (!(await this.storage.exists(source))) return null;
+    let source = face.asset.previewPath;
+    let temporary: string | null = null;
+
+    if (face.asset.type === AssetType.VIDEO && face.sourceTimecodeMs !== null) {
+      const video = face.asset.encodedVideoPath ?? face.asset.originalPath;
+      temporary = this.storage.buildIncomingPath(
+        face.person.ownerId,
+        `${face.assetId}-${personId}-avatar-frame.jpg`,
+      );
+      await this.storage.remove(temporary);
+      source = await this.media.extractPosterFrame(
+        video,
+        temporary,
+        face.sourceTimecodeMs / 1000,
+      );
+    }
+
+    if (!(await this.storage.exists(source))) {
+      if (temporary) await this.storage.remove(temporary);
+      return null;
+    }
 
     const destination = this.storage.buildPersonThumbnailPath(face.person.ownerId, personId);
     await this.storage.ensureDir(dirname(destination));
@@ -484,6 +505,8 @@ export class SubjectService {
     } catch (error) {
       this.logger.warn(`Could not build a thumbnail for person ${personId}: ${(error as Error).message}`);
       return null;
+    } finally {
+      if (temporary) await this.storage.remove(temporary);
     }
   }
 

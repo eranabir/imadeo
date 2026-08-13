@@ -66,6 +66,10 @@ export class MachineLearningService {
     return this.faceRecognition.enabled;
   }
 
+  get videoRecognitionEnabled() {
+    return this.faceRecognition.videosEnabled;
+  }
+
   /** Whether the service is up and has finished loading its model. */
   async isReady(): Promise<boolean> {
     if (!this.enabled) return false;

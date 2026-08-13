@@ -93,7 +93,7 @@ export function SubjectPage() {
           ids.length > 1 ? ` (${ids.length})` : ''
         }`,
         icon: <UserRoundX size={15} />,
-        hint: 'Keeps the photo, removes the match',
+        hint: 'Keeps the media, removes the match',
         separated: true,
         onSelect: () => {
           const faceIds = assetsRef.current
@@ -174,7 +174,7 @@ export function SubjectPage() {
     onError,
   });
 
-  if (isLoading) return <Loading label="Loading photos…" />;
+  if (isLoading) return <Loading label="Loading media…" />;
   if (!subject) return null;
 
   const assets: AssetWithFaces[] = photos?.items ?? [];
@@ -194,11 +194,11 @@ export function SubjectPage() {
           <div className="flex items-center gap-3">
             {/* The avatar is the obvious place to go to change the avatar, so
                 it is a control rather than decoration. */}
-            <Tooltip label="Choose a cover photo">
+            <Tooltip label="Choose a cover">
               <button
                 type="button"
                 onClick={() => setChoosingCover(true)}
-                aria-label="Choose a cover photo"
+                aria-label="Choose a cover"
                 className="group relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-surface-sunken"
               >
                 {subject.thumbnailPath ? (
@@ -256,7 +256,7 @@ export function SubjectPage() {
                 </Tooltip>
               )}
               <p className="text-xs text-content-muted">
-                {subject.faceCount} {subject.faceCount === 1 ? 'photo' : 'photos'}
+                {subject.faceCount} {subject.faceCount === 1 ? 'item' : 'items'}
               </p>
             </div>
           </div>
@@ -297,8 +297,8 @@ export function SubjectPage() {
       {assets.length === 0 ? (
         <EmptyState
           icon={UserRound}
-          title="No photos yet"
-          description={`Photos of this ${subjectNoun} have not finished processing.`}
+          title="No media yet"
+          description={`Media featuring this ${subjectNoun} has not finished processing.`}
           action={
             <Button variant="primary" onClick={() => navigate('/people-and-pets')}>
               Back to People &amp; Pets
@@ -324,8 +324,8 @@ export function SubjectPage() {
 
       <Dialog
         open={choosingCover}
-        title="Choose a cover photo"
-        description="Pick which of their photos the small round picture is cropped from."
+        title="Choose a cover"
+        description="Pick which media item supplies the small round picture."
         onClose={() => setChoosingCover(false)}
       >
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
@@ -360,7 +360,7 @@ export function SubjectPage() {
         onTrash={() => trash.mutate([...selected])}
       >
         <span className="mx-1 h-5 w-px bg-white/15" />
-        <Tooltip label={`Remove these photos from this ${subjectNoun}. The photos are kept.`}>
+        <Tooltip label={`Remove these items from this ${subjectNoun}. The media is kept.`}>
         <button
           type="button"
           disabled={detach.isPending}
