@@ -32,17 +32,13 @@ thumbnails.
 git clone https://github.com/eranabir/imadeo.git
 cd imadeo
 cp .env.example .env
+./scripts/generate-secrets.sh
 ```
 
-Open `.env` and set these values before starting:
+The generator fills the database, Redis, JWT and Locked-folder secrets without
+overwriting existing values. Open `.env` and set the storage paths before starting:
 
 ```dotenv
-# Generate with: openssl rand -hex 64
-JWT_SECRET=replace-with-64-bytes-of-hex
-
-# Generate with: openssl rand -hex 32
-VAULT_MASTER_KEY=replace-with-32-bytes-of-hex
-
 # Permanent data root, kept outside the cloned repository.
 UPLOAD_LOCATION=/path/to/your/imadeo-data
 DB_DATA_LOCATION=/path/to/your/imadeo-postgres

@@ -27,11 +27,16 @@ services:
     container_name: imadeo_redis
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    command:
+      - sh
+      - -c
+      - 'if [ -n "$$REDIS_PASSWORD" ]; then exec redis-server --save 60 1 --loglevel warning --requirepass "$$REDIS_PASSWORD"; else exec redis-server --save 60 1 --loglevel warning; fi'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - 127.0.0.1:${REDIS_PORT:-6379}:6379
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping; else redis-cli ping; fi']
       interval: 10s
       timeout: 5s
       retries: 10

@@ -171,8 +171,18 @@ mkdir imadeo &amp;&amp; cd imadeo
 curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
 
-<span class="c"># edit .env, then bring the stack up</span>
+<span class="c"># generate unique database, Redis and authentication secrets</span>
+curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/scripts/generate-secrets.sh | sh
+
+<span class="c"># set your storage paths in .env, then bring the stack up</span>
+docker compose pull
 docker compose up -d</code></pre>
+
+      <p>
+        The generator updates <code>.env</code> with cryptographically random
+        database, Redis, JWT and Locked-folder keys. It keeps any value that was
+        already configured, so it is safe to run the command again.
+      </p>
 
       <p>
         Imadeo exposes two LAN/VPN ports: web on <code>1111</code> and API on
@@ -204,12 +214,6 @@ LOCAL_HTTP_ENABLED=true</code></pre>
         a normally trusted certificate, so remote access needs a domain/DDNS name
         or a VPN.
       </p>
-
-      <div class="note warn">
-        <strong>Not yet published.</strong> The compose file currently builds the
-        images from source rather than pulling them, so this needs a checkout of
-        the repository until the images are published to a registry.
-      </div>
 
       <h3>What each service does</h3>
       <table>
@@ -268,6 +272,7 @@ DB_DATA_LOCATION=/mnt/tank/imadeo-postgres</code></pre>
 <pre><code>mkdir -p /mnt/tank/apps/imadeo &amp;&amp; cd /mnt/tank/apps/imadeo
 curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
 curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
+curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/scripts/generate-secrets.sh | sh
 <span class="c"># set UPLOAD_LOCATION to your permanent data directory, then</span>
 docker compose pull
 docker compose up -d</code></pre>
