@@ -3,10 +3,16 @@
 set -eu
 
 ENV_FILE=${1:-.env}
+EXAMPLE_FILE=${2:-.env.example}
 
 if [ ! -f "$ENV_FILE" ]; then
-  echo "Missing $ENV_FILE. Download or copy .env.example first." >&2
-  exit 1
+  if [ ! -f "$EXAMPLE_FILE" ]; then
+    echo "Missing $ENV_FILE and $EXAMPLE_FILE." >&2
+    exit 1
+  fi
+
+  cp "$EXAMPLE_FILE" "$ENV_FILE"
+  echo "Created $ENV_FILE from $EXAMPLE_FILE"
 fi
 
 if ! command -v openssl >/dev/null 2>&1; then

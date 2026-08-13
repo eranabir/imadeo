@@ -166,22 +166,19 @@
         machine-learning worker. They come up together from one compose file.
       </p>
 
-<pre><code><span class="c"># fetch the compose file and a starting configuration</span>
-mkdir imadeo &amp;&amp; cd imadeo
-curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
+      <p>
+        Download the <a href="https://github.com/eranabir/imadeo/tree/master/docker">Docker installation folder</a>
+        and keep all of its files together. From that folder, run only:
+      </p>
 
-<span class="c"># generate unique database, Redis and authentication secrets</span>
-curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/scripts/generate-secrets.sh | sh
-
-<span class="c"># set your storage paths in .env, then bring the stack up</span>
-docker compose pull
+<pre><code>./generate-secrets.sh
 docker compose up -d</code></pre>
 
       <p>
-        The generator updates <code>.env</code> with cryptographically random
+        The generator creates <code>.env</code> with cryptographically random
         database, Redis, JWT and Locked-folder keys. It keeps any value that was
-        already configured, so it is safe to run the command again.
+        already configured, so it is safe to run again. Media, database files,
+        and model files stay in this installation folder by default.
       </p>
 
       <p>
@@ -269,12 +266,8 @@ DB_DATA_LOCATION=/mnt/tank/imadeo-postgres</code></pre>
         on any other machine:
       </p>
 
-<pre><code>mkdir -p /mnt/tank/apps/imadeo &amp;&amp; cd /mnt/tank/apps/imadeo
-curl -O https://raw.githubusercontent.com/eranabir/imadeo/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/eranabir/imadeo/master/.env.example
-curl -fsSL https://raw.githubusercontent.com/eranabir/imadeo/master/scripts/generate-secrets.sh | sh
-<span class="c"># set UPLOAD_LOCATION to your permanent data directory, then</span>
-docker compose pull
+<pre><code>cd /mnt/tank/apps/imadeo/docker
+./generate-secrets.sh
 docker compose up -d</code></pre>
 
       <div class="note">

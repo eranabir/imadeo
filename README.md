@@ -28,28 +28,18 @@ Imadeo is designed to run with Docker Compose. You need a server with Docker
 and Docker Compose installed, plus enough disk space for your originals and
 thumbnails.
 
-```bash
-git clone https://github.com/eranabir/imadeo.git
-cd imadeo
-cp .env.example .env
-./scripts/generate-secrets.sh
-```
-
-The generator fills the database, Redis, JWT and Locked-folder secrets without
-overwriting existing values. Open `.env` and set the storage paths before starting:
-
-```dotenv
-# Permanent data root, kept outside the cloned repository.
-UPLOAD_LOCATION=/path/to/your/imadeo-data
-DB_DATA_LOCATION=/path/to/your/imadeo-postgres
-```
-
-Then start Imadeo:
+Download the [`docker` installation folder](https://github.com/eranabir/imadeo/tree/master/docker),
+keep all of its files together, then run:
 
 ```bash
-docker compose pull
+cd docker
+./generate-secrets.sh
 docker compose up -d
 ```
+
+The generator creates `.env` and fills the database, Redis, JWT and
+Locked-folder secrets without overwriting existing values. By default, media,
+database files, and model files are all stored inside this installation folder.
 
 On your LAN or VPN, open `http://<server-ip>:1111` and create the first account.
 The mobile app connects to `http://<server-ip>:6666`.
