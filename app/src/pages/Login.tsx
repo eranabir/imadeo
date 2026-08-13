@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { FolderTree, Lock, Monitor, Moon, Sparkles, Sun, Users } from 'lucide-react';
+import { Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LogoLockup } from '../components/Logo';
@@ -13,13 +13,6 @@ interface Providers {
   google: boolean;
   apple: boolean;
 }
-
-/**
- * Hues for the collage, held to the teal/cyan/green band with a couple of warm
- * notes for contrast — the same range as the brand mark, and deliberately clear
- * of the violet/fuchsia/orange that reads as Instagram.
- */
-const hues = [178, 196, 210, 165, 188, 152, 222, 172, 205, 140, 192, 235];
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -96,7 +89,7 @@ export function LoginPage() {
   const hasProviders = providers?.google || providers?.apple;
 
   return (
-    <div className="grid h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="h-full bg-surface">
       {/* ---- form ----
           `justify-center` with generous padding rather than `items-center`, so
           the form breathes at the top on a tall window and can still scroll
@@ -193,65 +186,6 @@ export function LoginPage() {
         </div>
       </div>
 
-      {/* ---- showcase ---- */}
-      <div className="relative hidden overflow-hidden bg-neutral-950 lg:block">
-        <div
-          aria-hidden
-          className="absolute inset-0 opacity-70"
-          style={{
-            background:
-              'radial-gradient(120% 90% at 15% 0%, oklch(52% 0.13 195 / 0.6), transparent 60%),' +
-              'radial-gradient(100% 80% at 95% 20%, oklch(58% 0.12 165 / 0.45), transparent 55%),' +
-              'radial-gradient(90% 90% at 60% 100%, oklch(42% 0.11 230 / 0.55), transparent 60%)',
-          }}
-        />
-
-        {/* A drifting contact sheet, standing in for the library behind the door. */}
-        <div
-          aria-hidden
-          className="absolute -left-12 top-1/2 grid w-[130%] -translate-y-1/2 -rotate-12 grid-cols-4 gap-3 opacity-45"
-        >
-          {hues.map((hue, index) => (
-            <div
-              key={hue}
-              className="rounded-2xl"
-              style={{
-                aspectRatio: index % 5 === 0 ? '3 / 4' : index % 3 === 0 ? '4 / 3' : '1 / 1',
-                background: `linear-gradient(150deg, oklch(72% 0.17 ${hue}), oklch(48% 0.2 ${(hue + 45) % 360}))`,
-                animation: `imadeo-drift ${9 + (index % 5)}s ease-in-out ${index * 0.35}s infinite`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/55 to-transparent" />
-
-        <div className="relative flex h-full flex-col justify-end p-12 text-white">
-          <h2 className="max-w-md text-[34px] font-semibold leading-[1.15] tracking-tight">
-            Every photo you have ever taken, in one place you control.
-          </h2>
-          <p className="mt-3 max-w-md text-sm text-white/65">
-            Imadeo backs up your phone automatically, sorts everything by folder and album, and
-            finds the shot you are thinking of.
-          </p>
-
-          <ul className="mt-8 grid max-w-md gap-3">
-            {[
-              { icon: FolderTree, text: 'Folders and sub-folders that work like your desktop' },
-              { icon: Sparkles, text: 'Search by what is in the picture, not the file name' },
-              { icon: Users, text: 'Faces grouped automatically, albums shared by link' },
-              { icon: Lock, text: 'A password lock for the private ones' },
-            ].map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-sm text-white/85">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 backdrop-blur">
-                  <Icon size={15} />
-                </span>
-                {text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
     </div>
   );
 }
