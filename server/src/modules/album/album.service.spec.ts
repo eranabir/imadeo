@@ -10,6 +10,7 @@ describe('AlbumService.getAssetIds', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
 
@@ -21,5 +22,71 @@ describe('AlbumService.getAssetIds', () => {
       select: { assetId: true },
       orderBy: [{ asset: { localDateTime: 'desc' } }, { assetId: 'desc' }],
     });
+  });
+});
+
+describe('AlbumService Trash lifecycle', () => {
+  it('moves the album and every live photo inside it to the same Trash batch', async () => {
+    const updateAssets = vi.fn().mockResolvedValue({ count: 2 });
+    const updateAlbum = vi.fn().mockResolvedValue({});
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const transaction = {
+      albumAsset: {
+        findMany: vi.fn().mockResolvedValue([{ assetId: 'photo-1' }, { assetId: 'photo-2' }]),
+      },
+      asset: { updateMany: updateAssets },
+      album: { update: updateAlbum },
+    };
+    const service = new AlbumService(
+      { $transaction: vi.fn(async (work: (tx: typeof transaction) => unknown) => work(transaction)) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { refreshThumbnailsForAssets: refresh } as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await expect(
+      service.remove({ user: { id: 'owner-id' } } as never, 'album-id'),
+    ).resolves.toEqual({ successful: true, trashedAssets: 2 });
+    const deletedAt = updateAlbum.mock.calls[0][0].data.deletedAt as Date;
+    expect(updateAssets).toHaveBeenCalledWith({
+      where: { id: { in: ['photo-1', 'photo-2'] }, ownerId: 'owner-id', deletedAt: null },
+      data: { deletedAt, status: 'TRASHED' },
+    });
+    expect(refresh).toHaveBeenCalledWith(['photo-1', 'photo-2']);
+  });
+
+  it('permanently removes only photos from the album Trash batch', async () => {
+    const deletedAt = new Date('2026-08-14T10:00:00Z');
+    const deletePermanently = vi.fn().mockResolvedValue({ deleted: 1, freedBytes: 42n });
+    const deleteAlbum = vi.fn().mockResolvedValue({});
+    const prisma = {
+      album: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'album-id', deletedAt }),
+        delete: deleteAlbum,
+      },
+      albumAsset: {
+        findMany: vi.fn().mockResolvedValue([{ assetId: 'photo-id' }]),
+      },
+    };
+    const service = new AlbumService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { deletePermanently } as never,
+    );
+
+    await expect(service.deletePermanently('owner-id', 'album-id')).resolves.toEqual({
+      deleted: 1,
+      deletedAssets: 1,
+    });
+    expect(prisma.albumAsset.findMany).toHaveBeenCalledWith({
+      where: { albumId: 'album-id', asset: { ownerId: 'owner-id', deletedAt } },
+      select: { assetId: true },
+    });
+    expect(deletePermanently).toHaveBeenCalledWith('owner-id', ['photo-id']);
+    expect(deleteAlbum).toHaveBeenCalledWith({ where: { id: 'album-id' } });
   });
 });

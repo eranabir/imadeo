@@ -467,7 +467,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         description={
           deleting?.kind === 'folder'
             ? 'The folder, its sub-folders, albums and photos move to Trash and can be restored together for 30 days.'
-            : 'The album moves to Trash. Its photos stay in your library.'
+            : 'The album and its photos move to Trash and can be restored together for 30 days.'
         }
         confirmLabel={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
         onClose={() => setDeleting(null)}

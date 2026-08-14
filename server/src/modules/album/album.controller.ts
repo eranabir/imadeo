@@ -60,7 +60,7 @@ export class AlbumController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete an album. The photos inside are not deleted.' })
+  @ApiOperation({ summary: 'Move an album and its photos to Trash' })
   remove(@Authed() auth: AuthDto, @Param('id') id: string) {
     return this.albumService.remove(auth, id);
   }

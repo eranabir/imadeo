@@ -5,6 +5,7 @@ import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { InvitationService } from '../auth/invitation.service';
+import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
 import type { AuthDto } from '../../common/auth.types';
 import type {
   AlbumAssetsQueryDto,
@@ -60,6 +61,7 @@ export class AlbumService {
     private readonly mail: MailService,
     private readonly invitations: InvitationService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly assetLifecycle: AssetLifecycleService,
   ) {}
 
   // -- access ---------------------------------------------------------------
@@ -318,15 +320,19 @@ export class AlbumService {
         deletedAt: { not: null },
         OR: [{ folderId: null }, { folder: { deletedAt: null } }],
       },
-      include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+      include: ALBUM_COVER_INCLUDE,
       orderBy: { deletedAt: 'desc' },
     });
 
-    return albums.map(({ _count, assets, ...album }) => ({
-      ...album,
-      assetCount: _count.assets,
-      ...pickCover(album.thumbnailAssetId, assets),
-    }));
+    return Promise.all(
+      albums.map(async ({ assets, ...album }) => ({
+        ...album,
+        assetCount: await this.prisma.albumAsset.count({
+          where: { albumId: album.id, asset: { ownerId: userId, deletedAt: album.deletedAt } },
+        }),
+        ...pickCover(album.thumbnailAssetId, assets),
+      })),
+    );
   }
 
   // -- writes ---------------------------------------------------------------
@@ -396,9 +402,22 @@ export class AlbumService {
 
   async remove(auth: AuthDto, albumId: string) {
     await this.assertIsOwner(auth, albumId);
-    // Deleting an album never deletes the photos in it.
-    await this.prisma.album.update({ where: { id: albumId }, data: { deletedAt: new Date() } });
-    return { successful: true };
+    const deletedAt = new Date();
+    const assetIds = await this.prisma.$transaction(async (tx) => {
+      const assets = await tx.albumAsset.findMany({
+        where: { albumId, asset: { ownerId: auth.user.id, deletedAt: null } },
+        select: { assetId: true },
+      });
+      const ids = assets.map((asset) => asset.assetId);
+      await tx.asset.updateMany({
+        where: { id: { in: ids }, ownerId: auth.user.id, deletedAt: null },
+        data: { deletedAt, status: 'TRASHED' },
+      });
+      await tx.album.update({ where: { id: albumId }, data: { deletedAt } });
+      return ids;
+    });
+    await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
+    return { successful: true, trashedAssets: assetIds.length };
   }
 
   async restore(userId: string, albumId: string) {
@@ -410,15 +429,38 @@ export class AlbumService {
     if (album.folder?.deletedAt) {
       throw new BadRequestException('Restore the containing folder instead');
     }
-    return this.prisma.album.update({ where: { id: albumId }, data: { deletedAt: null } });
+    const assets = await this.prisma.albumAsset.findMany({
+      where: { albumId, asset: { ownerId: userId, deletedAt: album.deletedAt } },
+      select: { assetId: true },
+    });
+    const assetIds = assets.map((asset) => asset.assetId);
+    const [restored] = await this.prisma.$transaction([
+      this.prisma.album.update({ where: { id: albumId }, data: { deletedAt: null } }),
+      this.prisma.asset.updateMany({
+        where: { id: { in: assetIds }, ownerId: userId, deletedAt: album.deletedAt },
+        data: { deletedAt: null, status: 'ACTIVE' },
+      }),
+    ]);
+    await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
+    return { ...restored, restoredAssets: assetIds.length };
   }
 
   async deletePermanently(userId: string, albumId: string) {
-    const { count } = await this.prisma.album.deleteMany({
+    const album = await this.prisma.album.findFirst({
       where: { id: albumId, ownerId: userId, deletedAt: { not: null } },
     });
-    if (!count) throw new NotFoundException('Album not found in Trash');
-    return { deleted: count };
+    if (!album) throw new NotFoundException('Album not found in Trash');
+
+    const assets = await this.prisma.albumAsset.findMany({
+      where: { albumId, asset: { ownerId: userId, deletedAt: album.deletedAt } },
+      select: { assetId: true },
+    });
+    const removedAssets = await this.assetLifecycle.deletePermanently(
+      userId,
+      assets.map((asset) => asset.assetId),
+    );
+    await this.prisma.album.delete({ where: { id: albumId } });
+    return { deleted: 1, deletedAssets: removedAssets.deleted };
   }
 
   // -- album contents -------------------------------------------------------

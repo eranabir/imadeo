@@ -20,6 +20,7 @@ function createService(existing: Record<string, unknown>) {
     { assertQuota } as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   Object.defineProperty(service, 'hashFile', {
     value: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
@@ -153,8 +154,9 @@ describe('AssetService duplicate upload destinations', () => {
 describe('AssetService.listTrash', () => {
   it('lists only photos deleted directly, not photos represented by a deleted folder', async () => {
     const findMany = vi.fn().mockResolvedValue([]);
+    const queryRaw = vi.fn().mockResolvedValue([]);
     const service = new AssetService(
-      { asset: { findMany } } as never,
+      { asset: { findMany }, $queryRaw: queryRaw } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -163,20 +165,15 @@ describe('AssetService.listTrash', () => {
       {} as never,
       {} as never,
       { get: vi.fn().mockReturnValue(30) } as never,
+      {} as never,
     );
 
     await service.listTrash('owner-id');
 
+    expect(queryRaw).toHaveBeenCalledOnce();
     expect(findMany).toHaveBeenCalledWith({
-      where: {
-        ownerId: 'owner-id',
-        deletedAt: { not: null },
-        OR: [{ folderId: null }, { folder: { deletedAt: null } }],
-      },
+      where: { id: { in: [] }, ownerId: 'owner-id' },
       include: { exif: true },
-      orderBy: { deletedAt: 'desc' },
-      skip: 0,
-      take: 250,
     });
   });
 });
@@ -199,6 +196,7 @@ describe('AssetService.resolveMediaPath for Trash', () => {
     new AssetService(
       { asset: { findUnique: vi.fn().mockResolvedValue(trashedAsset) } } as never,
       { exists: vi.fn().mockResolvedValue(true) } as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

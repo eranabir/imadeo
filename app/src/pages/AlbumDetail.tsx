@@ -289,7 +289,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
       <ConfirmDialog
         open={dialog === 'delete'}
         title={`Delete “${album.name}”?`}
-        description="The album is removed. The photos inside it stay in your library."
+        description="The album and its photos move to Trash and can be restored together for 30 days."
         confirmLabel="Delete album"
         destructive
         onConfirm={() => remove.mutate()}

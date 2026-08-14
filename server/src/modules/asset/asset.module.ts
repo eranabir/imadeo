@@ -13,6 +13,7 @@ import { DeviceModule } from '../device/device.module';
 import { PeopleAndPetsModule } from '../person/people-and-pets.module';
 import { UserModule } from '../user/user.module';
 import { AssetController } from './asset.controller';
+import { AssetLifecycleModule } from './asset-lifecycle.module';
 import { AssetService } from './asset.service';
 import { DuplicateService } from './duplicate.service';
 import { MediaController } from './media.controller';
@@ -27,6 +28,7 @@ import { VideoProcessor } from './processors/video.processor';
     FolderModule,
     DeviceModule,
     PeopleAndPetsModule,
+    AssetLifecycleModule,
     UserModule,
     MulterModule.registerAsync({
       imports: [ConfigModule],

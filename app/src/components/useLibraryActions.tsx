@@ -672,7 +672,7 @@ export function useLibraryActions({
         description={
           deleting?.kind === 'folder'
             ? 'The folder, its sub-folders, albums and photos move to Trash and can be restored together for 30 days.'
-            : 'The album moves to Trash. Its photos stay in your library.'
+            : 'The album and its photos move to Trash and can be restored together for 30 days.'
         }
         confirmLabel={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
         destructive

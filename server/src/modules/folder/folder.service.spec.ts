@@ -7,7 +7,10 @@ function serviceWith(transaction: Record<string, unknown>) {
   const prisma = {
     $transaction: vi.fn(async (work: (tx: typeof transaction) => unknown) => work(transaction)),
   } as unknown as PrismaService;
-  return new FolderService(prisma);
+  return new FolderService(prisma, {
+    refreshThumbnailsForAssets: vi.fn(),
+    deletePermanently: vi.fn(),
+  } as never);
 }
 
 describe('FolderService.convertToAlbum', () => {
@@ -131,14 +134,20 @@ describe('FolderService.create', () => {
         updateMany: folderUpdateMany,
         findUniqueOrThrow: vi.fn().mockResolvedValue({ ...deletedFolder, deletedAt: null }),
       },
-      album: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      album: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'album-id' }]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       asset: {
         findMany: vi.fn().mockResolvedValue([{ id: 'photo-id' }]),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     } as unknown as PrismaService;
-    const service = new FolderService(prisma);
+    const service = new FolderService(prisma, {
+      refreshThumbnailsForAssets: vi.fn(),
+      deletePermanently: vi.fn(),
+    } as never);
 
     await expect(service.create('owner-id', { name: '2010' })).resolves.toMatchObject({
       id: 'deleted-folder',
@@ -164,8 +173,14 @@ describe('FolderService Trash round-trip', () => {
         findMany: vi.fn().mockResolvedValue([{ id: 'folder-id' }]),
         updateMany: folderUpdateMany,
       },
-      album: { updateMany: albumUpdateMany },
-      asset: { updateMany: assetUpdateMany },
+      album: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'album-id' }]),
+        updateMany: albumUpdateMany,
+      },
+      asset: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'photo-1' }, { id: 'photo-2' }]),
+        updateMany: assetUpdateMany,
+      },
     };
     const prisma = {
       folder: {
@@ -177,7 +192,10 @@ describe('FolderService Trash round-trip', () => {
       },
       $transaction: vi.fn(async (work: (tx: typeof transaction) => unknown) => work(transaction)),
     } as unknown as PrismaService;
-    const service = new FolderService(prisma);
+    const service = new FolderService(prisma, {
+      refreshThumbnailsForAssets: vi.fn(),
+      deletePermanently: vi.fn(),
+    } as never);
 
     await service.remove('owner-id', 'folder-id');
 
@@ -188,8 +206,11 @@ describe('FolderService Trash round-trip', () => {
     expect(assetUpdateMany).toHaveBeenCalledWith({
       where: {
         ownerId: 'owner-id',
-        folderId: { in: ['folder-id'] },
         deletedAt: null,
+        OR: [
+          { folderId: { in: ['folder-id'] } },
+          { albums: { some: { albumId: { in: ['album-id'] } } } },
+        ],
       },
       data: { deletedAt: expect.any(Date), status: 'TRASHED' },
     });
@@ -209,7 +230,10 @@ describe('FolderService.getAssetIds', () => {
       },
       asset: { findMany },
     } as unknown as PrismaService;
-    const service = new FolderService(prisma);
+    const service = new FolderService(prisma, {
+      refreshThumbnailsForAssets: vi.fn(),
+      deletePermanently: vi.fn(),
+    } as never);
 
     await expect(service.getAssetIds('owner-id', 'folder-id')).resolves.toEqual({
       ids: ['photo-2', 'photo-1'],

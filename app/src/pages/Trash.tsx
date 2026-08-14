@@ -8,7 +8,7 @@ import { useSelection } from '../lib/useSelection';
 import { formatDate } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Album, Asset } from '../types';
-import { Button, ConfirmDialog, EmptyState } from '../ui';
+import { Button, ConfirmDialog, EmptyState, IconButton } from '../ui';
 
 interface TrashedFolder {
   id: string;
@@ -23,12 +23,17 @@ interface TrashedAlbum extends Album {
   deletedAt: string;
 }
 
+type TrashedStructure =
+  | { kind: 'folder'; id: string; name: string }
+  | { kind: 'album'; id: string; name: string };
+
 export function TrashPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'selected' | 'all' | null>(null);
+  const [structureConfirm, setStructureConfirm] = useState<TrashedStructure | null>(null);
 
   const actions = useLibraryActions({ trashed: true, selectedIds: [...selected] });
 
@@ -90,6 +95,22 @@ export function TrashPage() {
     onError,
   });
 
+  const deleteStructureForever = useMutation({
+    mutationFn: async (item: TrashedStructure) =>
+      (
+        await api.delete(
+          item.kind === 'folder'
+            ? `/folders/${item.id}/permanent`
+            : `/albums/${item.id}/permanent`,
+        )
+      ).data,
+    onSuccess: () => {
+      setStructureConfirm(null);
+      return afterChange();
+    },
+    onError,
+  });
+
   const emptyTrash = useMutation({
     mutationFn: async () => {
       await api.post('/assets/trash/empty');
@@ -116,7 +137,7 @@ export function TrashPage() {
               ? ''
               : totalCount === 0
                 ? 'Empty'
-                : `${totalCount} items · removed automatically after 30 days`}
+                : `${totalCount} ${totalCount === 1 ? 'item' : 'items'} · removed automatically after 30 days`}
           </span>
         </div>
 
@@ -195,6 +216,18 @@ export function TrashPage() {
                 >
                   Restore
                 </Button>
+                <IconButton
+                  label={`Permanently delete ${folder.name}`}
+                  size="sm"
+                  variant="danger"
+                  round={false}
+                  disabled={deleteStructureForever.isPending}
+                  onClick={() =>
+                    setStructureConfirm({ kind: 'folder', id: folder.id, name: folder.name })
+                  }
+                >
+                  <Trash2 size={13} />
+                </IconButton>
               </div>
             ))}
             {albums.map((album) => (
@@ -215,6 +248,18 @@ export function TrashPage() {
                 >
                   Restore
                 </Button>
+                <IconButton
+                  label={`Permanently delete ${album.name}`}
+                  size="sm"
+                  variant="danger"
+                  round={false}
+                  disabled={deleteStructureForever.isPending}
+                  onClick={() =>
+                    setStructureConfirm({ kind: 'album', id: album.id, name: album.name })
+                  }
+                >
+                  <Trash2 size={13} />
+                </IconButton>
               </div>
             ))}
           </div>
@@ -267,6 +312,16 @@ export function TrashPage() {
         destructive
         onConfirm={() => emptyTrash.mutate()}
         onClose={() => setConfirm(null)}
+      />
+
+      <ConfirmDialog
+        open={structureConfirm !== null}
+        title={`Permanently delete “${structureConfirm?.name ?? ''}”?`}
+        description={`The ${structureConfirm?.kind ?? 'item'} and all photos inside it are removed from disk. This cannot be undone.`}
+        confirmLabel="Delete forever"
+        destructive
+        onConfirm={() => structureConfirm && deleteStructureForever.mutate(structureConfirm)}
+        onClose={() => setStructureConfirm(null)}
       />
     </div>
   );

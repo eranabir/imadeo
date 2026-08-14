@@ -31,6 +31,7 @@ import type {
   UpdateAssetDto,
   UploadAssetDto,
 } from './asset.dto';
+import { AssetLifecycleService } from './asset-lifecycle.service';
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif', '.tif', '.tiff',
@@ -64,6 +65,7 @@ export class AssetService {
     private readonly users: UserService,
     private readonly ml: MachineLearningService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly lifecycle: AssetLifecycleService,
   ) {}
 
   // -- upload ---------------------------------------------------------------
@@ -1078,64 +1080,48 @@ export class AssetService {
     return { restored: affectedIds.length };
   }
 
-  listTrash(userId: string, page = 1, size = 250) {
+  async listTrash(userId: string, page = 1, size = 250) {
     const retentionDays = this.config.get('trash.retentionDays', { infer: true });
-    return this.prisma.asset
-      .findMany({
-        // Photos removed as part of a folder deletion are represented by the
-        // single folder card in Trash. Only independently deleted photos are
-        // listed as individual items.
-        where: {
-          ownerId: userId,
-          deletedAt: { not: null },
-          OR: [{ folderId: null }, { folder: { deletedAt: null } }],
-        },
-        include: { exif: true },
-        orderBy: { deletedAt: 'desc' },
-        skip: (page - 1) * size,
-        take: size,
-      })
-      .then((items) =>
-        items.map((asset) => ({
-          ...asset,
-          // Surfacing the deadline is what makes the trash feel safe to use.
-          purgeAt: new Date(asset.deletedAt!.getTime() + retentionDays * 86_400_000),
-        })),
-      );
+    const offset = (Math.max(1, page) - 1) * size;
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT a.id
+      FROM assets a
+      LEFT JOIN folders f ON f.id = a."folderId"
+      WHERE a."ownerId" = ${userId}::uuid
+        AND a."deletedAt" IS NOT NULL
+        AND (a."folderId" IS NULL OR f."deletedAt" IS NULL)
+        AND NOT EXISTS (
+          SELECT 1
+          FROM album_assets aa
+          JOIN albums al ON al.id = aa."albumId"
+          WHERE aa."assetId" = a.id
+            AND al."ownerId" = ${userId}::uuid
+            AND al."deletedAt" = a."deletedAt"
+        )
+      ORDER BY a."deletedAt" DESC
+      OFFSET ${offset}
+      LIMIT ${size}
+    `;
+    const items = await this.prisma.asset.findMany({
+      where: { id: { in: rows.map((row) => row.id) }, ownerId: userId },
+      include: { exif: true },
+    });
+    const byId = new Map(items.map((asset) => [asset.id, asset]));
+
+    return rows.flatMap(({ id }) => {
+      const asset = byId.get(id);
+      if (!asset) return [];
+      return [{
+        ...asset,
+        // Surfacing the deadline is what makes the trash feel safe to use.
+        purgeAt: new Date(asset.deletedAt!.getTime() + retentionDays * 86_400_000),
+      }];
+    });
   }
 
   /** Removes the database rows and every file on disk. Irreversible. */
   async deletePermanently(userId: string, ids: string[]) {
-    const assets = await this.prisma.asset.findMany({
-      where: { id: { in: ids }, ownerId: userId },
-      select: {
-        id: true,
-        originalPath: true,
-        thumbnailPath: true,
-        previewPath: true,
-        encodedVideoPath: true,
-        fileSizeInByte: true,
-      },
-    });
-
-    for (const asset of assets) {
-      await this.storage.removeMany([
-        asset.originalPath,
-        asset.thumbnailPath,
-        asset.previewPath,
-        asset.encodedVideoPath,
-      ]);
-    }
-
-    const freed = assets.reduce((sum, a) => sum + a.fileSizeInByte, 0n);
-    await this.prisma.asset.deleteMany({ where: { id: { in: assets.map((a) => a.id) } } });
-    await this.subjects.refreshThumbnailsForAssets(assets.map((asset) => asset.id));
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { quotaUsageInBytes: { decrement: freed } },
-    });
-
-    return { deleted: assets.length, freedBytes: freed };
+    return this.lifecycle.deletePermanently(userId, ids);
   }
 
   async emptyTrash(userId: string) {
