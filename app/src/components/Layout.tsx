@@ -18,6 +18,7 @@ import { useVaultStatus } from './VaultGate';
 import {
   AlbumsIcon,
   BrowseIcon,
+  DevicesIcon,
   DuplicatesIcon,
   FavoritesIcon,
   LockedIcon,
@@ -33,6 +34,7 @@ import { useLibraryActions } from './useLibraryActions';
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
 export const NAV = [
   { to: '/browse', label: 'Browse', icon: BrowseIcon, tint: 'text-primary', end: false },
+  { to: '/devices', label: 'Devices', icon: DevicesIcon, tint: 'text-secondary', end: false },
   { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
   { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
   { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },

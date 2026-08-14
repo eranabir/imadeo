@@ -56,6 +56,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
   const [busy, setBusy] = useState(false);
   /** Overrides the server's answer for anything favourited in this session. */
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [rotations, setRotations] = useState<Record<string, 0 | 90 | 180 | 270>>({});
 
   /** Which page it opened on, kept for the way back out. */
   const opened = useRef(index ?? 0);
@@ -68,6 +69,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
     setCurrent(index);
     setChrome(true);
     setFavorites({});
+    setRotations({});
   }, [index]);
 
   /*
@@ -86,6 +88,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
   if (!asset) return null;
 
   const favorite = favorites[asset.id] ?? asset.isFavorite ?? false;
+  const rotation = rotations[asset.id] ?? asset.rotation ?? 0;
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -137,8 +140,10 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                   uri={`${serverUrl}/api/assets/${item.id}/video`}
                   token={token}
                   active={i === current}
+                  controlsVisible={chrome && i === current}
                   width={width}
                   height={height}
+                  rotation={rotations[item.id] ?? item.rotation ?? 0}
                 />
               ) : (
                 <Image
@@ -146,7 +151,21 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                     uri: `${serverUrl}/api/assets/${item.id}/thumbnail?size=preview`,
                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                   }}
-                  style={{ width, height }}
+                  style={{
+                    width:
+                      (rotations[item.id] ?? item.rotation) === 90 ||
+                      (rotations[item.id] ?? item.rotation) === 270
+                        ? height
+                        : width,
+                    height:
+                      (rotations[item.id] ?? item.rotation) === 90 ||
+                      (rotations[item.id] ?? item.rotation) === 270
+                        ? width
+                        : height,
+                    transform: [
+                      { rotate: `${rotations[item.id] ?? item.rotation ?? 0}deg` },
+                    ],
+                  }}
                   contentFit="contain"
                   transition={140}
                   recyclingKey={item.id}
@@ -221,6 +240,17 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                 }}
               />
               <ViewerAction
+                icon="rotate"
+                label="Rotate clockwise"
+                tint="#fff"
+                disabled={busy}
+                onPress={() => {
+                  const next = ((rotation + 90) % 360) as 0 | 90 | 180 | 270;
+                  setRotations((current) => ({ ...current, [asset.id]: next }));
+                  void run(() => actions.rotateAsset(serverUrl, asset.id, next));
+                }}
+              />
+              <ViewerAction
                 icon="trash"
                 label="Move to trash"
                 tint="#fff"
@@ -260,21 +290,50 @@ function VideoPage({
   uri,
   token,
   active,
+  controlsVisible,
   width,
   height,
+  rotation,
 }: {
   uri: string;
   token: string | null;
   active: boolean;
+  controlsVisible: boolean;
   width: number;
   height: number;
+  rotation: 0 | 90 | 180 | 270;
 }) {
+  const view = useRef<VideoView>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [progressWidth, setProgressWidth] = useState(0);
   const player = useVideoPlayer(
     { uri, headers: token ? { Authorization: `Bearer ${token}` } : undefined },
     (instance) => {
       instance.loop = false;
+      instance.timeUpdateEventInterval = 0.25;
     },
   );
+
+  useEffect(() => {
+    const playingSubscription = player.addListener('playingChange', ({ isPlaying }) =>
+      setPlaying(isPlaying),
+    );
+    const timeSubscription = player.addListener('timeUpdate', ({ currentTime: next }) =>
+      setCurrentTime(next),
+    );
+    const sourceSubscription = player.addListener('sourceLoad', ({ duration: next }) =>
+      setDuration(next),
+    );
+    setCurrentTime(player.currentTime);
+    setDuration(player.duration);
+    return () => {
+      playingSubscription.remove();
+      timeSubscription.remove();
+      sourceSubscription.remove();
+    };
+  }, [player]);
 
   useEffect(() => {
     // Read at the moment the page becomes active rather than subscribed to:
@@ -283,17 +342,101 @@ function VideoPage({
     else player.pause();
   }, [active, player]);
 
+  const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
+
   return (
-    <VideoView
-      player={player}
-      style={{ width, height }}
-      contentFit="contain"
-      nativeControls
-      // `allowsFullscreen` is deprecated in expo-video 3; the options object
-      // replaces it and the boolean is due to stop working.
-      fullscreenOptions={{ enable: true }}
-    />
+    <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+      <VideoView
+        ref={view}
+        player={player}
+        style={{
+          width: rotation === 90 || rotation === 270 ? height : width,
+          height: rotation === 90 || rotation === 270 ? width : height,
+          transform: [{ rotate: `${rotation}deg` }],
+        }}
+        contentFit="contain"
+        nativeControls={false}
+        fullscreenOptions={{ enable: true }}
+      />
+
+      {controlsVisible && <View
+        style={{
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: 28,
+          minHeight: 54,
+          paddingHorizontal: 10,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          borderRadius: radius.md,
+          backgroundColor: colors.overlay,
+        }}
+      >
+        <Touchable
+          onPress={() => {
+            if (playing) player.pause();
+            else if (duration > 0 && currentTime >= duration - 0.05) player.replay();
+            else player.play();
+          }}
+          radius={radius.pill}
+          label={playing ? 'Pause' : 'Play'}
+          style={{ width: 38, height: 38 }}
+        >
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name={playing ? 'pause' : 'play'} size={19} color="#fff" />
+          </View>
+        </Touchable>
+
+        <Text style={{ width: 38, textAlign: 'right', color: '#fff', fontSize: 11 }}>
+          {clockTime(currentTime)}
+        </Text>
+        <Pressable
+          accessibilityRole="adjustable"
+          accessibilityLabel="Video position"
+          onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)}
+          onPress={(event) => {
+            if (!duration || !progressWidth) return;
+            const next = Math.max(
+              0,
+              Math.min(duration, (event.nativeEvent.locationX / progressWidth) * duration),
+            );
+            player.currentTime = next;
+            setCurrentTime(next);
+          }}
+          style={{ flex: 1, height: 38, justifyContent: 'center' }}
+        >
+          <View style={{ height: 3, overflow: 'hidden', borderRadius: 2, backgroundColor: colors.border }}>
+            <View style={{ width: `${progress * 100}%`, height: 3, backgroundColor: colors.primary }} />
+          </View>
+        </Pressable>
+        <Text style={{ width: 38, color: '#fff', fontSize: 11 }}>{clockTime(duration)}</Text>
+
+        <Touchable
+          onPress={() => void view.current?.enterFullscreen()}
+          radius={radius.pill}
+          label="Full screen"
+          style={{ width: 38, height: 38 }}
+        >
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="fullscreen" size={20} color="#fff" />
+          </View>
+        </Touchable>
+      </View>}
+    </View>
   );
+}
+
+function clockTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '0:00';
+  const seconds = Math.floor(value);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = String(seconds % 60).padStart(2, '0');
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+    : `${minutes}:${remainder}`;
 }
 
 function ViewerAction({

@@ -31,6 +31,36 @@ interface RecognitionDetection {
   sourceTimecodeMs: number | null;
 }
 
+interface VideoFaceQuality {
+  minScore: number;
+  minSharpness: number;
+}
+
+/** Rejects video-only false positives, partial faces and unusably blurry crops. */
+export function isUsableVideoFace(
+  face: Pick<DetectedFace, 'boundingBox' | 'score'>,
+  imageWidth: number,
+  imageHeight: number,
+  sharpness: number,
+  quality: VideoFaceQuality,
+) {
+  const { x1, y1, x2, y2 } = face.boundingBox;
+  const marginX = imageWidth * 0.01;
+  const marginY = imageHeight * 0.01;
+  const minimumSize = Math.min(48, Math.min(imageWidth, imageHeight) * 0.08);
+
+  return (
+    face.score >= quality.minScore &&
+    sharpness >= quality.minSharpness &&
+    x2 - x1 >= minimumSize &&
+    y2 - y1 >= minimumSize &&
+    x1 > marginX &&
+    y1 > marginY &&
+    x2 < imageWidth - marginX &&
+    y2 < imageHeight - marginY
+  );
+}
+
 /** Evenly samples ordinary clips while keeping work bounded for hour-long videos. */
 export function videoRecognitionTimestamps(
   durationSeconds: number,
@@ -39,7 +69,11 @@ export function videoRecognitionTimestamps(
 ) {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return [0];
 
-  const end = Math.max(0, durationSeconds - 0.1);
+  // Container duration commonly extends a fraction beyond the final decodable
+  // video frame (especially HEVC in MOV). Seeking only 100ms from that value can
+  // therefore produce zero frames; one second leaves a reliable decoding margin.
+  const endMargin = durationSeconds <= 1 ? 0.1 : 1;
+  const end = Math.max(0, durationSeconds - endMargin);
   const candidates = [Math.min(1, end)];
   for (let second = intervalSeconds; second < end; second += intervalSeconds) {
     candidates.push(second);
@@ -56,17 +90,34 @@ export function videoRecognitionTimestamps(
   });
 }
 
-export function repeatedVideoDetectionIds(
-  detections: { id: string; personId: string | null }[],
+export function redundantVideoDetectionIds(
+  detections: {
+    id: string;
+    personId: string | null;
+    kind: SubjectKind;
+    sourceTimecodeMs: number | null;
+  }[],
+  minimumPersonFrames = 1,
 ) {
-  const seen = new Set<string>();
-  const duplicates: string[] = [];
+  const bySubject = new Map<string, typeof detections>();
   for (const detection of detections) {
     if (!detection.personId) continue;
-    if (seen.has(detection.personId)) duplicates.push(detection.id);
-    else seen.add(detection.personId);
+    const subject = bySubject.get(detection.personId) ?? [];
+    subject.push(detection);
+    bySubject.set(detection.personId, subject);
   }
-  return duplicates;
+
+  const remove: string[] = [];
+  for (const subject of bySubject.values()) {
+    const distinctFrames = new Set(subject.map(({ sourceTimecodeMs }) => sourceTimecodeMs)).size;
+    if (subject[0].kind === SubjectKind.PERSON && distinctFrames < minimumPersonFrames) {
+      remove.push(...subject.map(({ id }) => id));
+    } else {
+      // The query is score-descending, so the first crop is the clearest avatar.
+      remove.push(...subject.slice(1).map(({ id }) => id));
+    }
+  }
+  return remove;
 }
 
 /**
@@ -112,6 +163,22 @@ export class FaceDetectionProcessor extends WorkerHost {
     if (!this.ml.faceRecognitionEnabled) return { skipped: 'face recognition disabled' };
 
     const frames = await this.framesFor(asset);
+    if (frames.length === 0) {
+      // A corrupt or audio-only video must not leave library progress stuck
+      // forever. Nothing was replaced, so a previous successful scan is safe.
+      const recognisedAt = new Date();
+      await this.prisma.assetJobStatus.upsert({
+        where: { assetId: asset.id },
+        create: {
+          assetId: asset.id,
+          facesRecognizedAt: recognisedAt,
+          petsRecognizedAt: recognisedAt,
+        },
+        update: { facesRecognizedAt: recognisedAt, petsRecognizedAt: recognisedAt },
+      });
+      this.logger.warn(`No decodable recognition frames in ${asset.originalFileName}`);
+      return { faces: 0, pets: 0, subjects: 0, frames: 0, skipped: 'no decodable frames' };
+    }
     const detections: RecognitionDetection[] = [];
     let petsRecognised = true;
 
@@ -136,7 +203,9 @@ export class FaceDetectionProcessor extends WorkerHost {
     }
 
     const subjects = await this.clustering.assignFacesForAsset(asset.id, asset.ownerId);
-    if (asset.type === AssetType.VIDEO) await this.removeRepeatedVideoDetections(asset.id);
+    if (asset.type === AssetType.VIDEO) {
+      await this.removeRedundantVideoDetections(asset.id, frames.length > 1 ? 2 : 1);
+    }
 
     // Automatic avatars follow the latest recognised photo, so a successful
     // upload is visible immediately. A cover deliberately chosen by the user
@@ -206,21 +275,23 @@ export class FaceDetectionProcessor extends WorkerHost {
     );
     const frames: RecognitionFrame[] = [];
 
-    try {
-      for (const [index, seconds] of timestamps.entries()) {
-        const path = this.storage.buildIncomingPath(
-          asset.ownerId,
-          `${asset.id}-recognition-${String(index).padStart(3, '0')}.jpg`,
-        );
+    for (const [index, seconds] of timestamps.entries()) {
+      const path = this.storage.buildIncomingPath(
+        asset.ownerId,
+        `${asset.id}-recognition-${String(index).padStart(3, '0')}.jpg`,
+      );
+      try {
         await this.storage.remove(path);
         await this.media.extractPosterFrame(source, path, seconds);
         frames.push({ path, timecodeMs: Math.round(seconds * 1000), temporary: true });
+      } catch (error) {
+        await this.storage.remove(path);
+        this.logger.warn(
+          `Skipping frame ${seconds.toFixed(2)}s in ${asset.originalPath}: ${(error as Error).message}`,
+        );
       }
-      return frames;
-    } catch (error) {
-      await this.storage.removeMany(frames.map((frame) => frame.path));
-      throw error;
     }
+    return frames;
   }
 
   private async analyseFrame(frame: RecognitionFrame) {
@@ -249,8 +320,32 @@ export class FaceDetectionProcessor extends WorkerHost {
       if (recovered) pets.push({ ...recovered, boundingBox: face.boundingBox });
     }
 
+    const humanFaces: DetectedFace[] = [];
+    for (const face of result.faces.filter((candidate) => !isInsidePet(candidate))) {
+      if (frame.timecodeMs !== null) {
+        const sharpness = await this.media.regionSharpness(frame.path, face.boundingBox, {
+          width: result.imageWidth,
+          height: result.imageHeight,
+        });
+        const usable = isUsableVideoFace(
+          face,
+          result.imageWidth,
+          result.imageHeight,
+          sharpness,
+          {
+            minScore: this.config.get('machineLearning.videoFaceMinScore', { infer: true }),
+            minSharpness: this.config.get('machineLearning.videoFaceMinSharpness', {
+              infer: true,
+            }),
+          },
+        );
+        if (!usable) continue;
+      }
+      humanFaces.push(face);
+    }
+
     const detections: RecognitionDetection[] = [
-      ...result.faces.filter((face) => !isInsidePet(face)).map((face) => ({
+      ...humanFaces.map((face) => ({
         kind: SubjectKind.PERSON,
         species: null,
         boundingBox: face.boundingBox,
@@ -294,7 +389,7 @@ export class FaceDetectionProcessor extends WorkerHost {
   }
 
   /** One video should count once per subject, however many sampled frames contain them. */
-  private async removeRepeatedVideoDetections(assetId: string) {
+  private async removeRedundantVideoDetections(assetId: string, minimumPersonFrames: number) {
     const detections = await this.prisma.assetFace.findMany({
       where: {
         assetId,
@@ -302,12 +397,30 @@ export class FaceDetectionProcessor extends WorkerHost {
         sourceType: SourceType.MACHINE_LEARNING,
         isPinned: false,
       },
-      select: { id: true, personId: true },
+      select: { id: true, personId: true, kind: true, sourceTimecodeMs: true },
       orderBy: [{ score: 'desc' }],
     });
-    const duplicates = repeatedVideoDetectionIds(detections);
-    if (duplicates.length > 0) {
-      await this.prisma.assetFace.deleteMany({ where: { id: { in: duplicates } } });
+    const redundant = redundantVideoDetectionIds(detections, minimumPersonFrames);
+    if (redundant.length === 0) return;
+
+    const affectedSubjectIds = [
+      ...new Set(
+        detections
+          .filter(({ id }) => redundant.includes(id))
+          .flatMap(({ personId }) => (personId ? [personId] : [])),
+      ),
+    ];
+    await this.prisma.assetFace.deleteMany({ where: { id: { in: redundant } } });
+
+    const emptySubjects = await this.prisma.person.findMany({
+      where: { id: { in: affectedSubjectIds }, name: '', faces: { none: {} } },
+      select: { id: true, thumbnailPath: true },
+    });
+    if (emptySubjects.length > 0) {
+      await this.prisma.person.deleteMany({
+        where: { id: { in: emptySubjects.map(({ id }) => id) } },
+      });
+      await this.storage.removeMany(emptySubjects.map(({ thumbnailPath }) => thumbnailPath));
     }
   }
 }

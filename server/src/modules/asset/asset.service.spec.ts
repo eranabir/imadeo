@@ -8,11 +8,14 @@ function createService(existing: Record<string, unknown>) {
   const ensurePath = vi.fn().mockResolvedValue({ id: 'new-folder' });
   const refreshThumbnails = vi.fn().mockResolvedValue(undefined);
   const assertQuota = vi.fn();
+  const registerDevice = vi.fn().mockResolvedValue(null);
+  const recordDeviceAsset = vi.fn().mockResolvedValue(undefined);
   const service = new AssetService(
     { asset: { findFirst: vi.fn().mockResolvedValue(existing), update: assetUpdate } } as never,
     { remove: storageRemove } as never,
     {} as never,
     { ensurePath, getById: vi.fn() } as never,
+    { register: registerDevice, recordAsset: recordDeviceAsset } as never,
     { refreshThumbnailsForAssets: refreshThumbnails } as never,
     { assertQuota } as never,
     {} as never,
@@ -21,7 +24,16 @@ function createService(existing: Record<string, unknown>) {
   Object.defineProperty(service, 'hashFile', {
     value: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
   });
-  return { service, assetUpdate, storageRemove, ensurePath, refreshThumbnails, assertQuota };
+  return {
+    service,
+    assetUpdate,
+    storageRemove,
+    ensurePath,
+    refreshThumbnails,
+    assertQuota,
+    registerDevice,
+    recordDeviceAsset,
+  };
 }
 
 describe('AssetService duplicate upload destinations', () => {
@@ -83,6 +95,35 @@ describe('AssetService duplicate upload destinations', () => {
     });
     expect(test.refreshThumbnails).not.toHaveBeenCalled();
   });
+
+  it('adds duplicate bytes to the library of the device that sent them', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      folderId: null,
+      folder: null,
+    });
+    test.registerDevice.mockResolvedValueOnce({ id: 'device-id' } as never);
+
+    await test.service.createFromUpload('owner-id', upload, {
+      deviceId: 'mobile-install-id',
+      deviceAssetId: 'ios-library-id',
+      deviceName: 'Eran’s iPhone',
+      devicePlatform: 'ios',
+    });
+
+    expect(test.registerDevice).toHaveBeenCalledWith('owner-id', {
+      clientId: 'mobile-install-id',
+      assetId: 'ios-library-id',
+      name: 'Eran’s iPhone',
+      platform: 'ios',
+    });
+    expect(test.recordDeviceAsset).toHaveBeenCalledWith(
+      'device-id',
+      'ios-library-id',
+      'asset-id',
+    );
+  });
 });
 
 describe('AssetService.listTrash', () => {
@@ -90,6 +131,7 @@ describe('AssetService.listTrash', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const service = new AssetService(
       { asset: { findMany } } as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -133,6 +175,7 @@ describe('AssetService.resolveMediaPath for Trash', () => {
     new AssetService(
       { asset: { findUnique: vi.fn().mockResolvedValue(trashedAsset) } } as never,
       { exists: vi.fn().mockResolvedValue(true) } as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

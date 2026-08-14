@@ -33,6 +33,18 @@ export class UploadAssetDto {
   @IsString()
   deviceId?: string;
 
+  @ApiPropertyOptional({ description: 'Human-readable device name, e.g. "Eran’s iPhone"' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceName?: string;
+
+  @ApiPropertyOptional({ description: 'Client platform, e.g. ios or android' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  devicePlatform?: string;
+
   @IsOptional()
   @IsDateString()
   fileCreatedAt?: string;
@@ -103,6 +115,12 @@ export class UpdateAssetDto {
   @IsOptional()
   @IsBoolean()
   isFavorite?: boolean;
+
+  @ApiPropertyOptional({ enum: [0, 90, 180, 270] })
+  @IsOptional()
+  @IsInt()
+  @IsIn([0, 90, 180, 270])
+  rotation?: number;
 
   @IsOptional()
   @IsIn([AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE])
@@ -200,6 +218,11 @@ export class AssetQueryDto {
   @IsOptional()
   @IsUUID()
   albumId?: string;
+
+  @ApiPropertyOptional({ description: 'Only assets backed up from this device library' })
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
 
   @IsOptional()
   @IsUUID()

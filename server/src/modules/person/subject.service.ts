@@ -149,16 +149,29 @@ export class SubjectService {
   async update(userId: string, personId: string, dto: UpdateSubjectDto) {
     await this.get(userId, personId);
 
-    return this.prisma.person.update({
-      where: { id: personId },
-      data: {
-        name: dto.name?.trim(),
-        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
-        isHidden: dto.isHidden,
-        isFavorite: dto.isFavorite,
-        color: dto.color,
-        kind: dto.kind,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const subject = await tx.person.update({
+        where: { id: personId },
+        data: {
+          name: dto.name?.trim(),
+          birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+          isHidden: dto.isHidden,
+          isFavorite: dto.isFavorite,
+          color: dto.color,
+          kind: dto.kind,
+          // Species deliberately stays untouched when a pet is moved to People.
+          // The dog/cat badge is useful context even when the grouping kind was wrong.
+        },
+      });
+
+      if (dto.kind) {
+        await tx.assetFace.updateMany({
+          where: { personId },
+          data: { kind: dto.kind },
+        });
+      }
+
+      return subject;
     });
   }
 

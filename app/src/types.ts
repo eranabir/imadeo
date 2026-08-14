@@ -59,6 +59,7 @@ export interface Asset {
   /** When it was uploaded, as opposed to when it was taken. */
   createdAt: string;
   isFavorite: boolean;
+  rotation: 0 | 90 | 180 | 270;
   visibility: 'TIMELINE' | 'ARCHIVE' | 'HIDDEN' | 'LOCKED';
   duration: string | null;
   thumbnailPath: string | null;
@@ -88,6 +89,16 @@ export interface Album {
   folder?: { id: string; name: string; path: string } | null;
   albumUsers?: { userId: string; role: 'VIEWER' | 'EDITOR'; user: { id: string; name: string } }[];
   shared?: boolean;
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  libraryName: string;
+  platform: string;
+  assetCount: number;
+  coverAssetId: string | null;
+  lastSeenAt: string;
 }
 
 export interface FolderContents {

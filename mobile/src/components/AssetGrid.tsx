@@ -179,6 +179,7 @@ export function AssetGrid({
                 height: '100%',
                 backgroundColor: colors.surface,
                 borderRadius: on ? 4 : 0,
+                transform: [{ rotate: `${item.rotation ?? 0}deg` }],
               }}
               contentFit="cover"
               recyclingKey={item.id}

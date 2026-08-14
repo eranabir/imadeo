@@ -12,6 +12,7 @@ export interface Asset {
   originalFileName?: string;
   localDateTime?: string;
   isFavorite?: boolean;
+  rotation?: 0 | 90 | 180 | 270;
 }
 
 export interface Paged<T> {
@@ -43,6 +44,16 @@ export interface Album {
   coverAssetIds: string[];
   shared?: boolean;
   description?: string | null;
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  libraryName: string;
+  platform: string;
+  assetCount: number;
+  coverAssetId: string | null;
+  lastSeenAt: string;
 }
 
 export interface Breadcrumb {

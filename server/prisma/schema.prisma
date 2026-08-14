@@ -120,6 +120,7 @@ model User {
   folderShares     FolderUser[]
   people           Person[]
   sessions         Session[]
+  devices          Device[]
   apiKeys          ApiKey[]
   sharedLinks      SharedLink[]
   tags             Tag[]
@@ -158,6 +159,29 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+/// A mobile installation that backs up one operating-system photo library.
+///
+/// Kept apart from Session: signing out does not erase where a photo came
+/// from, and one device may create many sessions over its lifetime.
+model Device {
+  id         String   @id @default(uuid()) @db.Uuid
+  ownerId    String   @db.Uuid
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Stable identifier generated and retained by the mobile app.
+  clientId   String
+  name       String
+  platform   String   @default("")
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  assets     DeviceAsset[]
+
+  @@unique([ownerId, clientId])
+  @@index([ownerId, lastSeenAt(sort: Desc)])
+  @@map("devices")
 }
 
 model ApiKey {
@@ -283,6 +307,8 @@ model Asset {
   localDateTime     DateTime
 
   isFavorite        Boolean         @default(false)
+  /// User correction applied by viewers without modifying the original file.
+  rotation          Int             @default(0)
   visibility        AssetVisibility @default(TIMELINE)
   isOffline         Boolean         @default(false)
   isExternal        Boolean         @default(false)
@@ -324,6 +350,7 @@ model Asset {
   smartSearch       SmartSearch?
   activities        Activity[]
   memories          MemoryAsset[]
+  deviceAssets      DeviceAsset[]
 
   /// Indexed, not unique. Repeating a phone backup still dedupes, but that is
   /// decided in the service so a deliberate re-upload of the same file can be
@@ -338,6 +365,24 @@ model Asset {
   @@index([deletedAt])
   @@index([type])
   @@map("assets")
+}
+
+/// Membership in a device's backed-up library.
+///
+/// This is deliberately many-to-many: the same bytes can exist on an iPhone
+/// and an iPad while Imadeo keeps only one original file on disk.
+model DeviceAsset {
+  deviceId      String   @db.Uuid
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  assetId       String   @db.Uuid
+  asset         Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// The identifier assigned by iOS/Android inside this particular library.
+  deviceAssetId String
+  createdAt     DateTime @default(now())
+
+  @@id([deviceId, deviceAssetId])
+  @@index([assetId])
+  @@map("device_assets")
 }
 
 /// A private, account-to-account share of one photo or video. The owner keeps

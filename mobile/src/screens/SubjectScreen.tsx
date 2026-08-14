@@ -16,11 +16,13 @@ interface Props {
   title: string;
   /** Whether the server has this grouped with the people or with the pets. */
   kind: 'PERSON' | 'PET';
+  /** Kept even when a recognised dog or cat is moved to People. */
+  species: string | null;
   onBack: () => void;
 }
 
 /** Every photo one person or pet appears in. */
-export function SubjectScreen({ serverUrl, subjectId, title, kind, slot, onBack }: Props) {
+export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot, onBack }: Props) {
   const [name, setName] = useState(title === 'Unnamed' ? '' : title);
   const [naming, setNaming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -67,8 +69,8 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, slot, onBack 
     {
       title: name || 'Unnamed',
       subtitle: total
-        ? `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
-        : undefined,
+        ? `${species ? `${species} · ` : ''}${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
+        : species ?? undefined,
       icon: is === 'PET' ? 'pet' : 'person',
       onBack,
       action: (

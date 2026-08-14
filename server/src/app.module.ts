@@ -8,6 +8,7 @@ import { PrismaModule } from './infra/prisma/prisma.module';
 import { AlbumModule } from './modules/album/album.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { DeviceModule } from './modules/device/device.module';
 import { FolderModule } from './modules/folder/folder.module';
 import { PeopleAndPetsModule } from './modules/person/people-and-pets.module';
 import { ShareModule } from './modules/share/share.module';
@@ -29,6 +30,7 @@ import { UserModule } from './modules/user/user.module';
     InfraModule,
     JobModule,
     AuthModule,
+    DeviceModule,
     UserModule,
     FolderModule,
     AlbumModule,

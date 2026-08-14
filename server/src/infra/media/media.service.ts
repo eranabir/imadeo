@@ -13,6 +13,13 @@ export interface ImageDimensions {
   height: number;
 }
 
+export interface ImageRegion {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface VideoProbe {
   durationSeconds: number;
   width: number;
@@ -105,6 +112,25 @@ export class MediaService {
 
   canSharpDecode(extension: string) {
     return SHARP_FORMATS.has(extension.replace('.', '').toLowerCase());
+  }
+
+  /** Laplacian sharpness for one detected region, isolated from sharp backgrounds. */
+  async regionSharpness(
+    path: string,
+    region: ImageRegion,
+    dimensions: ImageDimensions,
+  ): Promise<number> {
+    const left = Math.max(0, Math.min(dimensions.width - 1, Math.floor(region.x1)));
+    const top = Math.max(0, Math.min(dimensions.height - 1, Math.floor(region.y1)));
+    const right = Math.max(left + 1, Math.min(dimensions.width, Math.ceil(region.x2)));
+    const bottom = Math.max(top + 1, Math.min(dimensions.height, Math.ceil(region.y2)));
+    const crop = await sharp(path, { failOn: 'none' })
+      .extract({ left, top, width: right - left, height: bottom - top })
+      .greyscale()
+      .jpeg()
+      .toBuffer();
+
+    return (await sharp(crop, { failOn: 'none' }).stats()).sharpness;
   }
 
   /**
@@ -202,7 +228,9 @@ export class MediaService {
       ffmpeg(source)
         // Seeking before the input is far faster on long files.
         .inputOptions([`-ss ${atSeconds.toFixed(2)}`])
-        .outputOptions(['-frames:v 1', '-q:v 2', '-vsync 0'])
+        // `-update 1` explicitly tells image2 this is one still rather than a
+        // filename pattern. It also avoids FFmpeg 8's deprecated `-vsync` path.
+        .outputOptions(['-frames:v 1', '-q:v 2', '-update 1'])
         .on('error', reject)
         .on('end', () => resolve(destination))
         .save(destination);

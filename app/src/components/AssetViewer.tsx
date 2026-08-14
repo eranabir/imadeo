@@ -5,15 +5,21 @@ import {
   Download,
   Heart,
   Info,
+  Maximize2,
+  Pause,
+  Play,
+  RotateCw,
   Trash2,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, mediaUrl } from '../lib/api';
 import { formatBytes, formatDateTime } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
-import { ConfirmDialog } from '../ui';
+import { ConfirmDialog, IconButton } from '../ui';
 
 interface Props {
   asset: Asset;
@@ -25,9 +31,11 @@ interface Props {
 export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   const [confirmTrash, setConfirmTrash] = useState(false);
+  const [rotations, setRotations] = useState<Record<string, number>>({});
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isShared = asset.ownerId !== user?.id;
+  const rotation = rotations[asset.id] ?? asset.rotation ?? 0;
 
   const index = assets.findIndex((a) => a.id === asset.id);
   const previous = index > 0 ? assets[index - 1] : null;
@@ -50,6 +58,15 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
     },
   });
 
+  const rotate = useMutation({
+    mutationFn: async (next: number) =>
+      (await api.put(`/assets/${asset.id}`, { rotation: next })).data,
+    onSuccess: (_, next) => {
+      setRotations((current) => ({ ...current, [asset.id]: next }));
+      void queryClient.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -57,6 +74,9 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
       if (event.key === 'ArrowRight' && next) onNavigate(next);
       if (event.key === 'i') setShowInfo((v) => !v);
       if (event.key === 'f') favorite.mutate();
+      if (event.key === 'r' && !isShared && !rotate.isPending) {
+        rotate.mutate((rotation + 90) % 360);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -73,6 +93,15 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => rotate.mutate((rotation + 90) % 360)}
+            title="Rotate clockwise (r)"
+            disabled={isShared || rotate.isPending}
+            className="grid h-9 w-9 place-items-center rounded-md hover:bg-white/10 disabled:opacity-40"
+          >
+            <RotateCw size={18} />
+          </button>
           <button
             type="button"
             onClick={() => favorite.mutate()}
@@ -126,31 +155,8 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           </button>
         )}
 
-        <div className="grid min-h-0 min-w-0 flex-1 place-items-center p-4">
-          {asset.type === 'VIDEO' ? (
-            <video
-              key={asset.id}
-              src={mediaUrl(asset.id, 'video')}
-              poster={mediaUrl(asset.id, 'preview')}
-              controls
-              autoPlay={user?.preferences.autoplayVideos}
-              loop={user?.preferences.loopVideos}
-              playsInline
-              className="block max-w-full object-contain"
-              style={{ maxHeight: 'calc(100dvh - 5.75rem)' }}
-            />
-          ) : (
-            <img
-              key={asset.id}
-              src={mediaUrl(asset.id, 'preview')}
-              alt={asset.originalFileName}
-              // The flex/grid ancestors have an auto minimum height in some
-              // browsers, so percentage max-heights are not a real viewport
-              // bound. An explicit viewport cap keeps a portrait complete.
-              className="block max-w-full object-contain"
-              style={{ maxHeight: 'calc(100dvh - 5.75rem)' }}
-            />
-          )}
+        <div className="min-h-0 min-w-0 flex-1 p-4">
+          <RotatedMedia asset={asset} rotation={rotation} />
         </div>
 
         {next && (
@@ -223,6 +229,171 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
       />
     </div>
   );
+}
+
+function RotatedMedia({ asset, rotation }: { asset: Asset; rotation: number }) {
+  const area = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const element = area.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setSize({ width: entry.contentRect.width, height: entry.contentRect.height }),
+    );
+    observer.observe(element);
+    setSize({ width: element.clientWidth, height: element.clientHeight });
+    return () => observer.disconnect();
+  }, []);
+
+  const quarterTurn = rotation === 90 || rotation === 270;
+  const style: CSSProperties = {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: size.width ? (quarterTurn ? size.height : size.width) : '100%',
+    height: size.height ? (quarterTurn ? size.width : size.height) : '100%',
+    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+    objectFit: 'contain',
+  };
+
+  return (
+    <div ref={area} className="relative h-full w-full overflow-hidden">
+      {asset.type === 'VIDEO' ? (
+        <RotatedVideo
+          key={asset.id}
+          asset={asset}
+          style={style}
+          autoPlay={user?.preferences.autoplayVideos}
+          loop={user?.preferences.loopVideos}
+        />
+      ) : (
+        <img
+          key={asset.id}
+          src={mediaUrl(asset.id, 'preview')}
+          alt={asset.originalFileName}
+          style={style}
+        />
+      )}
+    </div>
+  );
+}
+
+function RotatedVideo({
+  asset,
+  style,
+  autoPlay,
+  loop,
+}: {
+  asset: Asset;
+  style: CSSProperties;
+  autoPlay?: boolean;
+  loop?: boolean;
+}) {
+  const frame = useRef<HTMLDivElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const togglePlayback = () => {
+    const element = video.current;
+    if (!element) return;
+    if (element.paused) void element.play();
+    else element.pause();
+  };
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void frame.current?.requestFullscreen();
+  };
+
+  return (
+    <div ref={frame} className="absolute inset-0">
+      <video
+        ref={video}
+        src={mediaUrl(asset.id, 'video')}
+        poster={mediaUrl(asset.id, 'preview')}
+        autoPlay={autoPlay}
+        loop={loop}
+        playsInline
+        style={style}
+        onClick={togglePlayback}
+        onDoubleClick={toggleFullscreen}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+      />
+
+      <div className="absolute inset-x-4 bottom-4 z-10 flex items-center gap-3 rounded-panel bg-black/70 px-3 py-2 text-white backdrop-blur-sm">
+        <IconButton
+          onClick={togglePlayback}
+          label={playing ? 'Pause' : 'Play'}
+          size="sm"
+          round={false}
+          className="text-white hover:bg-white/10 hover:text-white"
+        >
+          {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+        </IconButton>
+
+        <span className="w-11 text-right text-xs tabular-nums text-white/70">
+          {videoTime(currentTime)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={Math.min(currentTime, duration || 0)}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            if (video.current) video.current.currentTime = next;
+            setCurrentTime(next);
+          }}
+          aria-label="Video position"
+          className="h-1 min-w-0 flex-1 cursor-pointer accent-accent"
+        />
+        <span className="w-11 text-xs tabular-nums text-white/70">{videoTime(duration)}</span>
+
+        <IconButton
+          onClick={() => {
+            const next = !muted;
+            if (video.current) video.current.muted = next;
+            setMuted(next);
+          }}
+          label={muted ? 'Unmute' : 'Mute'}
+          size="sm"
+          round={false}
+          className="text-white hover:bg-white/10 hover:text-white"
+        >
+          {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        </IconButton>
+        <IconButton
+          onClick={toggleFullscreen}
+          label="Full screen"
+          size="sm"
+          round={false}
+          className="text-white hover:bg-white/10 hover:text-white"
+        >
+          <Maximize2 size={18} />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function videoTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '0:00';
+  const seconds = Math.floor(value);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = String(seconds % 60).padStart(2, '0');
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
+    : `${minutes}:${remainder}`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

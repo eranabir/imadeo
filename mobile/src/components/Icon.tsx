@@ -15,12 +15,15 @@ export type IconName =
   | 'forward'
   | 'close'
   | 'play'
+  | 'pause'
+  | 'fullscreen'
   | 'sparkle'
   | 'photo'
   | 'shared'
   | 'heart'
   | 'heart-filled'
   | 'trash'
+  | 'rotate'
   | 'move'
   | 'plus'
   | 'check'
@@ -211,6 +214,24 @@ function shapes(name: IconName, color: string) {
     case 'play':
       return <Path d="M8 5.2l11.5 6.8L8 18.8Z" fill={color} />;
 
+    case 'pause':
+      return (
+        <>
+          <Rect x="7" y="5" width="3.5" height="14" rx="1" fill={color} />
+          <Rect x="13.5" y="5" width="3.5" height="14" rx="1" fill={color} />
+        </>
+      );
+
+    case 'fullscreen':
+      return (
+        <>
+          <Path d="M8.5 4H4v4.5" />
+          <Path d="M15.5 4H20v4.5" />
+          <Path d="M20 15.5V20h-4.5" />
+          <Path d="M4 15.5V20h4.5" />
+        </>
+      );
+
     // Search that looks at the pictures rather than their names.
     case 'sparkle':
       return (
@@ -304,6 +325,14 @@ function shapes(name: IconName, color: string) {
         <>
           <Path d="M16.4 4.6a2.1 2.1 0 0 1 3 3L9 18l-4 1 1-4Z" />
           <Path d="M14.6 6.4l3 3" />
+        </>
+      );
+
+    case 'rotate':
+      return (
+        <>
+          <Path d="M20 11a8 8 0 1 1-2.3-5.7" />
+          <Path d="M20 4v7h-7" />
         </>
       );
 

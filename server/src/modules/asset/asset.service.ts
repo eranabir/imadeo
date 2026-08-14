@@ -20,6 +20,7 @@ import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
+import { DeviceService } from '../device/device.service';
 import { FolderService } from '../folder/folder.service';
 import { SubjectService } from '../person/subject.service';
 import { UserService } from '../user/user.service';
@@ -58,6 +59,7 @@ export class AssetService {
     private readonly storage: StorageService,
     private readonly jobs: JobService,
     private readonly folders: FolderService,
+    private readonly devices: DeviceService,
     private readonly subjects: SubjectService,
     private readonly users: UserService,
     private readonly ml: MachineLearningService,
@@ -75,6 +77,12 @@ export class AssetService {
   */
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     const checksum = await this.hashFile(file.path);
+    const sourceDevice = await this.devices.register(userId, {
+      clientId: dto.deviceId,
+      assetId: dto.deviceAssetId,
+      name: dto.deviceName,
+      platform: dto.devicePlatform,
+    });
 
     // Skipped entirely when the caller has asked for a second copy on purpose.
     const existing = dto.allowDuplicate
@@ -94,6 +102,9 @@ export class AssetService {
       // matters. Re-uploading a deleted directory must rebuild its folder tree
       // instead of restoring assets underneath the old, deleted folder.
       await this.storage.remove(file.path);
+      if (sourceDevice && dto.deviceAssetId) {
+        await this.devices.recordAsset(sourceDevice.id, dto.deviceAssetId, existing.id);
+      }
 
       const hasFolderDestination = Boolean(dto.folderId || dto.relativePath);
       const destinationFolderId = hasFolderDestination
@@ -159,6 +170,10 @@ export class AssetService {
         duration: dto.duration ?? null,
         folderId,
         jobStatus: { create: {} },
+        deviceAssets:
+          sourceDevice && dto.deviceAssetId
+            ? { create: { deviceId: sourceDevice.id, deviceAssetId: dto.deviceAssetId } }
+            : undefined,
       },
     });
 
@@ -429,6 +444,7 @@ export class AssetService {
       isFavorite: query.isFavorite,
       folderId: query.folderId,
       ...(query.albumId ? { albums: { some: { albumId: query.albumId } } } : {}),
+      ...(query.deviceId ? { deviceAssets: { some: { deviceId: query.deviceId } } } : {}),
       ...(query.personId ? { faces: { some: { personId: query.personId, deletedAt: null } } } : {}),
       ...(query.filename
         ? { originalFileName: { contains: query.filename, mode: 'insensitive' } }
@@ -764,7 +780,9 @@ export class AssetService {
    * OS and outlive any one install, so matching on those is what actually
    * answers "have I sent this picture before".
    */
-  async backedUpDeviceAssetIds(userId: string): Promise<string[]> {
+  async backedUpDeviceAssetIds(userId: string, deviceId?: string): Promise<string[]> {
+    if (deviceId) return this.devices.backedUpAssetIds(userId, deviceId);
+
     const rows = await this.prisma.asset.findMany({
       where: { ownerId: userId, deletedAt: null, deviceAssetId: { not: null } },
       select: { deviceAssetId: true },
@@ -928,6 +946,7 @@ export class AssetService {
         // path for no gain — the layout there is the storage template's job.
         originalFileName: dto.originalFileName?.trim() || undefined,
         isFavorite: dto.isFavorite,
+        rotation: dto.rotation,
         visibility: dto.visibility,
         folderId: dto.folderId === undefined ? undefined : dto.folderId,
         // Editing the capture date has to move the asset in the timeline too.

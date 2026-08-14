@@ -64,8 +64,9 @@ const ratioOf = (asset: Asset) => {
   const w = asset.exif?.exifImageWidth;
   const h = asset.exif?.exifImageHeight;
   if (!w || !h) return DEFAULT_RATIO;
+  const ratio = asset.rotation === 90 || asset.rotation === 270 ? h / w : w / h;
   // Guard against absurd panoramas dominating a row.
-  return Math.min(Math.max(w / h, 0.3), 4);
+  return Math.min(Math.max(ratio, 0.3), 4);
 };
 
 /**
@@ -213,6 +214,8 @@ export function JustifiedGrid({
         >
           {row.map(({ asset, width: w, height: h }) => {
             const isSelected = selected?.has(asset.id) ?? false;
+            const rotation = asset.rotation ?? 0;
+            const quarterTurn = rotation === 90 || rotation === 270;
 
             return (
               <div
@@ -246,6 +249,18 @@ export function JustifiedGrid({
                   // Images are natively draggable. Left on, the browser drags
                   // the picture itself and the tile's own dragstart never runs.
                   draggable={false}
+                  style={
+                    rotation
+                      ? {
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          width: quarterTurn ? h : w,
+                          height: quarterTurn ? w : h,
+                          transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${isSelected ? 0.92 : 1})`,
+                        }
+                      : undefined
+                  }
                   onClick={(event) => {
                     // Ctrl/Cmd-click starts or extends a selection and
                     // Shift-click takes the run up to it. Without these a

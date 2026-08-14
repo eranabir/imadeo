@@ -120,7 +120,12 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
             onPress={() =>
               router.push({
                 pathname: '/subject/[id]',
-                params: { id: item.id, kind: item.kind, title: item.name || 'Unnamed' },
+                params: {
+                  id: item.id,
+                  kind: item.kind,
+                  species: item.species ?? '',
+                  title: item.name || 'Unnamed',
+                },
               })
             }
           />

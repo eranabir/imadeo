@@ -10,6 +10,7 @@ import { AlbumsPage } from './pages/Albums';
 import { FavoritesPage } from './pages/Favorites';
 import { BrowsePage, FoldersPage } from './pages/FolderView';
 import { DuplicatesPage } from './pages/Duplicates';
+import { DevicesPage } from './pages/Devices';
 import { LockedPage } from './pages/Locked';
 import { PeopleAndPetsPage } from './pages/PeopleAndPets';
 import { PlacesPage } from './pages/Places';
@@ -124,6 +125,8 @@ function App() {
         <Route path="/folders/:folderId" element={<FoldersPage />} />
         <Route path="/albums" element={<AlbumsPage />} />
         <Route path="/albums/:albumId" element={<AlbumPage />} />
+        <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/devices/:deviceId" element={<DevicesPage />} />
         <Route path="/sharing" element={<SharingPage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/favorites" element={<FavoritesPage />} />

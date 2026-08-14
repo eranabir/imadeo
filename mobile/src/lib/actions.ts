@@ -34,6 +34,12 @@ const writes = {
       body: JSON.stringify({ originalFileName: name }),
     }),
 
+  rotateAsset: (server: string, id: string, rotation: 0 | 90 | 180 | 270) =>
+    request(server, `/assets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ rotation }),
+    }),
+
   /**
    * Files photos under a folder, or takes them out of one.
    *

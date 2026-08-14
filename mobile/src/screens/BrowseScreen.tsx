@@ -12,7 +12,7 @@ import { SharingShelf } from './SharingScreen';
 import { ConfirmSheet, MoveSheet, PromptSheet, ShareSheet } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
-import { usePagedResource, useResource, type Album, type Asset, type FolderContents } from '../lib/api';
+import { usePagedResource, useResource, type Album, type Asset, type Device, type FolderContents } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 
@@ -91,6 +91,10 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     serverUrl,
     showing !== 'folders' ? null : atRoot ? '/folders/root?size=1' : `/folders/${folderId}/contents`,
   );
+  const devices = useResource<Device[]>(
+    serverUrl,
+    atRoot && showing === 'folders' ? '/devices' : null,
+  );
 
   const active =
     showing === 'photos' ? timeline : showing === 'albums' ? allAlbums : contents;
@@ -100,7 +104,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     timeline.reload();
     allAlbums.reload();
     contents.reload();
-  }, [timeline.reload, allAlbums.reload, contents.reload]);
+    devices.reload();
+  }, [timeline.reload, allAlbums.reload, contents.reload, devices.reload]);
 
   const folders = showing === 'folders' ? contents.data?.folders ?? [] : [];
   const albums =
@@ -182,7 +187,8 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     { ...bar, onBack },
     [title, subtitle, showing, shelf, atRoot, onBack],
   );
-  const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0;
+  const deviceShelf = atRoot && showing === 'folders';
+  const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0 && !deviceShelf;
 
   /** Runs a write, then refetches whichever shelf is showing. */
   const run = async (work: () => Promise<unknown>) => {
@@ -209,6 +215,18 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         >
           {error ?? failure}
         </Text>
+      )}
+
+      {deviceShelf && (
+        <Section title="Devices" trailing={`${devices.data?.length ?? 0}`}>
+          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <FolderCard
+              folder={{ name: 'Devices', cardIcon: 'phone' }}
+              detail={`${devices.data?.length ?? 0} device ${(devices.data?.length ?? 0) === 1 ? 'library' : 'libraries'}`}
+              onPress={() => router.push('/devices')}
+            />
+          </View>
+        </Section>
       )}
 
       {folders.length > 0 && (

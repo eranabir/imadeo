@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Device from 'expo-device';
 /*
  * The legacy entry, deliberately.
  *
@@ -11,6 +12,7 @@ import * as FileSystem from 'expo-file-system/legacy';
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
+import { Platform } from 'react-native';
 import { libraryChanged } from './api';
 import { storedToken } from './auth';
 import { cellularAllowed } from './preferences';
@@ -104,10 +106,14 @@ async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string>
   try {
     const token = await storedToken();
     if (!token) return null;
+    const id = await deviceId();
 
-    const response = await fetch(`${baseUrl}/api/assets/backed-up`, {
+    const response = await fetch(
+      `${baseUrl}/api/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
+      {
       headers: { Authorization: `Bearer ${token}`, 'x-imadeo-client': 'native' },
-    });
+      },
+    );
     if (!response.ok) return null;
 
     const ids = (await response.json()) as string[];
@@ -128,6 +134,15 @@ async function deviceId(): Promise<string> {
   const fresh = `mobile-${Math.random().toString(36).slice(2, 10)}`;
   await setItem(DEVICE_KEY, fresh);
   return fresh;
+}
+
+/** Name shown for this library in Devices. */
+function deviceName(): string {
+  const detected = Device.deviceName?.trim();
+  if (detected) return detected;
+  if (Platform.OS === 'ios') return 'iPhone';
+  if (Platform.OS === 'android') return 'Android device';
+  return 'Mobile device';
 }
 
 /**
@@ -372,6 +387,8 @@ async function send(
         parameters: {
           deviceAssetId: asset.id,
           deviceId: id,
+          deviceName: deviceName(),
+          devicePlatform: Platform.OS,
           fileCreatedAt: new Date(asset.creationTime).toISOString(),
           fileModifiedAt: new Date(asset.modificationTime).toISOString(),
         },

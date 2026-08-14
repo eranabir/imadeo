@@ -60,6 +60,8 @@ export class AssetController {
         assetData: { type: 'string', format: 'binary' },
         deviceAssetId: { type: 'string' },
         deviceId: { type: 'string' },
+        deviceName: { type: 'string', example: 'Eran’s iPhone' },
+        devicePlatform: { type: 'string', example: 'ios' },
         fileCreatedAt: { type: 'string', format: 'date-time' },
         fileModifiedAt: { type: 'string', format: 'date-time' },
         isFavorite: { type: 'boolean' },
@@ -122,8 +124,8 @@ export class AssetController {
     description:
       'Lets a freshly installed app tell which of the photos on the phone are already safe, instead of offering to send them all again.',
   })
-  backedUp(@AuthedUserId() userId: string) {
-    return this.assetService.backedUpDeviceAssetIds(userId);
+  backedUp(@AuthedUserId() userId: string, @Query('deviceId') deviceId?: string) {
+    return this.assetService.backedUpDeviceAssetIds(userId, deviceId);
   }
 
   @Get('places')

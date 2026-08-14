@@ -9,6 +9,7 @@ import type { Request } from 'express';
 import type { AuthDto } from '../../common/auth.types';
 import type { AppConfig } from '../../config/configuration';
 import { FolderModule } from '../folder/folder.module';
+import { DeviceModule } from '../device/device.module';
 import { PeopleAndPetsModule } from '../person/people-and-pets.module';
 import { UserModule } from '../user/user.module';
 import { AssetController } from './asset.controller';
@@ -24,6 +25,7 @@ import { VideoProcessor } from './processors/video.processor';
 @Module({
   imports: [
     FolderModule,
+    DeviceModule,
     PeopleAndPetsModule,
     UserModule,
     MulterModule.registerAsync({

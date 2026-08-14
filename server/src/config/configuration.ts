@@ -153,8 +153,12 @@ export const configuration = () => {
       faceModel: process.env.ML_FACE_MODEL ?? 'yunet+sface',
       faceMinScore: num(process.env.ML_FACE_MIN_SCORE, 0.7),
       videoRecognitionEnabled: bool(process.env.ML_VIDEO_RECOGNITION_ENABLED, true),
-      videoSampleIntervalSeconds: int(process.env.ML_VIDEO_SAMPLE_INTERVAL_SECONDS, 10),
-      videoMaxFrames: int(process.env.ML_VIDEO_MAX_FRAMES, 60),
+      videoSampleIntervalSeconds: int(process.env.ML_VIDEO_SAMPLE_INTERVAL_SECONDS, 30),
+      videoMaxFrames: int(process.env.ML_VIDEO_MAX_FRAMES, 20),
+      // Video frames are commonly blurred, partly off-screen, or contain face-like
+      // patterns. Keep their acceptance stricter than deliberately taken photos.
+      videoFaceMinScore: num(process.env.ML_VIDEO_FACE_MIN_SCORE, 0.85),
+      videoFaceMinSharpness: num(process.env.ML_VIDEO_FACE_MIN_SHARPNESS, 0.35),
       // SFace keeps the same person close across photos, but a 0.50 limit
       // fragmented ordinary changes of angle and lighting into new people.
       faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),

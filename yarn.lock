@@ -2255,6 +2255,7 @@ __metadata:
     expo-background-task: "npm:~57.0.8"
     expo-blur: "npm:~57.0.2"
     expo-constants: "npm:~57.0.9"
+    expo-device: "npm:~57.0.1"
     expo-file-system: "npm:~57.0.2"
     expo-glass-effect: "npm:~57.0.1"
     expo-image: "npm:~57.0.2"
@@ -8771,6 +8772,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-device@npm:~57.0.1":
+  version: 57.0.1
+  resolution: "expo-device@npm:57.0.1"
+  dependencies:
+    ua-parser-js: "npm:^0.7.33"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/36c4adc9799b3118f4e8149c96018688f2f45d14ab160e5142a804ad32f882b055072ff4aebfb4f40b8dbcbe69656d5b4d3fc6aec797316585c6e19397576bda
+  languageName: node
+  linkType: hard
+
 "expo-file-system@npm:~57.0.2":
   version: 57.0.2
   resolution: "expo-file-system@npm:57.0.2"
@@ -15160,6 +15172,15 @@ __metadata:
   version: 0.1.2
   resolution: "ua-is-frozen@npm:0.1.2"
   checksum: 10c0/fb41929bd4924c9676391e6d7197d30580749a96697a83c8b6e77fb137e3ff8492dcd1e6f871f6a9517848651a93af37bfefb25385f16d90e19678ade22d30b7
+  languageName: node
+  linkType: hard
+
+"ua-parser-js@npm:^0.7.33":
+  version: 0.7.41
+  resolution: "ua-parser-js@npm:0.7.41"
+  bin:
+    ua-parser-js: script/cli.js
+  checksum: 10c0/b134bc0d8da10c76e07740a0ade61c193fd4c4d120ba2cb2530e26931f6b550dd60b6e801d8891f6d9c23dfebadf5590294739069edff94396f173cc8cc5767e
   languageName: node
   linkType: hard
 

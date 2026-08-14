@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { subjectThumbnail, thumbnail, type Subject } from '../lib/api';
 import { colors, radius, shadow, wash } from '../theme';
-import { Icon } from './Icon';
+import { Icon, type IconName } from './Icon';
 import { Touchable } from './ui';
 
 export const count = (n: number, one: string, many = `${one}s`) =>
@@ -12,6 +12,7 @@ export const count = (n: number, one: string, many = `${one}s`) =>
 /** As much of a folder as its card needs. Search results carry no counts. */
 export interface FolderCardData {
   name: string;
+  cardIcon?: IconName;
   color?: string | null;
   assetCount?: number;
   albumCount?: number;
@@ -83,7 +84,7 @@ export function FolderCard({
             justifyContent: 'center',
           }}
         >
-          <Icon name="folder" size={21} color={folder.color ?? colors.primary} />
+          <Icon name={folder.cardIcon ?? 'folder'} size={21} color={folder.color ?? colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
@@ -261,6 +262,7 @@ export function SubjectCard({
           marginBottom: 4,
         }}
       >
+        {subject.species ? `${subject.species} · ` : ''}
         {subject.faceCount.toLocaleString()}
       </Text>
     </Touchable>
