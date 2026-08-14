@@ -31,7 +31,7 @@ export function SharingShelf({ serverUrl, topInset }: { serverUrl: string; topIn
   const receivedFolders = (root.data?.folders ?? []).filter((folder) => folder.shared);
   const hasContainers = receivedFolders.length > 0 || receivedAlbums.length > 0;
   const loading = me.loading || assets.loading || albums.loading || root.loading;
-  const error = assets.error ?? albums.error ?? root.error;
+  const error = me.error ?? assets.error ?? albums.error ?? root.error;
 
   const reload = () => {
     void me.reload();

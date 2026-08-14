@@ -13,6 +13,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
+  ActivityIndicator,
   AppState,
   Easing,
   FlatList,
@@ -29,6 +30,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DayHeader, Empty } from '../components/AssetGrid';
+import { VideoPage } from '../components/AssetViewer';
 import { useGrowFrom, type Rect } from '../components/grow';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
 import { BackupProgressScreen } from './BackupProgressScreen';
@@ -753,7 +755,7 @@ function DeviceViewer({
               setAt(Math.round(event.nativeEvent.contentOffset.x / width))
             }
             windowSize={3}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => (
               <Pressable
                 // A tap puts the bar away rather than closing, which is what the
                 // server-side viewer does and what leaves the photograph alone.
@@ -762,13 +764,23 @@ function DeviceViewer({
                 accessibilityLabel={item.filename}
                 style={{ width, height, justifyContent: 'center' }}
               >
-                <Image
-                  source={item.uri}
-                  style={{ width, height }}
-                  contentFit="contain"
-                  recyclingKey={item.id}
-                  transition={140}
-                />
+                {item.mediaType === 'video' ? (
+                  <DeviceVideoPage
+                    asset={item}
+                    active={index === at}
+                    controlsVisible={chrome && index === at}
+                    width={width}
+                    height={height}
+                  />
+                ) : (
+                  <Image
+                    source={item.uri}
+                    style={{ width, height }}
+                    contentFit="contain"
+                    recyclingKey={item.id}
+                    transition={140}
+                  />
+                )}
               </Pressable>
             )}
           />
@@ -869,6 +881,93 @@ function DeviceViewer({
         />
       </View>
     </Modal>
+  );
+}
+
+/**
+ * Resolve a Photos-library video to a file the native player can open.
+ *
+ * iOS gives the grid a `ph://` database reference. That is enough for
+ * `expo-image` to ask Photos for a thumbnail, but it is not a video URL. Asking
+ * MediaLibrary for the asset info turns it into a `file://` URL and downloads
+ * an iCloud-offloaded original when playback actually reaches this page.
+ */
+function DeviceVideoPage({
+  asset,
+  active,
+  controlsVisible,
+  width,
+  height,
+}: {
+  asset: MediaLibrary.Asset;
+  active: boolean;
+  controlsVisible: boolean;
+  width: number;
+  height: number;
+}) {
+  const [uri, setUri] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!active || uri) return;
+
+    let alive = true;
+    setFailed(false);
+
+    void MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: true })
+      .then((info) => {
+        if (!alive) return;
+        const playable = info.localUri ?? (asset.uri.startsWith('ph://') ? null : asset.uri);
+        if (!playable) throw new Error('No playable file is available');
+        setUri(playable);
+      })
+      .catch(() => {
+        if (alive) setFailed(true);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [active, asset, attempt, uri]);
+
+  if (uri) {
+    return (
+      <VideoPage
+        uri={uri}
+        token={null}
+        active={active}
+        controlsVisible={controlsVisible}
+        width={width}
+        height={height}
+        rotation={0}
+      />
+    );
+  }
+
+  return (
+    <View style={{ width, height, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+      {failed ? (
+        <>
+          <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+            This video could not be opened.
+          </Text>
+          <Touchable
+            onPress={() => setAttempt((value) => value + 1)}
+            radius={radius.pill}
+            label="Try video again"
+            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: colors.surface }}
+          >
+            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '700' }}>Try again</Text>
+          </Touchable>
+        </>
+      ) : (
+        <>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ color: colors.muted, fontSize: 14 }}>Preparing video…</Text>
+        </>
+      )}
+    </View>
   );
 }
 

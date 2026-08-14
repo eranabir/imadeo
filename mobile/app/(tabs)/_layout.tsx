@@ -23,9 +23,10 @@ import { colors, wash } from '../../src/theme';
  * here that reads as a stray control rather than one of the five places you can
  * go — this app's search is a tab like the others.
  *
- * Nothing here names a colour. The bar's material is the platform's, and it
- * only stayed clear for as long as the root layout kept remounting the tree on
- * an appearance change — a rebuilt tab bar came back without one.
+ * iOS keeps its native material, but is explicitly forbidden from switching
+ * to the fully transparent scroll-edge appearance. A photo grid can reach that
+ * edge while the bar is still expanded, leaving black labels directly over a
+ * photograph with no material behind them.
  *
  * Android is told to keep every label. Material hides them on the unselected
  * items once a bar has more than three, which leaves four unexplained glyphs
@@ -58,6 +59,7 @@ export default function TabsLayout() {
       labelVisibilityMode="labeled"
       backgroundColor={Platform.OS === 'android' ? colors.surface : undefined}
       indicatorColor={Platform.OS === 'android' ? wash(colors.primary) : undefined}
+      disableTransparentOnScrollEdge
     >
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon sf="iphone" md="smartphone" />

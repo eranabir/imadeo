@@ -286,7 +286,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
  * matters: a swiped-past video that keeps its audio running is the single most
  * obvious way a gallery can feel broken.
  */
-function VideoPage({
+export function VideoPage({
   uri,
   token,
   active,

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { restore as restoreAutoBackup } from './lib/autobackup';
-import { signOut, storedToken } from './lib/auth';
+import { onSessionExpired, signOut, storedToken } from './lib/auth';
+import { beginServerCheck } from './lib/api';
 import { restorePreferences } from './lib/preferences';
 import { forget, load, type ServerInfo } from './lib/server';
 
@@ -32,6 +33,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [signedIn, setSignedIn] = useState(false);
   const [restoring, setRestoring] = useState(true);
 
+  // A rejected refresh token ends one shared session, not four unrelated tab
+  // requests. Returning through the gate also clears every stale screen.
+  useEffect(() => onSessionExpired(() => setSignedIn(false)), []);
+
   // Neither the address nor the session should be retyped on every launch.
   useEffect(() => {
     (async () => {
@@ -49,7 +54,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             setTimeout(() => reject(new Error('storage timed out')), 4000),
           ),
         ]);
-        if (url) setServer({ url, version: 'unknown' });
+        if (url) {
+          beginServerCheck();
+          setServer({ url, version: 'unknown' });
+        }
         if (url && token) setSignedIn(true);
       } catch {
         // Nothing restored; start from the beginning.
@@ -68,8 +76,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     server,
     signedIn,
     restoring,
-    connect: setServer,
-    signedInNow: () => setSignedIn(true),
+    connect: (nextServer) => {
+      beginServerCheck();
+      setServer(nextServer);
+    },
+    signedInNow: () => {
+      beginServerCheck();
+      setSignedIn(true);
+    },
     // A token from one server means nothing to another.
     changeServer: async () => {
       await Promise.all([forget(), signOut()]);

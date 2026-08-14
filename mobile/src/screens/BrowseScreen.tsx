@@ -302,7 +302,11 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         loading={loading}
         onRefresh={reload}
         topInset={clearance}
-        header={nothing ? null : header}
+        // An empty result must not hide the reason it is empty. Previously a
+        // failed request showed the normal “Nothing on your server yet” state,
+        // while another tab displayed the authentication error from the same
+        // session.
+        header={nothing && !error && !failure ? null : header}
         showEmptyState={nothing}
         selected={selection.ids}
         onToggle={selection.toggle}

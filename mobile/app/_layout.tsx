@@ -11,7 +11,7 @@ import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { ConnectionErrorScreen } from '../src/screens/ConnectionErrorScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
-import { ping, useServerReachable } from '../src/lib/api';
+import { beginServerCheck, ping, request, useServerReachability } from '../src/lib/api';
 import { SelectionProvider, useSelectionBar } from '../src/selection';
 import { SessionProvider, useSession } from '../src/session';
 import { colors } from '../src/theme';
@@ -63,23 +63,67 @@ export default function RootLayout() {
  */
 function Gate() {
   const { server, signedIn, restoring, connect, signedInNow, changeServer } = useSession();
-  const reachable = useServerReachable();
+  const reachability = useServerReachability();
+  const [verifiedServer, setVerifiedServer] = useState<string | null>(null);
+  const [verificationFailed, setVerificationFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
-  // A screen can be quiet for a long time without making an API request, so
-  // probe independently as well as reacting to failed requests. This is what
-  // lets the recovery page appear when a home server goes offline mid-session.
+  // Check the selected server before mounting any route. Signed-in sessions
+  // use an authenticated endpoint so an expired JWT is resolved here, at the
+  // shell, instead of independently by whichever tab happens to load first.
   useEffect(() => {
-    if (!server || !signedIn) return;
-    void ping(server.url);
-    const interval = setInterval(() => void ping(server.url), 20_000);
-    return () => clearInterval(interval);
+    if (!server) {
+      setVerifiedServer(null);
+      return;
+    }
+
+    let active = true;
+    setVerifiedServer(null);
+    setVerificationFailed(false);
+    beginServerCheck();
+
+    const check = () => {
+      if (signedIn) {
+        return request(server.url, '/users/me')
+          .then(() => {
+            if (active) {
+              setVerificationFailed(false);
+              setVerifiedServer(server.url);
+            }
+          })
+          .catch(() => {
+            if (active) setVerificationFailed(true);
+          });
+      }
+      return ping(server.url);
+    };
+
+    void check();
+    // This is authenticated while signed in: it refreshes an expired access
+    // token, detects an expired refresh token, and detects an offline server.
+    const interval = setInterval(() => void check(), 20_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [server, signedIn]);
 
   const retryConnection = async () => {
     if (!server) return;
     setRetrying(true);
-    await ping(server.url);
+    setVerificationFailed(false);
+    if (signedIn) {
+      try {
+        await request(server.url, '/users/me');
+        setVerifiedServer(server.url);
+      } catch {
+        // `request` owns the unreachable and expired-session transitions. This
+        // catches other server failures so the shell cannot spin indefinitely.
+        setVerificationFailed(true);
+      }
+    } else {
+      await ping(server.url);
+    }
     setRetrying(false);
   };
 
@@ -93,6 +137,25 @@ function Gate() {
 
   if (!server) return <ConnectScreen onConnected={connect} />;
 
+  if (reachability === 'checking') {
+    return (
+      <View style={[styles.fill, styles.centre]}>
+        <Opening />
+      </View>
+    );
+  }
+
+  if (reachability === 'unreachable' || (signedIn && verificationFailed)) {
+    return (
+      <ConnectionErrorScreen
+        serverUrl={server.url}
+        retrying={retrying}
+        onRetry={() => void retryConnection()}
+        onChangeServer={() => void changeServer()}
+      />
+    );
+  }
+
   if (!signedIn) {
     return (
       <SignInScreen
@@ -100,6 +163,14 @@ function Gate() {
         onSignedIn={signedInNow}
         onChangeServer={changeServer}
       />
+    );
+  }
+
+  if (verifiedServer !== server.url) {
+    return (
+      <View style={[styles.fill, styles.centre]}>
+        <Opening />
+      </View>
     );
   }
 
@@ -127,14 +198,6 @@ function Gate() {
         />
         <Bar />
         <Dock />
-        {!reachable && (
-          <ConnectionErrorScreen
-            serverUrl={server.url}
-            retrying={retrying}
-            onRetry={() => void retryConnection()}
-            onChangeServer={() => void changeServer()}
-          />
-        )}
       </View>
     </HeaderSlots>
   );

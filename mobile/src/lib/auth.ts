@@ -14,6 +14,8 @@ const REFRESH = 'imadeo.refresh';
  * invalidate it — the cache and the store it mirrors change in the same place.
  */
 let cached: string | null = null;
+let refreshing: Promise<string> | null = null;
+const expiredListeners = new Set<() => void>();
 
 export interface Session {
   accessToken: string;
@@ -76,8 +78,92 @@ export async function storedToken() {
   return cached;
 }
 
+/**
+ * Lets the app shell leave its signed-in state when the server rejects the
+ * refresh token. Individual screens must not each decide whether the session
+ * exists: that is how one tab kept cached faces while another looked empty.
+ */
+export function onSessionExpired(listener: () => void) {
+  expiredListeners.add(listener);
+  return () => {
+    expiredListeners.delete(listener);
+  };
+}
+
+export class SessionRefreshError extends Error {
+  constructor(
+    message: string,
+    readonly unreachable: boolean,
+  ) {
+    super(message);
+    this.name = 'SessionRefreshError';
+  }
+}
+
+export async function expireSession() {
+  // Move the shell to sign-in before waiting for Keychain/Keystore writes. No
+  // authenticated screen should survive while secure storage is being cleared.
+  for (const listener of expiredListeners) listener();
+  await signOut();
+}
+
+/**
+ * Exchanges the long-lived native refresh token for a fresh access token.
+ *
+ * Every tab can discover an expired access token at once, so the exchange is
+ * shared. Refresh tokens rotate; sending the old one twice would invalidate
+ * the second request and incorrectly return the whole app to sign-in.
+ */
+export async function refreshToken(baseUrl: string): Promise<string> {
+  if (refreshing) return refreshing;
+
+  refreshing = (async () => {
+    const refresh = await getItem(REFRESH);
+    if (!refresh) {
+      await expireSession();
+      throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-imadeo-client': 'native' },
+        body: JSON.stringify({ refreshToken: refresh }),
+      });
+    } catch {
+      throw new SessionRefreshError('Could not reach your server. Check your connection.', true);
+    }
+
+    const body = await response.json().catch(() => null);
+    if (response.status === 401 || response.status === 403) {
+      await expireSession();
+      throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
+    }
+    if (!response.ok) {
+      const message = Array.isArray(body?.message) ? body.message[0] : body?.message;
+      throw new SessionRefreshError(message ?? `Session refresh failed (${response.status}).`, false);
+    }
+    if (!body?.accessToken || !body?.refreshToken) {
+      throw new SessionRefreshError('The server returned an invalid session.', false);
+    }
+
+    await Promise.all([
+      setItem(ACCESS, body.accessToken),
+      setItem(REFRESH, body.refreshToken),
+    ]);
+    cached = body.accessToken;
+    return body.accessToken as string;
+  })().finally(() => {
+    refreshing = null;
+  });
+
+  return refreshing;
+}
+
 export async function signOut() {
   cached = null;
+  refreshing = null;
   await Promise.all([
     removeItem(ACCESS),
     removeItem(REFRESH),

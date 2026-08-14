@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { storedToken } from './auth';
+import { expireSession, refreshToken, SessionRefreshError, storedToken } from './auth';
 
 /** The asset fields every grid in the app needs, and no more. */
 export interface Asset {
@@ -91,41 +91,49 @@ export interface Subject {
  * line said "this list failed" when the truth was "nothing can reach the
  * server", so it is tracked once, here, where every request already passes.
  */
-let reachable = true;
-const watchers = new Set<(ok: boolean) => void>();
+export type ServerReachability = 'checking' | 'reachable' | 'unreachable';
 
-function setReachable(next: boolean) {
-  if (next === reachable) return;
-  reachable = next;
+let reachability: ServerReachability = 'checking';
+const watchers = new Set<(state: ServerReachability) => void>();
+
+function setReachability(next: ServerReachability) {
+  if (next === reachability) return;
+  reachability = next;
   for (const watcher of watchers) watcher(next);
 }
 
-/** Re-renders when the server starts or stops answering. */
-export function useServerReachable() {
-  const [ok, setOk] = useState(reachable);
+/** Hides authenticated routes while a newly selected server is being checked. */
+export function beginServerCheck() {
+  setReachability('checking');
+}
+
+/** Re-renders when the selected server is checked, reachable or unreachable. */
+export function useServerReachability() {
+  const [state, setState] = useState(reachability);
   useEffect(() => {
-    watchers.add(setOk);
+    watchers.add(setState);
     // The flag may have changed between the first render and this effect.
-    setOk(reachable);
+    setState(reachability);
     return () => {
-      watchers.delete(setOk);
+      watchers.delete(setState);
     };
   }, []);
-  return ok;
+  return state;
 }
 
 /** Asks the server whether it is there, without caring what it says. */
 export async function ping(serverUrl: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
     await fetch(`${serverUrl}/api`, { signal: controller.signal });
-    clearTimeout(timer);
-    setReachable(true);
+    setReachability('reachable');
     return true;
   } catch {
-    setReachable(false);
+    setReachability('unreachable');
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -144,24 +152,61 @@ export async function request<T>(
 ): Promise<T> {
   const token = await storedToken();
 
-  let response: Response;
-  try {
-    response = await fetch(`${serverUrl}/api${path}`, {
-      ...init,
-      headers: {
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        'x-imadeo-client': 'native',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...init.headers,
-      },
-    });
-  } catch {
-    // Only a thrown fetch means unreachable. A 500 is the server answering.
-    setReachable(false);
-    throw new Error('Could not reach your server. Check your connection.');
+  const send = async (accessToken: string | null) => {
+    const controller = new AbortController();
+    const callerSignal = init.signal;
+    const cancel = () => controller.abort();
+    const timer = setTimeout(cancel, 12_000);
+    if (callerSignal?.aborted) cancel();
+    else callerSignal?.addEventListener('abort', cancel, { once: true });
+
+    try {
+      return await fetch(`${serverUrl}/api${path}`, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+          'x-imadeo-client': 'native',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...init.headers,
+        },
+      });
+    } catch {
+      // Only a thrown fetch means unreachable. A 500 is the server answering.
+      setReachability('unreachable');
+      throw new Error('Could not reach your server. Check your connection.');
+    } finally {
+      clearTimeout(timer);
+      callerSignal?.removeEventListener('abort', cancel);
+    }
+  };
+
+  let response = await send(token);
+
+  // Native sessions use short-lived access tokens and rotating refresh tokens.
+  // Retry the original request once, after one shared refresh, so simultaneous
+  // tab loads cannot race each other and invalidate the session.
+  if (response.status === 401 && token) {
+    try {
+      response = await send(await refreshToken(serverUrl));
+    } catch (cause) {
+      setReachability(
+        cause instanceof SessionRefreshError && cause.unreachable ? 'unreachable' : 'reachable',
+      );
+      throw cause;
+    }
   }
 
-  setReachable(true);
+  // A missing token, or a token the server still rejects after refreshing, is
+  // one global signed-out state. Never leave a single tab to render a local
+  // "Authentication required" error over data from the old session.
+  if (response.status === 401) {
+    setReachability('reachable');
+    await expireSession();
+    throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
+  }
+
+  setReachability('reachable');
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -269,7 +314,7 @@ export function useResource<T>(
       // A server that cannot be reached is announced once by the banner. Every
       // screen also printing its own red line about it was the same news five
       // times over, above a grid that was empty for that very reason.
-      setError(reachable ? (e instanceof Error ? e.message : 'Something went wrong.') : null);
+      setError(reachability === 'reachable' ? (e instanceof Error ? e.message : 'Something went wrong.') : null);
     } finally {
       if (mine === generation.current) setLoading(false);
     }
@@ -331,7 +376,11 @@ export function usePagedResource<T>(serverUrl: string, path: string | null, size
         setToken(auth);
       } catch (cause) {
         if (mine !== generation.current) return;
-        setError(reachable ? (cause instanceof Error ? cause.message : 'Something went wrong.') : null);
+        setError(
+          reachability === 'reachable'
+            ? (cause instanceof Error ? cause.message : 'Something went wrong.')
+            : null,
+        );
       } finally {
         if (mine === generation.current) {
           setLoading(false);

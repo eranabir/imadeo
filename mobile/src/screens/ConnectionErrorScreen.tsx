@@ -10,12 +10,9 @@ interface Props {
 }
 
 /**
- * Sits above the signed-in app while the saved server cannot be reached.
- *
- * Keeping the library mounted behind it makes recovery instant: a successful
- * retry simply removes this screen and the current tab is still exactly where
- * it was. Changing server remains an explicit escape hatch for a moved NAS,
- * changed domain, or a typo saved during setup.
+ * The only mounted app state while the saved server cannot be reached.
+ * Authenticated routes stay unmounted so cached private data can never remain
+ * visible underneath this page.
  */
 export function ConnectionErrorScreen({
   serverUrl,
@@ -28,9 +25,7 @@ export function ConnectionErrorScreen({
   return (
     <View
       style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 100,
+        flex: 1,
         justifyContent: 'center',
         padding: 28,
         backgroundColor: colors.bg,

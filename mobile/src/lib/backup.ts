@@ -13,8 +13,8 @@ import * as Device from 'expo-device';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
 import { Platform } from 'react-native';
-import { libraryChanged } from './api';
-import { storedToken } from './auth';
+import { libraryChanged, request } from './api';
+import { refreshToken, storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
 
@@ -104,19 +104,11 @@ export async function uploadedIds(baseUrl?: string): Promise<Set<string>> {
  */
 async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string> | null> {
   try {
-    const token = await storedToken();
-    if (!token) return null;
     const id = await deviceId();
-
-    const response = await fetch(
-      `${baseUrl}/api/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
-      {
-      headers: { Authorization: `Bearer ${token}`, 'x-imadeo-client': 'native' },
-      },
+    const ids = await request<string[]>(
+      baseUrl,
+      `/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
     );
-    if (!response.ok) return null;
-
-    const ids = (await response.json()) as string[];
     const before = done.size;
     for (const id of ids) done.add(id);
     if (done.size !== before) await saveDone(done);
@@ -299,7 +291,7 @@ async function send(
   shouldStop: () => boolean,
   only?: string[],
 ): Promise<Progress> {
-  const token = await storedToken();
+  let token = await storedToken();
   if (!token) throw new Error('Not signed in.');
 
   const id = await deviceId();
@@ -378,21 +370,28 @@ async function send(
        * reads it off disk as it goes. Memory then does not depend on how big
        * the video is.
        */
-      const response = await FileSystem.uploadAsync(`${baseUrl}/api/assets/upload`, uri, {
-        httpMethod: 'POST',
-        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-        fieldName: 'assetData',
-        mimeType: mimeOf(asset.filename, asset.mediaType),
-        headers: { Authorization: `Bearer ${token}`, 'x-imadeo-client': 'native' },
-        parameters: {
-          deviceAssetId: asset.id,
-          deviceId: id,
-          deviceName: deviceName(),
-          devicePlatform: Platform.OS,
-          fileCreatedAt: new Date(asset.creationTime).toISOString(),
-          fileModifiedAt: new Date(asset.modificationTime).toISOString(),
-        },
-      });
+      const upload = (accessToken: string) =>
+        FileSystem.uploadAsync(`${baseUrl}/api/assets/upload`, uri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'assetData',
+          mimeType: mimeOf(asset.filename, asset.mediaType),
+          headers: { Authorization: `Bearer ${accessToken}`, 'x-imadeo-client': 'native' },
+          parameters: {
+            deviceAssetId: asset.id,
+            deviceId: id,
+            deviceName: deviceName(),
+            devicePlatform: Platform.OS,
+            fileCreatedAt: new Date(asset.creationTime).toISOString(),
+            fileModifiedAt: new Date(asset.modificationTime).toISOString(),
+          },
+        });
+
+      let response = await upload(token);
+      if (response.status === 401) {
+        token = await refreshToken(baseUrl);
+        response = await upload(token);
+      }
 
       if (response.status < 200 || response.status >= 300) {
         // The status alone ends up in front of someone as the reason a photo
