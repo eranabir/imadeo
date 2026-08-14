@@ -245,3 +245,28 @@ describe('FolderService.getAssetIds', () => {
     });
   });
 });
+
+describe('FolderService.ensurePath', () => {
+  it('uses a folder created concurrently by another upload', async () => {
+    const concurrent = {
+      id: 'shared-folder',
+      ownerId: 'owner-id',
+      parentId: null,
+      name: 'Holiday',
+    };
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(concurrent);
+    const service = new FolderService(
+      { folder: { findFirst } } as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'create').mockRejectedValue(new Error('unique constraint'));
+
+    await expect(service.ensurePath('owner-id', ['Holiday'])).resolves.toEqual(concurrent);
+    expect(findFirst).toHaveBeenLastCalledWith({
+      where: { ownerId: 'owner-id', parentId: null, name: 'Holiday', deletedAt: null },
+    });
+  });
+});

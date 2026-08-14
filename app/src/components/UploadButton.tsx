@@ -59,6 +59,9 @@ interface DroppedEntry {
   };
 }
 
+/** Keeps uploads fast without saturating a typical self-hosted NAS or browser. */
+const WEB_UPLOAD_CONCURRENCY = 4;
+
 const isMedia = (file: File) =>
   file.type.startsWith('image/') ||
   file.type.startsWith('video/') ||
@@ -172,7 +175,7 @@ export function UploadButton({
   /** Files the server already had, kept so they can be sent again on request. */
   const [skippedFiles, setSkippedFiles] = useState<UploadCandidate[]>([]);
   const cancelled = useRef(false);
-  const controller = useRef<AbortController | null>(null);
+  const controllers = useRef(new Set<AbortController>());
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -217,29 +220,32 @@ export function UploadButton({
     let created = 0;
     let duplicates = 0;
     let failed = 0;
-    let bytesDone = 0;
+    let done = 0;
+    let nextIndex = 0;
+    const uploadedBytes = files.map(() => 0);
 
     // Held so the finished panel can offer to send the skipped ones again as
     // deliberate copies — far easier to find than a checkbox you have to know
     // about before you start.
     const skipped: UploadCandidate[] = [];
 
-    for (const [index, candidate] of files.entries()) {
-      if (cancelled.current) break;
-      const { file, relativePath } = candidate;
-      uploadItems[index] = { ...uploadItems[index], status: 'uploading', fraction: 0 };
-
-      const base: Progress = {
+    const publishProgress = () =>
+      setProgress({
         total: files.length,
-        done: index,
+        done,
         created,
         duplicates,
         failed,
-        bytesSent: bytesDone,
+        bytesSent: uploadedBytes.reduce((sum, bytes) => sum + bytes, 0),
         bytesTotal,
         items: [...uploadItems],
-      };
-      setProgress(base);
+      });
+
+    const uploadOne = async (index: number) => {
+      const candidate = files[index];
+      const { file, relativePath } = candidate;
+      uploadItems[index] = { ...uploadItems[index], status: 'uploading', fraction: 0 };
+      publishProgress();
 
       const form = new FormData();
       form.append('assetData', file);
@@ -254,23 +260,19 @@ export function UploadButton({
 
       if (allowDuplicate || forceDuplicate) form.append('allowDuplicate', 'true');
 
-      controller.current = new AbortController();
-      let uploadedBytes = 0;
+      const controller = new AbortController();
+      controllers.current.add(controller);
 
       try {
         const { data } = await api.post('/assets/upload', form, {
-          signal: controller.current.signal,
+          signal: controller.signal,
           // A multi-gigabyte video must not be cut off by a client timeout.
           timeout: 0,
           onUploadProgress: (event) => {
-            const fraction = event.total ? event.loaded / event.total : 0;
-            uploadedBytes = event.loaded;
+            const fraction = event.total ? Math.min(1, event.loaded / event.total) : 0;
+            uploadedBytes[index] = Math.min(file.size, event.loaded);
             uploadItems[index] = { ...uploadItems[index], fraction };
-            setProgress({
-              ...base,
-              bytesSent: bytesDone + event.loaded,
-              items: [...uploadItems],
-            });
+            publishProgress();
           },
         });
 
@@ -296,14 +298,13 @@ export function UploadButton({
           created += 1;
           uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
         }
-        bytesDone += file.size;
+        uploadedBytes[index] = file.size;
       } catch (error) {
         if (cancelled.current) {
           uploadItems[index] = { ...uploadItems[index], status: 'cancelled' };
         } else {
           const message = errorMessage(error);
           failed += 1;
-          bytesDone += uploadedBytes;
           uploadItems[index] = {
             ...uploadItems[index],
             status: 'failed',
@@ -311,23 +312,37 @@ export function UploadButton({
           };
           onError?.(`${file.name}: ${message}`);
         }
+      } finally {
+        controllers.current.delete(controller);
       }
 
-      setProgress({
-        total: files.length,
-        done: index + 1,
-        created,
-        duplicates,
-        failed,
-        bytesSent: bytesDone,
-        bytesTotal,
-        items: [...uploadItems],
-      });
-    }
+      done += 1;
+      publishProgress();
+    };
+
+    const worker = async () => {
+      while (!cancelled.current) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= files.length) return;
+        await uploadOne(index);
+      }
+    };
+
+    publishProgress();
+    await Promise.all(
+      Array.from(
+        { length: Math.min(WEB_UPLOAD_CONCURRENCY, files.length) },
+        () => worker(),
+      ),
+    );
 
     if (cancelled.current) {
       for (const [index, item] of uploadItems.entries()) {
-        if (item.status === 'queued') uploadItems[index] = { ...item, status: 'cancelled' };
+        if (item.status === 'queued') {
+          uploadItems[index] = { ...item, status: 'cancelled' };
+          done += 1;
+        }
       }
     }
 
@@ -337,7 +352,7 @@ export function UploadButton({
       created,
       duplicates,
       failed,
-      bytesSent: bytesDone,
+      bytesSent: uploadedBytes.reduce((sum, bytes) => sum + bytes, 0),
       bytesTotal,
       items: [...uploadItems],
     });
@@ -413,6 +428,7 @@ export function UploadButton({
     : 0;
 
   const running = progress !== null && progress.done < progress.total;
+  const activeUploads = progress?.items.filter((item) => item.status === 'uploading').length ?? 0;
   const cancelledCount = progress?.items.filter((item) => item.status === 'cancelled').length ?? 0;
 
   return (
@@ -561,7 +577,7 @@ export function UploadButton({
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-sm font-medium">
               {running
-                ? `Uploading ${progress.done + 1} of ${progress.total}`
+                ? `Uploading ${activeUploads} ${activeUploads === 1 ? 'file' : 'files'} · ${progress.done} of ${progress.total} done`
                 : cancelledCount > 0
                   ? 'Upload stopped'
                 : progress.failed > 0
@@ -574,7 +590,7 @@ export function UploadButton({
                 onClick={() => {
                   if (running) {
                     cancelled.current = true;
-                    controller.current?.abort();
+                    for (const controller of controllers.current) controller.abort();
                   } else {
                     setProgress(null);
                   }

@@ -943,7 +943,18 @@ export class FolderService {
       if (existing) {
         parent = existing;
       } else {
-        parent = await this.create(userId, { name, parentId: parentId ?? undefined });
+        try {
+          parent = await this.create(userId, { name, parentId: parentId ?? undefined });
+        } catch (error) {
+          // Parallel uploads from one dropped directory may both discover the
+          // same missing path. Whichever request loses the create race should
+          // use the folder the other request just created, not fail the file.
+          const concurrentlyCreated = await this.prisma.folder.findFirst({
+            where: { ownerId: userId, parentId, name, deletedAt: null },
+          });
+          if (!concurrentlyCreated) throw error;
+          parent = concurrentlyCreated;
+        }
       }
       parentId = parent.id;
     }
