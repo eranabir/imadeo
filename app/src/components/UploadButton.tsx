@@ -1,5 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, FolderUp, Upload, X } from 'lucide-react';
+import {
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleAlert,
+  Copy,
+  FolderUp,
+  LoaderCircle,
+  Upload,
+  X,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
@@ -13,11 +23,21 @@ interface Progress {
   created: number;
   duplicates: number;
   failed: number;
-  currentName: string;
-  /** 0-1 for the file in flight, from real upload bytes. */
-  currentFraction: number;
   bytesSent: number;
   bytesTotal: number;
+  items: UploadProgressItem[];
+}
+
+type UploadStatus = 'queued' | 'uploading' | 'added' | 'duplicate' | 'failed' | 'cancelled';
+
+interface UploadProgressItem {
+  id: string;
+  name: string;
+  size: number;
+  status: UploadStatus;
+  /** 0-1 for the file in flight, from real upload bytes. */
+  fraction: number;
+  error?: string;
 }
 
 interface UploadCandidate {
@@ -45,6 +65,26 @@ const isMedia = (file: File) =>
   /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp|3gp|avi|m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i.test(
     file.name,
   );
+
+function UploadStatusIcon({ status }: { status: UploadStatus }) {
+  if (status === 'uploading') {
+    return <LoaderCircle size={14} className="animate-spin text-primary" />;
+  }
+  if (status === 'added') return <CheckCircle2 size={14} className="text-success" />;
+  if (status === 'duplicate') return <Copy size={14} className="text-content-muted" />;
+  if (status === 'failed') return <CircleAlert size={14} className="text-danger" />;
+  if (status === 'cancelled') return <X size={14} className="text-content-muted" />;
+  return <Circle size={14} className="text-content-subtle" />;
+}
+
+function uploadStatusLabel(item: UploadProgressItem) {
+  if (item.status === 'uploading') return `${Math.round(item.fraction * 100)}%`;
+  if (item.status === 'added') return 'Added';
+  if (item.status === 'duplicate') return 'Already here';
+  if (item.status === 'failed') return 'Failed';
+  if (item.status === 'cancelled') return 'Stopped';
+  return 'Queued';
+}
 
 async function filesFromEntry(entry: DroppedEntry, parent = ''): Promise<UploadCandidate[]> {
   const path = parent ? `${parent}/${entry.name}` : entry.name;
@@ -165,6 +205,13 @@ export function UploadButton({
         : item,
     );
     const bytesTotal = files.reduce((sum, { file }) => sum + file.size, 0);
+    const uploadItems: UploadProgressItem[] = files.map(({ file, relativePath }, index) => ({
+      id: `${index}:${relativePath || file.name}`,
+      name: relativePath || file.name,
+      size: file.size,
+      status: 'queued',
+      fraction: 0,
+    }));
     cancelled.current = false;
 
     let created = 0;
@@ -180,6 +227,7 @@ export function UploadButton({
     for (const [index, candidate] of files.entries()) {
       if (cancelled.current) break;
       const { file, relativePath } = candidate;
+      uploadItems[index] = { ...uploadItems[index], status: 'uploading', fraction: 0 };
 
       const base: Progress = {
         total: files.length,
@@ -187,10 +235,9 @@ export function UploadButton({
         created,
         duplicates,
         failed,
-        currentName: file.name,
-        currentFraction: 0,
         bytesSent: bytesDone,
         bytesTotal,
+        items: [...uploadItems],
       };
       setProgress(base);
 
@@ -208,6 +255,7 @@ export function UploadButton({
       if (allowDuplicate || forceDuplicate) form.append('allowDuplicate', 'true');
 
       controller.current = new AbortController();
+      let uploadedBytes = 0;
 
       try {
         const { data } = await api.post('/assets/upload', form, {
@@ -216,10 +264,12 @@ export function UploadButton({
           timeout: 0,
           onUploadProgress: (event) => {
             const fraction = event.total ? event.loaded / event.total : 0;
+            uploadedBytes = event.loaded;
+            uploadItems[index] = { ...uploadItems[index], fraction };
             setProgress({
               ...base,
-              currentFraction: fraction,
               bytesSent: bytesDone + event.loaded,
+              items: [...uploadItems],
             });
           },
         });
@@ -231,9 +281,11 @@ export function UploadButton({
             // asking the user to create another physical copy.
             await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
             created += 1;
+            uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
           } else {
             duplicates += 1;
             skipped.push(candidate);
+            uploadItems[index] = { ...uploadItems[index], status: 'duplicate', fraction: 1 };
           }
         } else {
           // A restored/organised asset already has bytes on disk, but it was
@@ -242,15 +294,41 @@ export function UploadButton({
             await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
           }
           created += 1;
+          uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
         }
+        bytesDone += file.size;
       } catch (error) {
-        if (!cancelled.current) {
+        if (cancelled.current) {
+          uploadItems[index] = { ...uploadItems[index], status: 'cancelled' };
+        } else {
+          const message = errorMessage(error);
           failed += 1;
-          onError?.(`${file.name}: ${errorMessage(error)}`);
+          bytesDone += uploadedBytes;
+          uploadItems[index] = {
+            ...uploadItems[index],
+            status: 'failed',
+            error: message,
+          };
+          onError?.(`${file.name}: ${message}`);
         }
       }
 
-      bytesDone += file.size;
+      setProgress({
+        total: files.length,
+        done: index + 1,
+        created,
+        duplicates,
+        failed,
+        bytesSent: bytesDone,
+        bytesTotal,
+        items: [...uploadItems],
+      });
+    }
+
+    if (cancelled.current) {
+      for (const [index, item] of uploadItems.entries()) {
+        if (item.status === 'queued') uploadItems[index] = { ...item, status: 'cancelled' };
+      }
     }
 
     setProgress({
@@ -259,18 +337,14 @@ export function UploadButton({
       created,
       duplicates,
       failed,
-      currentName: '',
-      currentFraction: 1,
-      bytesSent: bytesTotal,
+      bytesSent: bytesDone,
       bytesTotal,
+      items: [...uploadItems],
     });
 
     setSkippedFiles(skipped);
     await queryClient.invalidateQueries();
 
-    // Leave the summary up briefly so the counts stay readable — but not when
-    // something was skipped, because that panel is now asking a question.
-    if (skipped.length === 0) setTimeout(() => setProgress(null), 3500);
   };
 
   useEffect(() => {
@@ -339,6 +413,7 @@ export function UploadButton({
     : 0;
 
   const running = progress !== null && progress.done < progress.total;
+  const cancelledCount = progress?.items.filter((item) => item.status === 'cancelled').length ?? 0;
 
   return (
     <>
@@ -487,24 +562,28 @@ export function UploadButton({
             <span className="text-sm font-medium">
               {running
                 ? `Uploading ${progress.done + 1} of ${progress.total}`
+                : cancelledCount > 0
+                  ? 'Upload stopped'
                 : progress.failed > 0
                   ? 'Upload finished with errors'
                   : 'Upload complete'}
             </span>
-            {running && (
-              <Tooltip label="Stop">
+            <Tooltip label={running ? 'Stop' : 'Close'}>
               <button
                 type="button"
                 onClick={() => {
-                  cancelled.current = true;
-                  controller.current?.abort();
+                  if (running) {
+                    cancelled.current = true;
+                    controller.current?.abort();
+                  } else {
+                    setProgress(null);
+                  }
                 }}
                 className="grid h-6 w-6 place-items-center rounded-full hover:bg-surface-sunken"
               >
                 <X size={13} />
               </button>
-              </Tooltip>
-            )}
+            </Tooltip>
           </div>
 
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
@@ -514,16 +593,48 @@ export function UploadButton({
             />
           </div>
 
-          {running && (
-            <>
-              <p className="mt-2 truncate text-xs text-content-muted">{progress.currentName}</p>
-              <p className="mt-0.5 text-[11px] tabular-nums text-content-muted">
-                {formatBytes(progress.bytesSent)} of {formatBytes(progress.bytesTotal)}
-                {progress.currentFraction > 0 &&
-                  ` · this file ${Math.round(progress.currentFraction * 100)}%`}
-              </p>
-            </>
-          )}
+          <p className="mt-2 text-[11px] tabular-nums text-content-muted">
+            {formatBytes(progress.bytesSent)} of {formatBytes(progress.bytesTotal)}
+          </p>
+
+          <div
+            className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1"
+            aria-label="Upload files"
+          >
+            {progress.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex min-h-8 items-center gap-2 rounded-control bg-surface-sunken px-2.5 py-1.5"
+              >
+                <span className="shrink-0">
+                  <UploadStatusIcon status={item.status} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <Tooltip label={item.name} onlyWhenOverflow>
+                    <span className="block truncate text-xs">{item.name}</span>
+                  </Tooltip>
+                  {item.error && (
+                    <Tooltip label={item.error} onlyWhenOverflow>
+                      <span className="block truncate text-[10px] text-danger">{item.error}</span>
+                    </Tooltip>
+                  )}
+                </span>
+                <span
+                  className={`shrink-0 text-[11px] tabular-nums ${
+                    item.status === 'added'
+                      ? 'text-success'
+                      : item.status === 'failed'
+                        ? 'text-danger'
+                        : item.status === 'uploading'
+                          ? 'text-primary'
+                          : 'text-content-muted'
+                  }`}
+                >
+                  {uploadStatusLabel(item)}
+                </span>
+              </div>
+            ))}
+          </div>
 
           {!running && (
             <>
@@ -531,6 +642,7 @@ export function UploadButton({
                 {progress.created} added
                 {progress.duplicates > 0 && `, ${progress.duplicates} already here`}
                 {progress.failed > 0 && `, ${progress.failed} failed`}
+                {cancelledCount > 0 && `, ${cancelledCount} stopped`}
               </p>
 
               {/* Photos are filed by the date they were taken, so an old scan

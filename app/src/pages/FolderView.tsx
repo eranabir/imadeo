@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronRight,
   CheckCheck,
@@ -17,6 +17,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
+import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { FolderShareDialog } from '../components/FolderShareDialog';
 import { BrowseIcon } from '../components/NavigationIcons';
 import { VirtualGrid } from '../components/VirtualGrid';
@@ -97,15 +98,34 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
    * them. Photos are reached by opening one of those, so the grid, its
    * selection tools and the sorting that only applied to it are gone.
    */
-  const { data, isLoading } = useQuery({
+  const {
+    data: contentsPages,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['folders', folderId ?? 'root', 'contents'],
-    queryFn: async () =>
+    queryFn: async ({ pageParam }) =>
       (
         await api.get<FolderContents>(
-          folderId ? `/folders/${folderId}/contents` : '/folders/root',
+          `${folderId ? `/folders/${folderId}/contents` : '/folders/root'}?page=${pageParam}&size=250`,
         )
       ).data,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page < lastPage.pagination.pages
+        ? lastPage.pagination.page + 1
+        : undefined,
   });
+
+  const firstPage = contentsPages?.pages[0];
+  const data = firstPage
+    ? {
+        ...firstPage,
+        assets: contentsPages.pages.flatMap((page) => page.assets),
+      }
+    : undefined;
 
   /** Search runs over what this folder already returned. */
   const needle = query.trim().toLowerCase();
@@ -163,7 +183,10 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
     shownFolders.length === 0 &&
     visibleAlbums.length === 0 &&
     (!folderId || shownAssets.length === 0);
-  const visibleCount = shownFolders.length + visibleAlbums.length + (folderId ? shownAssets.length : 0);
+  const visibleCount =
+    shownFolders.length +
+    visibleAlbums.length +
+    (folderId ? (needle ? shownAssets.length : data.pagination.total) : 0);
   const rootTitle = rootMode === 'browse' ? 'Browse' : 'Folders';
   const folderBasePath = rootMode === 'browse' ? '/browse/folders' : '/folders';
   const albumBasePath = rootMode === 'browse' ? '/browse/albums' : '/albums';
@@ -352,6 +375,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
               onSelectRange={(a) => selectRange(a, shownAssets)}
               onAnchor={setAnchor}
               onContextMenu={actions.onAssetContextMenu}
+            />
+            <InfiniteScrollSentinel
+              enabled={hasNextPage}
+              loading={isFetchingNextPage}
+              onVisible={() => void fetchNextPage()}
             />
           </section>
         )}

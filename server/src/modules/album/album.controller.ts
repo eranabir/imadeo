@@ -81,6 +81,13 @@ export class AlbumController {
     return this.albumService.addAssets(auth, id, dto.assetIds);
   }
 
+  @Auth({ sharedLink: true })
+  @Get(':id/assets/ids')
+  @ApiOperation({ summary: 'Every live asset id in this album, without pagination' })
+  assetIds(@Authed() auth: AuthDto, @Param('id') id: string) {
+    return this.albumService.getAssetIds(auth, id);
+  }
+
   @Delete(':id/assets')
   removeAssets(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: AlbumAssetsDto) {
     return this.albumService.removeAssets(auth, id, dto.assetIds);

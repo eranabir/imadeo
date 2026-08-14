@@ -269,6 +269,24 @@ export class AlbumService {
     };
   }
 
+  /** Every live asset id in an album, independent of the paginated grid. */
+  async getAssetIds(auth: AuthDto, albumId: string) {
+    await this.getAccess(auth, albumId);
+    const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
+    const assets = await this.prisma.albumAsset.findMany({
+      where: {
+        albumId,
+        asset: {
+          deletedAt: null,
+          ...(restrictTo ? { id: { in: restrictTo } } : {}),
+        },
+      },
+      select: { assetId: true },
+      orderBy: [{ asset: { localDateTime: 'desc' } }, { assetId: 'desc' }],
+    });
+    return { ids: assets.map((asset) => asset.assetId) };
+  }
+
   private orderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AlbumAssetOrderByWithRelationInput[] {
     switch (sortBy) {
       case 'name':

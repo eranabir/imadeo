@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCheck, ChevronRight, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
+import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { ShareDialog } from '../components/ShareDialog';
 import { useLibraryActions } from '../components/useLibraryActions';
@@ -25,6 +26,7 @@ interface AlbumDetailResponse extends Album {
   assets: Asset[];
   access: 'owner' | 'editor' | 'viewer';
   breadcrumbs: { id: string; name: string; isLocked: boolean }[];
+  pagination: { page: number; size: number; total: number };
 }
 
 export function BrowseAlbumPage() {
@@ -48,11 +50,35 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
 
   const actions = useLibraryActions({ onShowDetails: setViewing, selectedIds: [...selected] });
 
-  const { data: album, isLoading } = useQuery({
+  const {
+    data: albumPages,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['albums', albumId],
-    queryFn: async () => (await api.get<AlbumDetailResponse>(`/albums/${albumId}`)).data,
+    queryFn: async ({ pageParam }) =>
+      (
+        await api.get<AlbumDetailResponse>(
+          `/albums/${albumId}?page=${pageParam}&size=250`,
+        )
+      ).data,
     enabled: Boolean(albumId),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page * lastPage.pagination.size < lastPage.pagination.total
+        ? lastPage.pagination.page + 1
+        : undefined,
   });
+
+  const firstPage = albumPages?.pages[0];
+  const album = firstPage
+    ? {
+        ...firstPage,
+        assets: albumPages.pages.flatMap((page) => page.assets),
+      }
+    : undefined;
 
   const invalidate = () => queryClient.invalidateQueries();
   const onError = (e: unknown) => setError(errorMessage(e));
@@ -83,10 +109,17 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
     onError,
   });
 
+  const selectAllAssets = useMutation({
+    mutationFn: async () =>
+      (await api.get<{ ids: string[] }>(`/albums/${albumId}/assets/ids`)).data.ids,
+    onSuccess: (ids) => setSelected(new Set(ids)),
+    onError,
+  });
+
   if (isLoading) return <Loading label="Loading album…" />;
   if (!album) return null;
 
-  const allSelected = album.assets.length > 0 && selected.size === album.assets.length;
+  const allSelected = album.assetCount > 0 && selected.size === album.assetCount;
 
   return (
     <div className="min-h-full">
@@ -122,15 +155,18 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {album.assets.length > 0 && (
+            {album.assetCount > 0 && (
               <Button
                 size="sm"
                 icon={<CheckCheck size={14} />}
-                onClick={() =>
-                  setSelected(allSelected ? new Set() : new Set(album.assets.map((asset) => asset.id)))
-                }
+                disabled={selectAllAssets.isPending}
+                onClick={() => (allSelected ? clear() : selectAllAssets.mutate())}
               >
-                {allSelected ? 'Deselect all' : 'Select all'}
+                {selectAllAssets.isPending
+                  ? 'Selecting…'
+                  : allSelected
+                    ? 'Deselect all'
+                    : 'Select all'}
               </Button>
             )}
 
@@ -214,6 +250,11 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
             onSelectRange={(a) => selectRange(a, album.assets)}
             onAnchor={setAnchor}
             onContextMenu={actions.onAssetContextMenu}
+          />
+          <InfiniteScrollSentinel
+            enabled={hasNextPage}
+            loading={isFetchingNextPage}
+            onVisible={() => void fetchNextPage()}
           />
         </div>
       )}

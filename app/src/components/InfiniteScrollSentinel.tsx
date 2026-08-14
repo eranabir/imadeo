@@ -23,13 +23,29 @@ export function InfiniteScrollSentinel({
       // never lands on an artificial empty gap.
       { rootMargin: '900px 0px' },
     );
-    observer.observe(node);
-    return () => observer.disconnect();
+
+    // Virtual grids measure their height after the first paint. Observing the
+    // footer before that measurement briefly puts it at the top and fetches a
+    // second page immediately, even though nobody has scrolled. Wait for the
+    // measured layout so pagination stays tied to approaching the real end.
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => observer.observe(node));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      observer.disconnect();
+    };
   }, [enabled, loading, onVisible]);
 
   if (!enabled && !loading) return null;
   return (
-    <div ref={element} className="py-6 text-center text-xs text-content-muted">
+    <div
+      ref={element}
+      aria-label="Load more items"
+      className="py-6 text-center text-xs text-content-muted"
+    >
       {loading ? 'Loading more photos…' : ''}
     </div>
   );

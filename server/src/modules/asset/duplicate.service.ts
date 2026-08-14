@@ -13,6 +13,20 @@ interface Candidate {
   perceptualHash: string | null;
 }
 
+type DuplicateLocationKind =
+  | 'folder'
+  | 'album'
+  | 'device'
+  | 'photos'
+  | 'archive'
+  | 'locked'
+  | 'hidden';
+
+interface DuplicateLocation {
+  kind: DuplicateLocationKind;
+  label: string;
+}
+
 /**
  * How many of the 64 hash bits may differ before two pictures stop counting as
  * the same shot. Six is deliberately conservative: it comfortably absorbs a
@@ -237,22 +251,60 @@ export class DuplicateService {
 
   /** The groups themselves, newest first, for the Duplicates screen. */
   async list(ownerId: string) {
-    const assets = await this.prisma.asset.findMany({
-      where: { ownerId, deletedAt: null, duplicateId: { not: null }, duplicateResolvedAt: null },
-      select: {
-        id: true,
-        duplicateId: true,
-        originalFileName: true,
-        fileSizeInByte: true,
-        localDateTime: true,
-        createdAt: true,
-        type: true,
-        checksum: true,
-        perceptualHash: true,
-        exif: { select: { exifImageWidth: true, exifImageHeight: true } },
-      },
-      orderBy: [{ duplicateId: 'asc' }, { fileSizeInByte: 'desc' }],
-    });
+    const [assets, folders] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { ownerId, deletedAt: null, duplicateId: { not: null }, duplicateResolvedAt: null },
+        select: {
+          id: true,
+          duplicateId: true,
+          originalFileName: true,
+          fileSizeInByte: true,
+          localDateTime: true,
+          createdAt: true,
+          type: true,
+          checksum: true,
+          perceptualHash: true,
+          isDeviceOnly: true,
+          visibility: true,
+          folder: { select: { id: true, name: true } },
+          albums: {
+            where: { album: { deletedAt: null } },
+            select: {
+              album: { select: { name: true, folderId: true } },
+            },
+          },
+          deviceAssets: {
+            select: { device: { select: { name: true } } },
+          },
+          exif: { select: { exifImageWidth: true, exifImageHeight: true } },
+        },
+        orderBy: [{ duplicateId: 'asc' }, { fileSizeInByte: 'desc' }],
+      }),
+      this.prisma.folder.findMany({
+        where: { ownerId, deletedAt: null },
+        select: { id: true, name: true, parentId: true },
+      }),
+    ]);
+
+    const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+    const pathCache = new Map<string, string>();
+    const folderPath = (folderId: string) => {
+      const cached = pathCache.get(folderId);
+      if (cached) return cached;
+
+      const names: string[] = [];
+      const visited = new Set<string>();
+      let current = foldersById.get(folderId);
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        names.unshift(current.name);
+        current = current.parentId ? foldersById.get(current.parentId) : undefined;
+      }
+
+      const path = names.join(' / ');
+      pathCache.set(folderId, path);
+      return path;
+    };
 
     const byGroup = new Map<string, typeof assets>();
     for (const asset of assets) {
@@ -274,10 +326,62 @@ export class DuplicateService {
         reclaimableBytes: items
           .slice(1)
           .reduce((sum, i) => sum + Number(i.fileSizeInByte), 0),
-        assets: items.map(({ checksum, perceptualHash, ...rest }) => ({
-          ...rest,
-          fileSizeInByte: rest.fileSizeInByte.toString(),
-        })),
+        assets: items.map(
+          ({
+            checksum,
+            perceptualHash,
+            folder,
+            albums,
+            deviceAssets,
+            isDeviceOnly,
+            visibility,
+            ...rest
+          }) => {
+            const locations: DuplicateLocation[] = [];
+            const addLocation = (kind: DuplicateLocationKind, label: string) => {
+              if (
+                label &&
+                !locations.some(
+                  (location) => location.kind === kind && location.label === label,
+                )
+              ) {
+                locations.push({ kind, label });
+              }
+            };
+
+            if (folder) {
+              addLocation('folder', `Browse / ${folderPath(folder.id) || folder.name}`);
+            }
+            for (const membership of albums) {
+              const parent = membership.album.folderId
+                ? folderPath(membership.album.folderId)
+                : '';
+              addLocation(
+                'album',
+                parent
+                  ? `Browse / ${parent} / ${membership.album.name}`
+                  : `Browse / ${membership.album.name}`,
+              );
+            }
+            for (const membership of deviceAssets) {
+              addLocation('device', `Devices / ${membership.device.name} Library`);
+            }
+
+            if (visibility === 'ARCHIVE') addLocation('archive', 'Archive');
+            else if (visibility === 'LOCKED') addLocation('locked', 'Locked');
+            else if (visibility === 'HIDDEN') addLocation('hidden', 'Hidden');
+            else if (!isDeviceOnly && !folder && albums.length === 0) {
+              addLocation('photos', 'Photos / Unfiled');
+            }
+            else if (locations.length === 0) addLocation('device', 'Device library');
+
+            return {
+              ...rest,
+              fileSizeInByte: rest.fileSizeInByte.toString(),
+              locations,
+            };
+          },
+        ),
       };
     });
   }

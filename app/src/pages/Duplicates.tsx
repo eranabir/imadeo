@@ -1,6 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Check, CopyCheck, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import {
+  Archive,
+  Check,
+  CopyCheck,
+  EyeOff,
+  FolderOpen,
+  Images,
+  Lock,
+  RefreshCw,
+  Smartphone,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { AssetViewer } from '../components/AssetViewer';
 import { RetryingImage } from '../components/RetryingImage';
@@ -18,6 +30,10 @@ interface DuplicateAsset {
   createdAt: string;
   type: 'IMAGE' | 'VIDEO';
   exif: { exifImageWidth: number | null; exifImageHeight: number | null } | null;
+  locations: {
+    kind: 'folder' | 'album' | 'device' | 'photos' | 'archive' | 'locked' | 'hidden';
+    label: string;
+  }[];
 }
 
 interface DuplicateGroup {
@@ -25,6 +41,23 @@ interface DuplicateGroup {
   kind: 'identical' | 'similar';
   reclaimableBytes: number;
   assets: DuplicateAsset[];
+}
+
+function LocationIcon({ kind }: { kind: DuplicateAsset['locations'][number]['kind'] }) {
+  const props = { size: 11, className: 'shrink-0' };
+  if (kind === 'folder') return <FolderOpen {...props} />;
+  if (kind === 'device') return <Smartphone {...props} />;
+  if (kind === 'archive') return <Archive {...props} />;
+  if (kind === 'locked') return <Lock {...props} />;
+  if (kind === 'hidden') return <EyeOff {...props} />;
+  return <Images {...props} />;
+}
+
+function locationKindLabel(kind: DuplicateAsset['locations'][number]['kind']) {
+  if (kind === 'folder') return 'Folder';
+  if (kind === 'album') return 'Album';
+  if (kind === 'device') return 'Device';
+  return 'Location';
 }
 
 /**
@@ -230,6 +263,25 @@ export function DuplicatesPage() {
                         <p className="text-[11px] text-content-muted">
                           {formatDate(asset.localDateTime, user?.preferences.locale)}
                         </p>
+
+                        <div className="mt-1 space-y-1">
+                          {asset.locations.map((location) => (
+                            <span
+                              key={`${location.kind}:${location.label}`}
+                              className="flex items-start gap-1 text-[11px] leading-tight text-content-muted"
+                            >
+                              <span className="mt-px">
+                                <LocationIcon kind={location.kind} />
+                              </span>
+                              <span className="break-words">
+                                <span className="font-medium text-content-secondary">
+                                  {locationKindLabel(location.kind)}
+                                </span>{' '}
+                                · {location.label}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
 
                         <div className="mt-1 flex items-center gap-1.5">
                           <Tooltip label="Open this copy">
