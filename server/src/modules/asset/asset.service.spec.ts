@@ -124,6 +124,30 @@ describe('AssetService duplicate upload destinations', () => {
       'asset-id',
     );
   });
+
+  it('promotes a device-only asset when the same file is uploaded from the web', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      isDeviceOnly: true,
+      folderId: null,
+      folder: null,
+    });
+
+    await expect(test.service.createFromUpload('owner-id', upload, {})).resolves.toEqual({
+      id: 'asset-id',
+      status: 'organized',
+    });
+    expect(test.assetUpdate).toHaveBeenCalledWith({
+      where: { id: 'asset-id' },
+      data: {
+        deletedAt: null,
+        status: 'ACTIVE',
+        isDeviceOnly: false,
+        folderId: undefined,
+      },
+    });
+  });
 });
 
 describe('AssetService.listTrash', () => {

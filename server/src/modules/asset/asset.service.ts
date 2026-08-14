@@ -92,6 +92,7 @@ export class AssetService {
           select: {
             id: true,
             deletedAt: true,
+            isDeviceOnly: true,
             folderId: true,
             folder: { select: { deletedAt: true } },
           },
@@ -111,15 +112,17 @@ export class AssetService {
         ? await this.resolveFolder(userId, dto)
         : undefined;
       const wasOrphaned = Boolean(existing.folder?.deletedAt);
+      const promotedToPhotos = !sourceDevice && existing.isDeviceOnly;
       const folderChanged =
         destinationFolderId !== undefined && destinationFolderId !== existing.folderId;
 
-      if (existing.deletedAt || wasOrphaned || folderChanged) {
+      if (existing.deletedAt || wasOrphaned || folderChanged || promotedToPhotos) {
         await this.prisma.asset.update({
           where: { id: existing.id },
           data: {
             deletedAt: null,
             status: 'ACTIVE',
+            ...(promotedToPhotos ? { isDeviceOnly: false } : {}),
             // With no explicit destination, an asset restored from a deleted
             // folder becomes loose rather than remaining invisible there.
             folderId:
@@ -166,6 +169,7 @@ export class AssetService {
         // Refined once EXIF gives us the real capture time and timezone.
         localDateTime: fileCreatedAt,
         isFavorite: dto.isFavorite ?? false,
+        isDeviceOnly: Boolean(sourceDevice),
         visibility: dto.isLocked ? AssetVisibility.LOCKED : AssetVisibility.TIMELINE,
         duration: dto.duration ?? null,
         folderId,
@@ -444,7 +448,9 @@ export class AssetService {
       isFavorite: query.isFavorite,
       folderId: query.folderId,
       ...(query.albumId ? { albums: { some: { albumId: query.albumId } } } : {}),
-      ...(query.deviceId ? { deviceAssets: { some: { deviceId: query.deviceId } } } : {}),
+      ...(query.deviceId
+        ? { deviceAssets: { some: { deviceId: query.deviceId } } }
+        : { isDeviceOnly: false }),
       ...(query.personId ? { faces: { some: { personId: query.personId, deletedAt: null } } } : {}),
       ...(query.filename
         ? { originalFileName: { contains: query.filename, mode: 'insensitive' } }
@@ -902,11 +908,11 @@ export class AssetService {
 
   async statistics(userId: string) {
     const [images, videos, favorites, trashed, archived, locked, size] = await Promise.all([
-      this.prisma.asset.count({ where: { ownerId: userId, type: 'IMAGE', deletedAt: null } }),
-      this.prisma.asset.count({ where: { ownerId: userId, type: 'VIDEO', deletedAt: null } }),
-      this.prisma.asset.count({ where: { ownerId: userId, isFavorite: true, deletedAt: null } }),
+      this.prisma.asset.count({ where: { ownerId: userId, type: 'IMAGE', isDeviceOnly: false, deletedAt: null } }),
+      this.prisma.asset.count({ where: { ownerId: userId, type: 'VIDEO', isDeviceOnly: false, deletedAt: null } }),
+      this.prisma.asset.count({ where: { ownerId: userId, isFavorite: true, isDeviceOnly: false, deletedAt: null } }),
       this.prisma.asset.count({ where: { ownerId: userId, deletedAt: { not: null } } }),
-      this.prisma.asset.count({ where: { ownerId: userId, visibility: 'ARCHIVE', deletedAt: null } }),
+      this.prisma.asset.count({ where: { ownerId: userId, visibility: 'ARCHIVE', isDeviceOnly: false, deletedAt: null } }),
       this.prisma.asset.count({ where: { ownerId: userId, visibility: 'LOCKED', deletedAt: null } }),
       this.prisma.asset.aggregate({
         where: { ownerId: userId, deletedAt: null },

@@ -307,6 +307,8 @@ model Asset {
   localDateTime     DateTime
 
   isFavorite        Boolean         @default(false)
+  /// Mobile backups stay in their Device library until explicitly imported.
+  isDeviceOnly      Boolean         @default(false)
   /// User correction applied by viewers without modifying the original file.
   rotation          Int             @default(0)
   visibility        AssetVisibility @default(TIMELINE)
