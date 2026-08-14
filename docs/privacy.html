@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy policy — Imadeo</title>
+<meta name="description" content="How Imadeo handles account information, photos, videos, metadata and device permissions when you use a self-hosted Imadeo server." />
+<link rel="canonical" href="https://imadeo.app/privacy.html" />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+
+<style>
+  :root {
+    --primary: #0284c7; --secondary: #0ea5e9;
+    --bg: #ffffff; --surface: #f6f8f9; --border: #e2e8ea;
+    --text: #16212b; --muted: #5c6d78; --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --primary: #3fc9ff; --secondary: #7cdbff;
+      --bg: #0d1418; --surface: #141e24; --border: #24333c;
+      --text: #e8eff2; --muted: #93a6b1;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .bar {
+    width: min(960px, calc(100% - 48px)); margin-inline: auto;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 62px; gap: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -.02em; color: var(--text); text-decoration: none; }
+  .mark {
+    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    background: linear-gradient(135deg, #7cdbff, #3fc9ff 50%, #0369a1);
+    display: grid; place-items: center;
+  }
+  .mark svg { width: 100%; height: 100%; }
+  nav { display: flex; align-items: center; gap: 22px; font-size: 14.5px; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+
+  main { width: min(760px, calc(100% - 48px)); margin-inline: auto; padding: 64px 0 92px; }
+  h1 { font-size: clamp(34px, 5vw, 48px); line-height: 1.1; letter-spacing: -.035em; margin: 0 0 12px; font-weight: 700; }
+  .updated { color: var(--muted); margin: 0 0 38px; }
+  .summary {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 22px; margin: 0 0 42px;
+    font-size: 17px;
+  }
+  section { scroll-margin-top: 82px; }
+  section + section { margin-top: 42px; }
+  h2 { font-size: 24px; line-height: 1.3; letter-spacing: -.025em; margin: 0 0 12px; font-weight: 660; }
+  h3 { font-size: 17px; letter-spacing: -.012em; margin: 24px 0 7px; font-weight: 620; }
+  p { margin: 0 0 14px; }
+  ul { margin: 0 0 14px; padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  .note {
+    border-left: 3px solid var(--primary); background: var(--surface);
+    border-radius: 0 8px 8px 0; padding: 13px 16px; margin: 18px 0;
+    color: var(--muted); font-size: 14.8px;
+  }
+  .note strong { color: var(--text); }
+
+  footer { border-top: 1px solid var(--border); padding: 30px 0; color: var(--muted); font-size: 14px; }
+  .foot { width: min(960px, calc(100% - 48px)); margin-inline: auto; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 560px) {
+    .bar, main, .foot { width: min(100% - 32px, 760px); }
+    nav { gap: 14px; }
+    nav .github { display: none; }
+    main { padding-top: 44px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="brand" href="./">
+      <span class="mark">
+        <svg viewBox="0 0 64 64"><rect x="12" y="14" width="26" height="24" rx="5" fill="#fbbf24" /><circle cx="19" cy="21" r="2.6" fill="#fff" /><path d="M12 34l6-6 4 4 4-4 12 10H12z" fill="#f97316" /><rect x="26" y="27" width="26" height="24" rx="5" fill="#3fc9ff" stroke="#0369a1" stroke-width="3" /><path d="M35 33.5l9 5.5-9 5.5z" fill="#fff" /></svg>
+      </span>
+      Imadeo
+    </a>
+    <nav>
+      <a href="./">Home</a>
+      <a href="guide.html">Docs</a>
+      <a class="github" href="https://github.com/eranabir/imadeo">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated 14 August 2026</p>
+
+  <p class="summary">
+    Imadeo is self-hosted. Your photos, videos, account details and generated
+    library data go to the Imadeo server you choose — not to the Imadeo project.
+    The project has no hosted media service and cannot see your library.
+  </p>
+
+  <section>
+    <h2>Who is responsible for your data</h2>
+    <p>
+      The person or organisation running the Imadeo server is the server
+      operator. They control the server, its storage, user accounts, backups,
+      network access and any optional integrations. Contact that operator for
+      access, correction, export or deletion requests relating to your account
+      or library.
+    </p>
+    <p>
+      The open-source Imadeo project publishes the software and mobile apps. It
+      does not operate the server you connect to and does not receive your
+      account details or media through normal use of the software.
+    </p>
+  </section>
+
+  <section>
+    <h2>Information Imadeo processes</h2>
+    <p>Depending on the features you use, your chosen server may store:</p>
+    <ul>
+      <li><strong>Account information</strong>, including your name, email address, password hash, sessions and registered devices.</li>
+      <li><strong>Photos and videos</strong> you upload or back up, including filenames and embedded metadata such as capture time, camera details and location coordinates.</li>
+      <li><strong>Library information</strong>, including folders, albums, favourites, descriptions, shares, trash and Locked items.</li>
+      <li><strong>Generated media data</strong>, including thumbnails, video previews, search embeddings, face and pet detections, groupings and names you assign.</li>
+      <li><strong>Operational information</strong>, such as upload state and technical logs kept by the server operator.</li>
+    </ul>
+    <p>
+      Passwords are stored as password hashes. The mobile app stores the server
+      address and authentication credentials in the device's protected storage.
+      The web app uses authentication cookies issued by your server.
+    </p>
+  </section>
+
+  <section>
+    <h2>Device permissions</h2>
+    <h3>Photo and video library</h3>
+    <p>
+      The mobile app requests library access so it can show your local media,
+      compare it with your server, upload the items you choose and save media
+      back to your device. Nothing is uploaded until you start a backup or
+      upload action. Limited-library access is supported where the operating
+      system offers it.
+    </p>
+    <h3>Location</h3>
+    <p>
+      Imadeo may request location-related permission to read and display place
+      information associated with your media. It does not use this permission
+      for advertising or continuous background tracking. Location metadata in
+      an uploaded file may be stored on your chosen server with that file.
+    </p>
+  </section>
+
+  <section>
+    <h2>Where processing happens</h2>
+    <p>
+      Media storage, thumbnails, search analysis, face recognition and pet
+      recognition run on the self-hosted server and machine-learning service
+      selected by the server operator. Imadeo does not send media to a hosted
+      Imadeo cloud or sell it to third parties.
+    </p>
+    <div class="note">
+      <strong>Self-hosted does not automatically mean encrypted.</strong>
+      Original media is stored as files on the server. Locked hides items from
+      normal library views but is not encryption. Server operators should use
+      appropriate disk encryption, access controls, HTTPS or a trusted VPN, and
+      protected backups for their environment.
+    </div>
+  </section>
+
+  <section>
+    <h2>Optional external services</h2>
+    <p>A server operator can choose to configure services that receive limited data:</p>
+    <ul>
+      <li><strong>Reverse geocoding</strong> can send media coordinates to the configured geocoding provider to obtain place names. It can be disabled or pointed at a self-hosted provider.</li>
+      <li><strong>Google or Apple sign-in</strong> sends authentication information through the selected identity provider when configured and used.</li>
+      <li><strong>Email delivery</strong> sends recipient addresses and invitation content through the SMTP provider configured by the server operator.</li>
+    </ul>
+    <p>
+      Those providers process data under their own terms and privacy policies.
+      The server operator decides whether to enable them and which providers to
+      use.
+    </p>
+  </section>
+
+  <section>
+    <h2>Sharing</h2>
+    <p>
+      Photos, albums and folders are private to an account unless a user shares
+      them. Shared items and their metadata become visible to the selected
+      recipients, or to anyone who has a public link when public-link sharing is
+      used. Users should only share content they are authorised to share.
+    </p>
+  </section>
+
+  <section>
+    <h2>Retention and deletion</h2>
+    <p>
+      Data remains on the chosen server until a user or server operator deletes
+      it. Items in Trash can remain recoverable for the server's retention
+      period. Copies may remain in operator-managed backups until those backups
+      expire or are replaced.
+    </p>
+    <p>
+      Deleting the mobile app removes its local app data but does not delete
+      media or an account from the server. Use Imadeo's deletion controls or
+      contact the server operator to remove server data.
+    </p>
+  </section>
+
+  <section>
+    <h2>Security and network transport</h2>
+    <p>
+      Imadeo supports local-network deployments over HTTP. HTTP does not encrypt
+      traffic. For access across an untrusted network or the public internet,
+      the server operator should provide HTTPS through a reverse proxy or
+      require a trusted VPN. The security of the host, storage, database,
+      credentials and backups remains the operator's responsibility.
+    </p>
+  </section>
+
+  <section>
+    <h2>Tracking, advertising and sale of data</h2>
+    <p>
+      The Imadeo project does not include advertising, cross-app tracking or a
+      project-operated analytics service, and it does not sell personal data.
+      A server operator may independently add infrastructure monitoring or
+      logging; questions about that deployment should be directed to them.
+    </p>
+  </section>
+
+  <section>
+    <h2>Children</h2>
+    <p>
+      Imadeo is not directed to children. Account creation is controlled by the
+      server operator, who is responsible for obtaining any consent required in
+      their jurisdiction when the server contains information about children.
+    </p>
+  </section>
+
+  <section>
+    <h2>Changes and questions</h2>
+    <p>
+      This policy may change as Imadeo changes. The latest version and its date
+      will remain on this page. For questions about a particular server or its
+      data, contact its operator. For questions about the open-source project or
+      this policy, open an issue in the
+      <a href="https://github.com/eranabir/imadeo/issues">Imadeo repository</a>
+      without posting private information.
+    </p>
+  </section>
+</main>
+
+<footer>
+  <div class="foot">
+    <span>Imadeo — self-hosted media management.</span>
+    <span><a href="privacy.html">Privacy</a> · <a href="https://github.com/eranabir/imadeo">GitHub</a> · <a href="https://github.com/eranabir/imadeo/issues">Issues</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
