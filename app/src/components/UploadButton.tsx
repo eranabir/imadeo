@@ -7,6 +7,9 @@ import {
   Copy,
   FolderUp,
   LoaderCircle,
+  Maximize2,
+  Minus,
+  RotateCcw,
   Upload,
   X,
 } from 'lucide-react';
@@ -15,7 +18,7 @@ import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
-import { Checkbox, Tooltip } from '../ui';
+import { Button, Checkbox, Tooltip } from '../ui';
 
 interface Progress {
   total: number;
@@ -174,6 +177,9 @@ export function UploadButton({
   const [allowDuplicate, setAllowDuplicate] = useState(false);
   /** Files the server already had, kept so they can be sent again on request. */
   const [skippedFiles, setSkippedFiles] = useState<UploadCandidate[]>([]);
+  /** Failed candidates are retained so Retry sends only the files that need it. */
+  const [failedFiles, setFailedFiles] = useState<UploadCandidate[]>([]);
+  const [minimized, setMinimized] = useState(false);
   const cancelled = useRef(false);
   const controllers = useRef(new Set<AbortController>());
 
@@ -216,6 +222,9 @@ export function UploadButton({
       fraction: 0,
     }));
     cancelled.current = false;
+    setSkippedFiles([]);
+    setFailedFiles([]);
+    setMinimized(false);
 
     let created = 0;
     let duplicates = 0;
@@ -228,6 +237,7 @@ export function UploadButton({
     // deliberate copies — far easier to find than a checkbox you have to know
     // about before you start.
     const skipped: UploadCandidate[] = [];
+    const retryable: UploadCandidate[] = [];
 
     const publishProgress = () =>
       setProgress({
@@ -305,6 +315,7 @@ export function UploadButton({
         } else {
           const message = errorMessage(error);
           failed += 1;
+          retryable.push(candidate);
           uploadItems[index] = {
             ...uploadItems[index],
             status: 'failed',
@@ -358,6 +369,7 @@ export function UploadButton({
     });
 
     setSkippedFiles(skipped);
+    setFailedFiles(retryable);
     await queryClient.invalidateQueries();
 
   };
@@ -422,14 +434,46 @@ export function UploadButton({
   };
 
   const overall = progress
-    ? progress.bytesTotal > 0
-      ? (progress.bytesSent / progress.bytesTotal) * 100
-      : (progress.done / progress.total) * 100
+    ? (progress.done / progress.total) * 100
     : 0;
 
   const running = progress !== null && progress.done < progress.total;
   const activeUploads = progress?.items.filter((item) => item.status === 'uploading').length ?? 0;
   const cancelledCount = progress?.items.filter((item) => item.status === 'cancelled').length ?? 0;
+  const percentage = Math.max(0, Math.min(100, Math.round(overall)));
+  const visibleUploadItems =
+    !running && progress?.failed
+      ? [
+          ...progress.items.filter((item) => item.status === 'failed'),
+          ...progress.items.filter((item) => item.status !== 'failed'),
+        ]
+      : progress?.items ?? [];
+  const panelStatus: UploadStatus = running
+    ? 'uploading'
+    : progress?.failed
+      ? 'failed'
+      : cancelledCount > 0
+        ? 'cancelled'
+        : 'added';
+  const panelTitle = running
+    ? `Uploading ${activeUploads} ${activeUploads === 1 ? 'file' : 'files'}`
+    : cancelledCount > 0
+      ? 'Upload stopped'
+      : progress?.failed
+        ? 'Upload finished with errors'
+        : 'Upload complete';
+
+  const stopOrClose = () => {
+    if (running) {
+      cancelled.current = true;
+      for (const controller of controllers.current) controller.abort();
+      return;
+    }
+    setProgress(null);
+    setFailedFiles([]);
+    setSkippedFiles([]);
+    setMinimized(false);
+  };
 
   return (
     <>
@@ -573,33 +617,47 @@ export function UploadButton({
           50px above the top of the screen, where nobody could see it. */}
       {progress &&
         createPortal(
-        <div className="pop-in fixed bottom-6 right-6 z-50 w-[22rem] rounded-panel border border-border-subtle bg-surface-overlay p-4 shadow-popover">
+        <div
+          className={`pop-in fixed bottom-6 right-6 z-50 rounded-panel border border-border-subtle bg-surface-overlay shadow-popover ${
+            minimized ? 'w-72 p-3' : 'w-[22rem] p-4'
+          }`}
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-sm font-medium">
-              {running
-                ? `Uploading ${activeUploads} ${activeUploads === 1 ? 'file' : 'files'} · ${progress.done} of ${progress.total} done`
-                : cancelledCount > 0
-                  ? 'Upload stopped'
-                : progress.failed > 0
-                  ? 'Upload finished with errors'
-                  : 'Upload complete'}
-            </span>
-            <Tooltip label={running ? 'Stop' : 'Close'}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (running) {
-                    cancelled.current = true;
-                    for (const controller of controllers.current) controller.abort();
-                  } else {
-                    setProgress(null);
-                  }
-                }}
-                className="grid h-6 w-6 place-items-center rounded-full hover:bg-surface-sunken"
-              >
-                <X size={13} />
-              </button>
-            </Tooltip>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {minimized && (
+                <span className="shrink-0">
+                  <UploadStatusIcon status={panelStatus} />
+                </span>
+              )}
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">{panelTitle}</span>
+                <span className="block text-[11px] tabular-nums text-content-muted">
+                  {progress.done} of {progress.total} files · {percentage}%
+                </span>
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Tooltip label={minimized ? 'Show upload details' : 'Minimize'}>
+                <button
+                  type="button"
+                  aria-label={minimized ? 'Show upload details' : 'Minimize upload'}
+                  onClick={() => setMinimized((value) => !value)}
+                  className="grid h-6 w-6 place-items-center rounded-full text-content-muted hover:bg-surface-sunken hover:text-content"
+                >
+                  {minimized ? <Maximize2 size={13} /> : <Minus size={14} />}
+                </button>
+              </Tooltip>
+              <Tooltip label={running ? 'Stop' : 'Close'}>
+                <button
+                  type="button"
+                  aria-label={running ? 'Stop upload' : 'Close upload'}
+                  onClick={stopOrClose}
+                  className="grid h-6 w-6 place-items-center rounded-full text-content-muted hover:bg-surface-sunken hover:text-content"
+                >
+                  <X size={13} />
+                </button>
+              </Tooltip>
+            </div>
           </div>
 
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-sunken">
@@ -609,107 +667,134 @@ export function UploadButton({
             />
           </div>
 
-          <p className="mt-2 text-[11px] tabular-nums text-content-muted">
-            {formatBytes(progress.bytesSent)} of {formatBytes(progress.bytesTotal)}
-          </p>
-
-          <div
-            className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1"
-            aria-label="Upload files"
-          >
-            {progress.items.map((item) => (
-              <div
-                key={item.id}
-                className="flex min-h-8 items-center gap-2 rounded-control bg-surface-sunken px-2.5 py-1.5"
-              >
-                <span className="shrink-0">
-                  <UploadStatusIcon status={item.status} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <Tooltip label={item.name} onlyWhenOverflow>
-                    <span className="block truncate text-xs">{item.name}</span>
-                  </Tooltip>
-                  {item.error && (
-                    <Tooltip label={item.error} onlyWhenOverflow>
-                      <span className="block truncate text-[10px] text-danger">{item.error}</span>
-                    </Tooltip>
-                  )}
-                </span>
-                <span
-                  className={`shrink-0 text-[11px] tabular-nums ${
-                    item.status === 'added'
-                      ? 'text-success'
-                      : item.status === 'failed'
-                        ? 'text-danger'
-                        : item.status === 'uploading'
-                          ? 'text-primary'
-                          : 'text-content-muted'
-                  }`}
-                >
-                  {uploadStatusLabel(item)}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {!running && (
+          {!minimized && (
             <>
-              <p className="mt-2 text-xs text-content-muted">
-                {progress.created} added
-                {progress.duplicates > 0 && `, ${progress.duplicates} already here`}
-                {progress.failed > 0 && `, ${progress.failed} failed`}
-                {cancelledCount > 0 && `, ${cancelledCount} stopped`}
+              <p className="mt-2 text-[11px] tabular-nums text-content-muted">
+                {formatBytes(progress.bytesSent)} of {formatBytes(progress.bytesTotal)}
               </p>
 
-              {/* Photos are filed by the date they were taken, so an old scan
-                  can land pages down and look like it never uploaded. This is
-                  the shortcut to what actually just arrived. */}
-              {progress.created > 0 && (
-                <Link
-                  to="/?sort=added"
-                  onClick={() => setProgress(null)}
-                  className="mt-1.5 inline-block text-xs font-medium text-primary hover:underline"
-                >
-                  See what was just added →
-                </Link>
-              )}
-
-              {/* Skipping is the right default for a repeated backup, but when
-                  someone deliberately picked a file they already have, "nothing
-                  happened" is a dead end. Offer the way through, here, rather
-                  than expecting them to have found a checkbox beforehand. */}
-              {skippedFiles.length > 0 && (
-                <div className="mt-3 border-t border-border-subtle pt-3">
-                  <p className="text-xs text-content-muted">
-                    {skippedFiles.length === 1
-                      ? 'That file is already in your library.'
-                      : `${skippedFiles.length} of those files are already in your library.`}{' '}
-                    Upload again to keep a second copy?
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const again = skippedFiles;
-                        setSkippedFiles([]);
-                        void uploadAll(again, true);
-                      }}
-                      className="rounded-control bg-primary px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-hover"
+              <div
+                className="mt-3 max-h-56 space-y-1 overflow-y-auto pr-1"
+                aria-label="Upload files"
+              >
+                {visibleUploadItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex min-h-8 items-center gap-2 rounded-control bg-surface-sunken px-2.5 py-1.5"
+                  >
+                    <span className="shrink-0">
+                      <UploadStatusIcon status={item.status} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <Tooltip label={item.name} onlyWhenOverflow>
+                        <span className="block truncate text-xs">{item.name}</span>
+                      </Tooltip>
+                      {item.error && (
+                        <Tooltip label={item.error} onlyWhenOverflow>
+                          <span className="block truncate text-[10px] text-danger">
+                            {item.error}
+                          </span>
+                        </Tooltip>
+                      )}
+                    </span>
+                    <span
+                      className={`shrink-0 text-[11px] tabular-nums ${
+                        item.status === 'added'
+                          ? 'text-success'
+                          : item.status === 'failed'
+                            ? 'text-danger'
+                            : item.status === 'uploading'
+                              ? 'text-primary'
+                              : 'text-content-muted'
+                      }`}
                     >
-                      Upload anyway
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSkippedFiles([]);
-                        setProgress(null);
-                      }}
-                      className="rounded-control px-2.5 py-1.5 text-xs font-medium hover:bg-surface-sunken"
-                    >
-                      No thanks
-                    </button>
+                      {uploadStatusLabel(item)}
+                    </span>
                   </div>
-                </div>
+                ))}
+              </div>
+
+              {!running && (
+                <>
+                  <p className="mt-2 text-xs text-content-muted">
+                    {progress.created} added
+                    {progress.duplicates > 0 && `, ${progress.duplicates} already here`}
+                    {progress.failed > 0 && `, ${progress.failed} failed`}
+                    {cancelledCount > 0 && `, ${cancelledCount} stopped`}
+                  </p>
+
+                  {(failedFiles.length > 0 || progress.created > 0) && (
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      {failedFiles.length > 0 && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={<RotateCcw size={14} />}
+                          onClick={() => {
+                            const retry = failedFiles;
+                            setFailedFiles([]);
+                            void uploadAll(retry);
+                          }}
+                        >
+                          Retry{' '}
+                          {failedFiles.length === 1
+                            ? 'failed file'
+                            : `${failedFiles.length} failed files`}
+                        </Button>
+                      )}
+
+                      {/* Photos are filed by the date they were taken, so an old scan
+                          can land pages down and look like it never uploaded. */}
+                      {progress.created > 0 && (
+                        <Link
+                          to="/?sort=added"
+                          onClick={() => setProgress(null)}
+                          className="text-xs font-medium text-primary hover:underline"
+                        >
+                          See what was just added →
+                        </Link>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Skipping is the right default for a repeated backup, but when
+                      someone deliberately picked a file they already have, "nothing
+                      happened" is a dead end. Offer the way through, here, rather
+                      than expecting them to have found a checkbox beforehand. */}
+                  {skippedFiles.length > 0 && (
+                    <div className="mt-3 border-t border-border-subtle pt-3">
+                      <p className="text-xs text-content-muted">
+                        {skippedFiles.length === 1
+                          ? 'That file is already in your library.'
+                          : `${skippedFiles.length} of those files are already in your library.`}{' '}
+                        Upload again to keep a second copy?
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const again = skippedFiles;
+                            setSkippedFiles([]);
+                            void uploadAll(again, true);
+                          }}
+                          className="rounded-control bg-primary px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-hover"
+                        >
+                          Upload anyway
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSkippedFiles([]);
+                            setProgress(null);
+                          }}
+                          className="rounded-control px-2.5 py-1.5 text-xs font-medium hover:bg-surface-sunken"
+                        >
+                          No thanks
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
