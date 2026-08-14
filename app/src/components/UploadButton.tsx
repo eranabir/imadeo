@@ -18,6 +18,20 @@ import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
+import {
+  beginUploadHistory,
+  createUploadHistoryId,
+  finishUploadHistory,
+  listenForUploadRetry,
+  rememberUploadFiles,
+  updateUploadHistoryItem,
+  type UploadCandidate,
+  type UploadDestination,
+  type UploadHistoryItem,
+  type UploadSource,
+  type UploadStatus,
+} from '../lib/uploadHistory';
+import { useAuth } from '../store/auth';
 import { Button, Checkbox, Tooltip } from '../ui';
 
 interface Progress {
@@ -31,8 +45,6 @@ interface Progress {
   items: UploadProgressItem[];
 }
 
-type UploadStatus = 'queued' | 'uploading' | 'added' | 'duplicate' | 'failed' | 'cancelled';
-
 interface UploadProgressItem {
   id: string;
   name: string;
@@ -41,12 +53,6 @@ interface UploadProgressItem {
   /** 0-1 for the file in flight, from real upload bytes. */
   fraction: number;
   error?: string;
-}
-
-interface UploadCandidate {
-  file: File;
-  /** Path inside a folder dropped from Finder or Explorer. */
-  relativePath?: string;
 }
 
 interface DroppedEntry {
@@ -116,7 +122,7 @@ async function filesFromEntry(entry: DroppedEntry, parent = ''): Promise<UploadC
   return (await Promise.all(children.map((child) => filesFromEntry(child, path)))).flat();
 }
 
-async function filesFromDrop(dataTransfer: DataTransfer) {
+async function filesFromDrop(dataTransfer: DataTransfer): Promise<UploadCandidate[]> {
   const entries = [...dataTransfer.items]
     .filter((item) => item.kind === 'file')
     .map((item): DroppedEntry | null =>
@@ -157,6 +163,7 @@ export function UploadButton({
   const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const location = useLocation();
+  const { user } = useAuth();
   // This button lives in Layout, above the child route that owns albumId or
   // folderId. useParams() therefore cannot see those child parameters.
   const albumId =
@@ -179,6 +186,8 @@ export function UploadButton({
   const [skippedFiles, setSkippedFiles] = useState<UploadCandidate[]>([]);
   /** Failed candidates are retained so Retry sends only the files that need it. */
   const [failedFiles, setFailedFiles] = useState<UploadCandidate[]>([]);
+  const [retryDestination, setRetryDestination] = useState<UploadDestination | null>(null);
+  const [retrySource, setRetrySource] = useState<UploadSource>('files');
   const [minimized, setMinimized] = useState(false);
   const cancelled = useRef(false);
   const controllers = useRef(new Set<AbortController>());
@@ -202,6 +211,8 @@ export function UploadButton({
   const uploadAll = async (
     fileList: FileList | File[] | UploadCandidate[] | null,
     forceDuplicate = false,
+    destinationOverride?: UploadDestination,
+    source: UploadSource = 'files',
   ) => {
     if (!fileList || fileList.length === 0) return;
 
@@ -215,15 +226,36 @@ export function UploadButton({
     );
     const bytesTotal = files.reduce((sum, { file }) => sum + file.size, 0);
     const uploadItems: UploadProgressItem[] = files.map(({ file, relativePath }, index) => ({
-      id: `${index}:${relativePath || file.name}`,
+      id: `${createUploadHistoryId()}:${index}`,
       name: relativePath || file.name,
       size: file.size,
       status: 'queued',
       fraction: 0,
     }));
+    const pageTitle = document.querySelector('main h1')?.textContent?.trim();
+    const destination =
+      destinationOverride ??
+      ({
+        ...(folderId ? { folderId } : {}),
+        ...(albumId ? { albumId } : {}),
+        label: folderId
+          ? pageTitle ? `Folder · ${pageTitle}` : 'Folder'
+          : albumId
+            ? pageTitle ? `Album · ${pageTitle}` : 'Album'
+            : 'Photos',
+        path: location.pathname,
+      } satisfies UploadDestination);
+    const historyItems = () =>
+      uploadItems.map(({ fraction: _fraction, ...item }): UploadHistoryItem => item);
+    const historyId = user
+      ? beginUploadHistory(user.id, source, destination, historyItems())
+      : null;
+    if (historyId) rememberUploadFiles(historyId, historyItems(), files);
     cancelled.current = false;
     setSkippedFiles([]);
     setFailedFiles([]);
+    setRetryDestination(destination);
+    setRetrySource(source);
     setMinimized(false);
 
     let created = 0;
@@ -255,6 +287,10 @@ export function UploadButton({
       const candidate = files[index];
       const { file, relativePath } = candidate;
       uploadItems[index] = { ...uploadItems[index], status: 'uploading', fraction: 0 };
+      if (user && historyId) {
+        const { fraction: _fraction, ...item } = uploadItems[index];
+        updateUploadHistoryItem(user.id, historyId, item);
+      }
       publishProgress();
 
       const form = new FormData();
@@ -327,6 +363,11 @@ export function UploadButton({
         controllers.current.delete(controller);
       }
 
+      if (user && historyId) {
+        const { fraction: _fraction, ...item } = uploadItems[index];
+        updateUploadHistoryItem(user.id, historyId, item);
+      }
+
       done += 1;
       publishProgress();
     };
@@ -368,11 +409,20 @@ export function UploadButton({
       items: [...uploadItems],
     });
 
+    if (user && historyId) finishUploadHistory(user.id, historyId, historyItems());
+
     setSkippedFiles(skipped);
     setFailedFiles(retryable);
     await queryClient.invalidateQueries();
 
   };
+
+  useEffect(() => {
+    if (!externalDrop) return;
+    return listenForUploadRetry((request) => {
+      void uploadAll(request.files, false, request.destination, request.source);
+    });
+  });
 
   useEffect(() => {
     if (!externalDrop) return;
@@ -407,7 +457,12 @@ export function UploadButton({
             else setDropError(message);
             return;
           }
-          return uploadAll(files);
+          return uploadAll(
+            files,
+            false,
+            undefined,
+            files.some((candidate) => candidate.relativePath?.includes('/')) ? 'folder' : 'drop',
+          );
         })
         .catch((error) => {
           const message = errorMessage(error);
@@ -563,7 +618,7 @@ export function UploadButton({
         accept="image/*,video/*"
         className="hidden"
         onChange={(event) => {
-          void uploadAll(event.target.files);
+          void uploadAll(event.target.files, false, undefined, 'files');
           event.target.value = '';
         }}
       />
@@ -575,7 +630,7 @@ export function UploadButton({
         {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
         className="hidden"
         onChange={(event) => {
-          void uploadAll(event.target.files);
+          void uploadAll(event.target.files, false, undefined, 'folder');
           event.target.value = '';
         }}
       />
@@ -723,6 +778,14 @@ export function UploadButton({
                     {cancelledCount > 0 && `, ${cancelledCount} stopped`}
                   </p>
 
+                  <Link
+                    to="/upload-history"
+                    onClick={() => setProgress(null)}
+                    className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+                  >
+                    View upload history →
+                  </Link>
+
                   {(failedFiles.length > 0 || progress.created > 0) && (
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       {failedFiles.length > 0 && (
@@ -733,7 +796,12 @@ export function UploadButton({
                           onClick={() => {
                             const retry = failedFiles;
                             setFailedFiles([]);
-                            void uploadAll(retry);
+                            void uploadAll(
+                              retry,
+                              false,
+                              retryDestination ?? undefined,
+                              retrySource,
+                            );
                           }}
                         >
                           Retry{' '}
@@ -775,7 +843,12 @@ export function UploadButton({
                           onClick={() => {
                             const again = skippedFiles;
                             setSkippedFiles([]);
-                            void uploadAll(again, true);
+                            void uploadAll(
+                              again,
+                              true,
+                              retryDestination ?? undefined,
+                              retrySource,
+                            );
                           }}
                           className="rounded-control bg-primary px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-hover"
                         >

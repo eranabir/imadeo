@@ -18,6 +18,7 @@ import { AssetViewer } from '../components/AssetViewer';
 import { RetryingImage } from '../components/RetryingImage';
 import { api, errorMessage, mediaUrl } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
+import { runBatchedOperation } from '../lib/operationProgress';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
 import { Button, ConfirmDialog, EmptyState, Loading, Tooltip } from '../ui';
@@ -92,7 +93,12 @@ export function DuplicatesPage() {
   });
 
   const trash = useMutation({
-    mutationFn: async (ids: string[]) => (await api.delete('/assets', { data: { ids } })).data,
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving duplicate to Trash' : `Moving ${ids.length} duplicates to Trash`,
+        ids,
+        async (batch) => (await api.delete('/assets', { data: { ids: batch } })).data,
+      ),
     onSuccess: afterChange,
     onError,
   });

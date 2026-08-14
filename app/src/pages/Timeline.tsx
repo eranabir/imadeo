@@ -12,6 +12,7 @@ import { useLibraryActions } from '../components/useLibraryActions';
 import { api } from '../lib/api';
 import { useInfiniteAssets } from '../lib/useInfiniteAssets';
 import { formatDate, groupByDay } from '../lib/format';
+import { runBatchedOperation } from '../lib/operationProgress';
 import { useSelection } from '../lib/useSelection';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
@@ -112,7 +113,12 @@ export function PhotosPage() {
   });
 
   const trash = useMutation({
-    mutationFn: async (ids: string[]) => (await api.delete('/assets', { data: { ids } })).data,
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo to Trash' : `Moving ${ids.length} photos to Trash`,
+        ids,
+        async (batch) => (await api.delete('/assets', { data: { ids: batch } })).data,
+      ),
     onSuccess: afterChange,
   });
 

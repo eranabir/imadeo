@@ -33,10 +33,12 @@ describe('FolderService.convertToAlbum', () => {
       isLocked: true,
     });
     const assetUpdateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const albumAssetCreateMany = vi.fn().mockResolvedValue({ count: 2 });
     const folderDelete = vi.fn().mockResolvedValue({ id: 'folder-id' });
     const service = serviceWith({
       folder: { findFirst: folderFindFirst, delete: folderDelete },
       album: { findFirst: vi.fn().mockResolvedValue(null), create: albumCreate },
+      albumAsset: { createMany: albumAssetCreateMany },
       folderUser: { findFirst: vi.fn().mockResolvedValue(null) },
       asset: {
         findMany: vi.fn().mockResolvedValue([{ id: 'photo-1' }, { id: 'photo-2' }]),
@@ -54,13 +56,13 @@ describe('FolderService.convertToAlbum', () => {
         folderId: 'parent-id',
         name: 'Summer',
         isLocked: true,
-        assets: {
-          create: [
-            { assetId: 'photo-1', addedById: 'owner-id' },
-            { assetId: 'photo-2', addedById: 'owner-id' },
-          ],
-        },
       }),
+    });
+    expect(albumAssetCreateMany).toHaveBeenCalledWith({
+      data: [
+        { albumId: 'album-id', assetId: 'photo-1', addedById: 'owner-id' },
+        { albumId: 'album-id', assetId: 'photo-2', addedById: 'owner-id' },
+      ],
     });
     expect(assetUpdateMany).toHaveBeenCalledWith({
       where: { ownerId: 'owner-id', folderId: 'folder-id' },
@@ -69,6 +71,42 @@ describe('FolderService.convertToAlbum', () => {
     expect(folderDelete).toHaveBeenCalledWith({
       where: { id: 'folder-id' },
     });
+  });
+
+  it('writes large album membership in bounded batches', async () => {
+    const assets = Array.from({ length: 1_001 }, (_, index) => ({ id: `photo-${index}` }));
+    const createMany = vi.fn().mockResolvedValue({ count: 1_000 });
+    const service = serviceWith({
+      folder: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'folder-id',
+            ownerId: 'owner-id',
+            parentId: null,
+            name: 'Archive',
+            isLocked: false,
+          })
+          .mockResolvedValueOnce(null),
+        delete: vi.fn().mockResolvedValue({ id: 'folder-id' }),
+      },
+      album: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'album-id' }),
+      },
+      albumAsset: { createMany },
+      folderUser: { findFirst: vi.fn().mockResolvedValue(null) },
+      asset: {
+        findMany: vi.fn().mockResolvedValue(assets),
+        updateMany: vi.fn().mockResolvedValue({ count: assets.length }),
+      },
+    });
+
+    await service.convertToAlbum('owner-id', 'folder-id');
+
+    expect(createMany).toHaveBeenCalledTimes(2);
+    expect(createMany.mock.calls[0][0].data).toHaveLength(1_000);
+    expect(createMany.mock.calls[1][0].data).toHaveLength(1);
   });
 
   it('does not convert a folder that contains structural children', async () => {

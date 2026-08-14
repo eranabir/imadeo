@@ -8,6 +8,7 @@ import { JustifiedGrid } from '../components/JustifiedGrid';
 import { SelectionBar } from '../components/SelectionBar';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage, mediaUrl } from '../lib/api';
+import { runBatchedOperation } from '../lib/operationProgress';
 import { useSelection } from '../lib/useSelection';
 import { useAuth } from '../store/auth';
 import type { Asset, Paginated } from '../types';
@@ -145,7 +146,12 @@ export function SubjectPage() {
   });
 
   const trash = useMutation({
-    mutationFn: async (ids: string[]) => (await api.delete('/assets', { data: { ids } })).data,
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo to Trash' : `Moving ${ids.length} photos to Trash`,
+        ids,
+        async (batch) => (await api.delete('/assets', { data: { ids: batch } })).data,
+      ),
     onSuccess: afterBulk,
     onError,
   });

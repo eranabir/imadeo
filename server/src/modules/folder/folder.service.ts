@@ -456,13 +456,21 @@ export class FolderService {
           folderId: folder.parentId,
           name: folder.name,
           isLocked: folder.isLocked,
-          ...(assets.length > 0 && {
-            assets: {
-              create: assets.map((asset) => ({ assetId: asset.id, addedById: userId })),
-            },
-          }),
         },
       });
+
+      // One nested insert with thousands of photos can exceed PostgreSQL's
+      // parameter limit. Keep the transaction atomic, but write membership in
+      // bounded batches so conversion remains reliable for large folders.
+      for (let start = 0; start < assets.length; start += 1_000) {
+        await tx.albumAsset.createMany({
+          data: assets.slice(start, start + 1_000).map((asset) => ({
+            albumId: album.id,
+            assetId: asset.id,
+            addedById: userId,
+          })),
+        });
+      }
 
       // The album replaces the folder in Browse. Keep its photos unfiled rather
       // than moving them beside the album in the parent folder; they remain in

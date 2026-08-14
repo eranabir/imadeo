@@ -19,6 +19,7 @@ import {
 import { useCallback, useState } from 'react';
 import { api, errorMessage } from '../lib/api';
 import type { DragPayload } from '../lib/dnd';
+import { runBatchedOperation, runOperation } from '../lib/operationProgress';
 import { useAuth } from '../store/auth';
 import type { Album, Asset, FolderNode } from '../types';
 import {
@@ -128,7 +129,13 @@ export function useLibraryActions({
   );
 
   const trashAssets = useMutation(
-    mutation(async (ids: string[]) => api.delete('/assets', { data: { ids } })),
+    mutation(async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo to Trash' : `Moving ${ids.length} photos to Trash`,
+        ids,
+        (batch) => api.delete('/assets', { data: { ids: batch } }),
+      ),
+    ),
   );
 
   const sharedAssetsSelected =
@@ -137,26 +144,47 @@ export function useLibraryActions({
     target.item.asset.ownerId !== user?.id;
 
   const restoreAssets = useMutation(
-    mutation(async (ids: string[]) => api.post('/assets/trash/restore', { ids })),
+    mutation(async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Restoring photo' : `Restoring ${ids.length} photos`,
+        ids,
+        (batch) => api.post('/assets/trash/restore', { ids: batch }),
+      ),
+    ),
   );
 
   const deleteAssetsForever = useMutation(
-    mutation(async (ids: string[]) => api.delete('/assets', { data: { ids, force: true } })),
+    mutation(async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Deleting photo permanently' : `Deleting ${ids.length} photos permanently`,
+        ids,
+        (batch) => api.delete('/assets', { data: { ids: batch, force: true } }),
+      ),
+    ),
   );
 
   // -- moving ---------------------------------------------------------------
 
   const assetsToFolder = useMutation(
     mutation(async ({ folderId, ids }: { folderId: string | null; ids: string[] }) =>
-      folderId
-        ? api.put(`/folders/${folderId}/assets`, { assetIds: ids })
-        : api.put('/assets/bulk', { ids, folderId: null }),
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo' : `Moving ${ids.length} photos`,
+        ids,
+        async (batch) => {
+          if (folderId) await api.put(`/folders/${folderId}/assets`, { assetIds: batch });
+          else await api.put('/assets/bulk', { ids: batch, folderId: null });
+        },
+      ),
     ),
   );
 
   const assetsToAlbum = useMutation(
     mutation(async ({ albumId, ids }: { albumId: string; ids: string[] }) =>
-      api.put(`/albums/${albumId}/assets`, { assetIds: ids }),
+      runBatchedOperation(
+        ids.length === 1 ? 'Adding photo to album' : `Adding ${ids.length} photos to album`,
+        ids,
+        (batch) => api.put(`/albums/${albumId}/assets`, { assetIds: batch }),
+      ),
     ),
   );
 
@@ -196,12 +224,23 @@ export function useLibraryActions({
     ),
   );
 
-  const deleteFolder = useMutation(mutation(async (id: string) => api.delete(`/folders/${id}`)));
-  const deleteAlbum = useMutation(mutation(async (id: string) => api.delete(`/albums/${id}`)));
+  const deleteFolder = useMutation(
+    mutation(async (folder: FolderActionTarget) =>
+      runOperation(`Moving “${folder.name}” to Trash`, () => api.delete(`/folders/${folder.id}`)),
+    ),
+  );
+  const deleteAlbum = useMutation(
+    mutation(async (album: Pick<Album, 'id' | 'name'>) =>
+      runOperation(`Moving “${album.name}” to Trash`, () => api.delete(`/albums/${album.id}`)),
+    ),
+  );
 
   const convertFolder = useMutation({
-    mutationFn: async (id: string) =>
-      (await api.post<Album>(`/folders/${id}/convert-to-album`)).data,
+    mutationFn: async (folder: FolderActionTarget) =>
+      runOperation(
+        `Converting “${folder.name}” to an album`,
+        async () => (await api.post<Album>(`/folders/${folder.id}/convert-to-album`)).data,
+      ),
     onSuccess: (album) => {
       setConvertingFolder(null);
       void invalidate();
@@ -662,7 +701,7 @@ export function useLibraryActions({
         title={`Convert “${convertingFolder?.folder.name ?? ''}” to an album?`}
         description="The folder will be replaced by an album in the same location. Its photos will appear only inside the album."
         confirmLabel="Convert to album"
-        onConfirm={() => convertingFolder && convertFolder.mutate(convertingFolder.folder.id)}
+        onConfirm={() => convertingFolder && convertFolder.mutate(convertingFolder.folder)}
         onClose={() => setConvertingFolder(null)}
       />
 
@@ -677,8 +716,8 @@ export function useLibraryActions({
         confirmLabel={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
         destructive
         onConfirm={() => {
-          if (deleting?.kind === 'folder') deleteFolder.mutate(deleting.folder.id);
-          else if (deleting?.kind === 'album') deleteAlbum.mutate(deleting.album.id);
+          if (deleting?.kind === 'folder') deleteFolder.mutate(deleting.folder);
+          else if (deleting?.kind === 'album') deleteAlbum.mutate(deleting.album);
         }}
         onClose={() => setDeleting(null)}
       />

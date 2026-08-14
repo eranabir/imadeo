@@ -6,6 +6,7 @@ import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
 import { useSelection } from '../lib/useSelection';
 import { formatDate } from '../lib/format';
+import { runBatchedOperation, runOperation } from '../lib/operationProgress';
 import { useAuth } from '../store/auth';
 import type { Album, Asset } from '../types';
 import { Button, ConfirmDialog, EmptyState, IconButton } from '../ui';
@@ -57,53 +58,72 @@ export function TrashPage() {
   const onError = (e: unknown) => setError(errorMessage(e));
 
   const restore = useMutation({
-    mutationFn: async (ids: string[]) => (await api.post('/assets/trash/restore', { ids })).data,
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Restoring item' : `Restoring ${ids.length} items`,
+        ids,
+        async (batch) => (await api.post('/assets/trash/restore', { ids: batch })).data,
+      ),
     onSuccess: afterChange,
     onError,
   });
 
   const restoreAll = useMutation({
-    mutationFn: async () => {
-      // Parent folder trees first; independently deleted albums and loose
-      // photos can then be restored without pointing at missing structure.
-      for (const folder of [...folders].sort((a, b) => a.depth - b.depth)) {
-        await api.post(`/folders/${folder.id}/restore`);
-      }
-      await Promise.all(albums.map((album) => api.post(`/albums/${album.id}/restore`)));
-      return (await api.post('/assets/trash/restore-all')).data;
-    },
+    mutationFn: async () =>
+      runOperation('Restoring everything from Trash', async () => {
+        // Parent folder trees first; independently deleted albums and loose
+        // photos can then be restored without pointing at missing structure.
+        for (const folder of [...folders].sort((a, b) => a.depth - b.depth)) {
+          await api.post(`/folders/${folder.id}/restore`);
+        }
+        await Promise.all(albums.map((album) => api.post(`/albums/${album.id}/restore`)));
+        return (await api.post('/assets/trash/restore-all')).data;
+      }),
     onSuccess: afterChange,
     onError,
   });
 
   const restoreFolder = useMutation({
-    mutationFn: async (id: string) => (await api.post(`/folders/${id}/restore`)).data,
+    mutationFn: async (id: string) =>
+      runOperation('Restoring folder and its contents', async () =>
+        (await api.post(`/folders/${id}/restore`)).data,
+      ),
     onSuccess: afterChange,
     onError,
   });
 
   const restoreAlbum = useMutation({
-    mutationFn: async (id: string) => (await api.post(`/albums/${id}/restore`)).data,
+    mutationFn: async (id: string) =>
+      runOperation('Restoring album and its contents', async () =>
+        (await api.post(`/albums/${id}/restore`)).data,
+      ),
     onSuccess: afterChange,
     onError,
   });
 
   const deleteForever = useMutation({
     mutationFn: async (ids: string[]) =>
-      (await api.delete('/assets', { data: { ids, force: true } })).data,
+      runBatchedOperation(
+        ids.length === 1 ? 'Deleting item permanently' : `Deleting ${ids.length} items permanently`,
+        ids,
+        async (batch) =>
+          (await api.delete('/assets', { data: { ids: batch, force: true } })).data,
+      ),
     onSuccess: afterChange,
     onError,
   });
 
   const deleteStructureForever = useMutation({
     mutationFn: async (item: TrashedStructure) =>
-      (
-        await api.delete(
-          item.kind === 'folder'
-            ? `/folders/${item.id}/permanent`
-            : `/albums/${item.id}/permanent`,
-        )
-      ).data,
+      runOperation(`Deleting “${item.name}” permanently`, async () =>
+        (
+          await api.delete(
+            item.kind === 'folder'
+              ? `/folders/${item.id}/permanent`
+              : `/albums/${item.id}/permanent`,
+          )
+        ).data,
+      ),
     onSuccess: () => {
       setStructureConfirm(null);
       return afterChange();
@@ -112,13 +132,16 @@ export function TrashPage() {
   });
 
   const emptyTrash = useMutation({
-    mutationFn: async () => {
-      await api.post('/assets/trash/empty');
-      await Promise.all(albums.map((album) => api.delete(`/albums/${album.id}/permanent`)));
-      for (const folder of [...folders].sort((a, b) => b.depth - a.depth)) {
-        await api.delete(`/folders/${folder.id}/permanent`);
-      }
-    },
+    mutationFn: async () =>
+      runOperation('Emptying Trash', async () => {
+        await api.post('/assets/trash/empty');
+        for (const album of albums) {
+          await api.delete(`/albums/${album.id}/permanent`);
+        }
+        for (const folder of [...folders].sort((a, b) => b.depth - a.depth)) {
+          await api.delete(`/folders/${folder.id}/permanent`);
+        }
+      }),
     onSuccess: afterChange,
     onError,
   });
