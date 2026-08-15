@@ -55,6 +55,7 @@ export interface UploadedFile {
 @Injectable()
 export class AssetService {
   private readonly logger = new Logger(AssetService.name);
+  private readonly uploadLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -80,25 +81,65 @@ export class AssetService {
   */
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     const checksum = await this.hashFile(file.path);
+    if (dto.allowDuplicate) {
+      return this.createFromHashedUpload(userId, file, dto, checksum);
+    }
+
+    const lockKey = `${userId}:${fromBytes(checksum).toString('hex')}`;
+    return this.withUploadLock(lockKey, () =>
+      this.createFromHashedUpload(userId, file, dto, checksum),
+    );
+  }
+
+  private async createFromHashedUpload(
+    userId: string,
+    file: UploadedFile,
+    dto: UploadAssetDto,
+    checksum: Uint8Array<ArrayBuffer>,
+  ) {
     const sourceDevice = await this.devices.register(userId, {
       clientId: dto.deviceId,
       assetId: dto.deviceAssetId,
       name: dto.deviceName,
       platform: dto.devicePlatform,
     });
+    const originalFileName = dto.relativePath
+      ? dto.relativePath.split(/[/\\]/).pop()!
+      : file.originalname;
+    const destinationFolderId = await this.resolveFolder(userId, dto);
 
-    // Skipped entirely when the caller has asked for a second copy on purpose.
-    const existing = dto.allowDuplicate
-        ? null
-        : await this.prisma.asset.findFirst({
-            where: { ownerId: userId, checksum },
-          select: {
-            id: true,
-            deletedAt: true,
-            isDeviceOnly: true,
-            folderId: true,
-            folder: { select: { deletedAt: true } },
+    const duplicateSelect = {
+      id: true,
+      deletedAt: true,
+      isDeviceOnly: true,
+      folderId: true,
+      folder: { select: { deletedAt: true } },
+    } as const;
+
+    // A retry is a duplicate only at the same logical location. Identical
+    // files in two source folders are still two backed-up items and must keep
+    // both names/locations. A deleted copy can be reused at a rebuilt path.
+    let existing = dto.allowDuplicate
+      ? null
+      : await this.prisma.asset.findFirst({
+          where: {
+            ownerId: userId,
+            checksum,
+            originalFileName,
+            folderId: destinationFolderId,
           },
+          select: duplicateSelect,
+        });
+    existing ??= dto.allowDuplicate
+      ? null
+      : await this.prisma.asset.findFirst({
+          where: {
+            ownerId: userId,
+            checksum,
+            originalFileName,
+            OR: [{ deletedAt: { not: null } }, { folder: { deletedAt: { not: null } } }],
+          },
+          select: duplicateSelect,
         });
 
     if (existing) {
@@ -110,14 +151,9 @@ export class AssetService {
         await this.devices.recordAsset(sourceDevice.id, dto.deviceAssetId, existing.id);
       }
 
-      const hasFolderDestination = Boolean(dto.folderId || dto.relativePath);
-      const destinationFolderId = hasFolderDestination
-        ? await this.resolveFolder(userId, dto)
-        : undefined;
       const wasOrphaned = Boolean(existing.folder?.deletedAt);
       const promotedToPhotos = !sourceDevice && existing.isDeviceOnly;
-      const folderChanged =
-        destinationFolderId !== undefined && destinationFolderId !== existing.folderId;
+      const folderChanged = destinationFolderId !== existing.folderId;
 
       if (existing.deletedAt || wasOrphaned || folderChanged || promotedToPhotos) {
         await this.prisma.asset.update({
@@ -128,12 +164,7 @@ export class AssetService {
             ...(promotedToPhotos ? { isDeviceOnly: false } : {}),
             // With no explicit destination, an asset restored from a deleted
             // folder becomes loose rather than remaining invisible there.
-            folderId:
-              destinationFolderId !== undefined
-                ? destinationFolderId
-                : wasOrphaned
-                  ? null
-                  : undefined,
+            folderId: folderChanged || wasOrphaned ? destinationFolderId : undefined,
           },
         });
         if (existing.deletedAt) {
@@ -152,17 +183,13 @@ export class AssetService {
     const fileCreatedAt = dto.fileCreatedAt ? new Date(dto.fileCreatedAt) : new Date();
     const fileModifiedAt = dto.fileModifiedAt ? new Date(dto.fileModifiedAt) : fileCreatedAt;
 
-    const folderId = await this.resolveFolder(userId, dto);
-
     const asset = await this.prisma.asset.create({
       data: {
         ownerId: userId,
         type,
         // Points at the incoming file until the move below succeeds.
         originalPath: file.path,
-        originalFileName: dto.relativePath
-          ? dto.relativePath.split(/[/\\]/).pop()!
-          : file.originalname,
+        originalFileName,
         checksum,
         fileSizeInByte: BigInt(file.size),
         deviceAssetId: dto.deviceAssetId || null,
@@ -175,7 +202,7 @@ export class AssetService {
         isDeviceOnly: Boolean(sourceDevice),
         visibility: dto.isLocked ? AssetVisibility.LOCKED : AssetVisibility.TIMELINE,
         duration: dto.duration ?? null,
-        folderId,
+        folderId: destinationFolderId,
         jobStatus: { create: {} },
         deviceAssets:
           sourceDevice && dto.deviceAssetId
@@ -227,6 +254,25 @@ export class AssetService {
     await this.jobs.onAssetUploaded(asset.id);
 
     return { id: asset.id, status: 'created' as const };
+  }
+
+  /** One server process owns uploads, so a checksum-scoped queue closes the
+   * duplicate check/create race without blocking unrelated media. */
+  private async withUploadLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.uploadLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.uploadLocks.set(key, current);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.uploadLocks.get(key) === current) this.uploadLocks.delete(key);
+    }
   }
 
   private async resolveFolder(userId: string, dto: UploadAssetDto) {

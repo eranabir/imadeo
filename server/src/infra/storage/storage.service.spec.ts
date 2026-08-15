@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -66,5 +66,25 @@ describe('StorageService user isolation', () => {
     await expect(storage.exists(join(root, 'users', ownerId, 'library'))).resolves.toBe(true);
     await expect(storage.exists(join(root, 'users', ownerId, 'thumbs'))).resolves.toBe(true);
     await expect(storage.exists(join(root, 'users', ownerId, 'locked'))).resolves.toBe(true);
+  });
+
+  it('never overwrites simultaneous uploads that resolve to the same path', async () => {
+    const { root, storage } = await createStorage();
+    const sourceA = join(root, 'upload-a.jpg');
+    const sourceB = join(root, 'upload-b.jpg');
+    const destination = join(root, 'users', 'owner-id', 'library', '2026', 'same-name.jpg');
+    await Promise.all([
+      writeFile(sourceA, Buffer.from('first-photo')),
+      writeFile(sourceB, Buffer.from('second-photo')),
+    ]);
+
+    const paths = await Promise.all([
+      storage.move(sourceA, destination),
+      storage.move(sourceB, destination),
+    ]);
+
+    expect(new Set(paths).size).toBe(2);
+    const contents = await Promise.all(paths.map((path) => readFile(path, 'utf8')));
+    expect(contents.sort()).toEqual(['first-photo', 'second-photo']);
   });
 });

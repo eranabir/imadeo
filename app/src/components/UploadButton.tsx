@@ -18,6 +18,8 @@ import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
+import { filesFromDrop, isMediaFile, MEDIA_ACCEPT } from '../lib/uploadSelection';
+import { runUploadQueue } from '../lib/uploadQueue';
 import {
   beginUploadHistory,
   createUploadHistoryId,
@@ -36,6 +38,7 @@ import { Button, Checkbox, Tooltip } from '../ui';
 
 interface Progress {
   total: number;
+  ignored: number;
   done: number;
   created: number;
   duplicates: number;
@@ -55,28 +58,8 @@ interface UploadProgressItem {
   error?: string;
 }
 
-interface DroppedEntry {
-  isFile: boolean;
-  isDirectory: boolean;
-  name: string;
-  file?: (callback: (file: File) => void, onError?: (error: DOMException) => void) => void;
-  createReader?: () => {
-    readEntries: (
-      callback: (entries: DroppedEntry[]) => void,
-      onError?: (error: DOMException) => void,
-    ) => void;
-  };
-}
-
 /** Keeps uploads fast without saturating a typical self-hosted NAS or browser. */
 const WEB_UPLOAD_CONCURRENCY = 4;
-
-const isMedia = (file: File) =>
-  file.type.startsWith('image/') ||
-  file.type.startsWith('video/') ||
-  /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp|3gp|avi|m4v|mkv|mov|mp4|mpeg|mpg|webm)$/i.test(
-    file.name,
-  );
 
 function UploadStatusIcon({ status }: { status: UploadStatus }) {
   if (status === 'uploading') {
@@ -96,46 +79,6 @@ function uploadStatusLabel(item: UploadProgressItem) {
   if (item.status === 'failed') return 'Failed';
   if (item.status === 'cancelled') return 'Stopped';
   return 'Queued';
-}
-
-async function filesFromEntry(entry: DroppedEntry, parent = ''): Promise<UploadCandidate[]> {
-  const path = parent ? `${parent}/${entry.name}` : entry.name;
-
-  if (entry.isFile && entry.file) {
-    const file = await new Promise<File>((resolve, reject) => entry.file!(resolve, reject));
-    return isMedia(file) ? [{ file, relativePath: path }] : [];
-  }
-
-  if (!entry.isDirectory || !entry.createReader) return [];
-  const reader = entry.createReader();
-  const children: DroppedEntry[] = [];
-
-  // DirectoryReader returns batches and an empty batch marks the end.
-  while (true) {
-    const batch = await new Promise<DroppedEntry[]>((resolve, reject) =>
-      reader.readEntries(resolve, reject),
-    );
-    if (batch.length === 0) break;
-    children.push(...batch);
-  }
-
-  return (await Promise.all(children.map((child) => filesFromEntry(child, path)))).flat();
-}
-
-async function filesFromDrop(dataTransfer: DataTransfer): Promise<UploadCandidate[]> {
-  const entries = [...dataTransfer.items]
-    .filter((item) => item.kind === 'file')
-    .map((item): DroppedEntry | null =>
-      (
-        item as DataTransferItem & {
-          webkitGetAsEntry?: () => FileSystemEntry | null;
-        }
-      ).webkitGetAsEntry?.() as DroppedEntry | null,
-    )
-    .filter((entry): entry is DroppedEntry => Boolean(entry));
-
-  if (entries.length > 0) return (await Promise.all(entries.map((entry) => filesFromEntry(entry)))).flat();
-  return [...dataTransfer.files].filter(isMedia).map((file) => ({ file }));
 }
 
 /**
@@ -216,7 +159,7 @@ export function UploadButton({
   ) => {
     if (!fileList || fileList.length === 0) return;
 
-    const files: UploadCandidate[] = [...fileList].map((item) =>
+    const candidates: UploadCandidate[] = [...fileList].map((item) =>
       item instanceof File
         ? {
             file: item,
@@ -224,6 +167,14 @@ export function UploadButton({
           }
         : item,
     );
+    const files = candidates.filter(({ file }) => isMediaFile(file));
+    const ignored = candidates.length - files.length;
+    if (files.length === 0) {
+      const message = 'That selection does not contain supported photos or videos.';
+      if (onError) onError(message);
+      else setDropError(message);
+      return;
+    }
     const bytesTotal = files.reduce((sum, { file }) => sum + file.size, 0);
     const uploadItems: UploadProgressItem[] = files.map(({ file, relativePath }, index) => ({
       id: `${createUploadHistoryId()}:${index}`,
@@ -262,7 +213,6 @@ export function UploadButton({
     let duplicates = 0;
     let failed = 0;
     let done = 0;
-    let nextIndex = 0;
     const uploadedBytes = files.map(() => 0);
 
     // Held so the finished panel can offer to send the skipped ones again as
@@ -274,6 +224,7 @@ export function UploadButton({
     const publishProgress = () =>
       setProgress({
         total: files.length,
+        ignored,
         done,
         created,
         duplicates,
@@ -372,21 +323,12 @@ export function UploadButton({
       publishProgress();
     };
 
-    const worker = async () => {
-      while (!cancelled.current) {
-        const index = nextIndex;
-        nextIndex += 1;
-        if (index >= files.length) return;
-        await uploadOne(index);
-      }
-    };
-
     publishProgress();
-    await Promise.all(
-      Array.from(
-        { length: Math.min(WEB_UPLOAD_CONCURRENCY, files.length) },
-        () => worker(),
-      ),
+    await runUploadQueue(
+      files,
+      WEB_UPLOAD_CONCURRENCY,
+      (_candidate, index) => uploadOne(index),
+      () => cancelled.current,
     );
 
     if (cancelled.current) {
@@ -400,6 +342,7 @@ export function UploadButton({
 
     setProgress({
       total: files.length,
+      ignored,
       done: files.length,
       created,
       duplicates,
@@ -451,12 +394,6 @@ export function UploadButton({
       setExternalDrag(false);
       void filesFromDrop(event.dataTransfer)
         .then((files) => {
-          if (files.length === 0) {
-            const message = 'That folder does not contain supported photos or videos.';
-            if (onError) onError(message);
-            else setDropError(message);
-            return;
-          }
           return uploadAll(
             files,
             false,
@@ -615,7 +552,7 @@ export function UploadButton({
         ref={filesInput}
         type="file"
         multiple
-        accept="image/*,video/*"
+        accept={MEDIA_ACCEPT}
         className="hidden"
         onChange={(event) => {
           void uploadAll(event.target.files, false, undefined, 'files');
@@ -687,8 +624,13 @@ export function UploadButton({
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">{panelTitle}</span>
                 <span className="block text-[11px] tabular-nums text-content-muted">
-                  {progress.done} of {progress.total} files · {percentage}%
+                  {progress.done} of {progress.total} media files · {percentage}%
                 </span>
+                {progress.ignored > 0 && (
+                  <span className="block text-[11px] tabular-nums text-content-muted">
+                    {progress.ignored} unsupported {progress.ignored === 1 ? 'file' : 'files'} skipped
+                  </span>
+                )}
               </span>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">

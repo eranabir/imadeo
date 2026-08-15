@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { constants, createReadStream, createWriteStream } from 'node:fs';
-import { access, copyFile, mkdir, rename, rm, stat, unlink } from 'node:fs/promises';
+import { access, copyFile, link, mkdir, rm, stat, unlink } from 'node:fs/promises';
 import { dirname, extname, join, parse, relative, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import sanitize from 'sanitize-filename';
@@ -153,23 +153,42 @@ export class StorageService {
     return info.size;
   }
 
-  /**
-   * Moves a file, falling back to copy+unlink when source and destination are
-   * on different filesystems (common when /data is a bind mount).
-   */
+  /** Moves without ever replacing an existing original, even under concurrency. */
   async move(from: string, to: string) {
     this.assertInsideRoot(to);
     await this.ensureDir(dirname(to));
 
-    const target = await this.resolveCollision(to);
-    try {
-      await rename(from, target);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
-      await copyFile(from, target);
-      await unlink(from);
+    const { dir, name, ext } = parse(to);
+    for (let index = 0; index < 1000; index++) {
+      const target = index === 0 ? to : join(dir, `${name}+${index}${ext}`);
+      try {
+        // A hard link claims the name atomically without copying large files.
+        await link(from, target);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST') continue;
+        if (code !== 'EXDEV') throw error;
+
+        try {
+          // Cross-device bind mounts cannot hard-link. COPYFILE_EXCL provides
+          // the same no-overwrite guarantee while the bytes are copied.
+          await copyFile(from, target, constants.COPYFILE_EXCL);
+        } catch (copyError) {
+          if ((copyError as NodeJS.ErrnoException).code === 'EEXIST') continue;
+          throw copyError;
+        }
+      }
+
+      try {
+        await unlink(from);
+      } catch (error) {
+        await rm(target, { force: true });
+        throw error;
+      }
+      return target;
     }
-    return target;
+
+    throw new Error(`Could not find a free filename for ${to}`);
   }
 
   async writeStream(stream: NodeJS.ReadableStream, to: string) {
@@ -195,18 +214,4 @@ export class StorageService {
     await Promise.all(paths.filter((p): p is string => Boolean(p)).map((p) => this.remove(p)));
   }
 
-  /**
-   * Two different photos can legitimately render to the same path (same second,
-   * same camera). Suffix rather than overwrite.
-   */
-  private async resolveCollision(path: string) {
-    if (!(await this.exists(path))) return path;
-
-    const { dir, name, ext } = parse(path);
-    for (let i = 1; i < 1000; i++) {
-      const candidate = join(dir, `${name}+${i}${ext}`);
-      if (!(await this.exists(candidate))) return candidate;
-    }
-    throw new Error(`Could not find a free filename for ${path}`);
-  }
 }

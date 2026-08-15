@@ -53,6 +53,8 @@ const MAX_DEPTH = 32;
 
 @Injectable()
 export class FolderService {
+  private readonly pathLocks = new Map<string, Promise<void>>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly assetLifecycle: AssetLifecycleService,
@@ -995,31 +997,50 @@ export class FolderService {
     for (const raw of segments) {
       const name = this.normaliseName(raw);
       if (!name || name === '.' || name === '..') continue;
+      const currentParentId = parentId;
+      const lockKey = `${userId}:${currentParentId ?? 'root'}:${name}`;
+      parent = await this.withPathLock(lockKey, async () => {
+        const existing = await this.prisma.folder.findFirst({
+          where: { ownerId: userId, parentId: currentParentId, name, deletedAt: null },
+        });
+        if (existing) return existing;
 
-      const existing = await this.prisma.folder.findFirst({
-        where: { ownerId: userId, parentId, name, deletedAt: null },
-      });
-
-      if (existing) {
-        parent = existing;
-      } else {
         try {
-          parent = await this.create(userId, { name, parentId: parentId ?? undefined });
+          return await this.create(userId, {
+            name,
+            parentId: currentParentId ?? undefined,
+          });
         } catch (error) {
-          // Parallel uploads from one dropped directory may both discover the
-          // same missing path. Whichever request loses the create race should
-          // use the folder the other request just created, not fail the file.
+          // Keep the database-level fallback for deployments that run more
+          // than one server process against the same non-root parent.
           const concurrentlyCreated = await this.prisma.folder.findFirst({
-            where: { ownerId: userId, parentId, name, deletedAt: null },
+            where: { ownerId: userId, parentId: currentParentId, name, deletedAt: null },
           });
           if (!concurrentlyCreated) throw error;
-          parent = concurrentlyCreated;
+          return concurrentlyCreated;
         }
-      }
+      });
       parentId = parent.id;
     }
 
     return parent;
+  }
+
+  private async withPathLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.pathLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.pathLocks.set(key, current);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.pathLocks.get(key) === current) this.pathLocks.delete(key);
+    }
   }
 
   private normaliseName(name: string) {
