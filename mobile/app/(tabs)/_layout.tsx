@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useSelectionBar } from '../../src/selection';
+import { resolvedDark } from '../../src/lib/preferences';
 import { colors, wash } from '../../src/theme';
 
 /**
@@ -39,8 +40,9 @@ import { colors, wash } from '../../src/theme';
  * takes the same washed accent the header already uses behind a selected
  * control, so the one selected thing on screen is tinted the one accent.
  *
- * iOS is left alone: its bar is glass, and naming a colour there would replace
- * the material rather than tint it.
+ * iOS gets both a blur and the palette's translucent film. Expo only copies
+ * explicitly supplied appearance values into the scroll-edge appearance; the
+ * disable flag by itself otherwise produces an empty, fully transparent bar.
  */
 export default function TabsLayout() {
   /*
@@ -57,7 +59,14 @@ export default function TabsLayout() {
     <NativeTabs
       hidden={active}
       labelVisibilityMode="labeled"
-      backgroundColor={Platform.OS === 'android' ? colors.surface : undefined}
+      backgroundColor={Platform.OS === 'ios' ? colors.film : colors.surface}
+      blurEffect={
+        Platform.OS === 'ios'
+          ? resolvedDark()
+            ? 'systemChromeMaterialDark'
+            : 'systemChromeMaterialLight'
+          : undefined
+      }
       indicatorColor={Platform.OS === 'android' ? wash(colors.primary) : undefined}
       disableTransparentOnScrollEdge
     >

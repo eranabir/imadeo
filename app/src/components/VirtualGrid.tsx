@@ -8,6 +8,8 @@ interface Props<T> {
   minItemWidth: number;
   /** Fixed or width-derived card height. */
   itemHeight: number | ((width: number) => number);
+  /** Force a specific column count, for example one column for a virtual list. */
+  columnCount?: number;
   gap?: number;
   className?: string;
 }
@@ -33,14 +35,19 @@ export function VirtualGrid<T>({
   getKey,
   minItemWidth,
   itemHeight,
+  columnCount,
   gap = 12,
   className,
 }: Props<T>) {
   const element = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [range, setRange] = useState({ start: 0, end: items.length });
-  const columns = Math.max(1, Math.floor((width + gap) / (minItemWidth + gap)));
-  const cardWidth = width > 0 ? (width - gap * (columns - 1)) / columns : minItemWidth;
+  const columns = columnCount ?? Math.max(1, Math.floor((width + gap) / (minItemWidth + gap)));
+  const cardWidth = width > 0
+    ? (width - gap * (columns - 1)) / columns
+    : columnCount
+      ? 0
+      : minItemWidth;
   const height = typeof itemHeight === 'function' ? itemHeight(cardWidth) : itemHeight;
   const rows = Math.ceil(items.length / columns);
   const totalHeight = rows === 0 ? 0 : rows * height + Math.max(0, rows - 1) * gap;

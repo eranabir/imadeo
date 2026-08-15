@@ -5,6 +5,7 @@ import {
   Folder,
   FolderPlus,
   LayoutGrid,
+  List,
   Lock,
   Pencil,
   Search,
@@ -19,6 +20,7 @@ import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { FolderShareDialog } from '../components/FolderShareDialog';
+import { FolderContentsList } from '../components/FolderContentsList';
 import { BrowseIcon } from '../components/NavigationIcons';
 import { VirtualGrid } from '../components/VirtualGrid';
 import { SelectionBar } from '../components/SelectionBar';
@@ -57,6 +59,9 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const [dialog, setDialog] = useState<'folder' | 'album' | 'rename' | 'delete' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
+    localStorage.getItem('imadeo-folder-view') === 'list' ? 'list' : 'grid',
+  );
 
   const { selected, toggle, selectRange, setAnchor, clear, setSelected } = useSelection<Asset>();
   const [viewing, setViewing] = useState<Asset | null>(null);
@@ -173,6 +178,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
     onError,
   });
 
+  const changeView = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('imadeo-folder-view', mode);
+  };
+
   if (isLoading) return <Loading label="Loading folder…" />;
   if (!data) return null;
 
@@ -245,6 +255,35 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
                 ) : undefined
               }
             />
+
+            {folderId && (
+              <div
+                className="flex rounded-control border border-border-subtle bg-surface-raised p-0.5"
+                role="group"
+                aria-label="Folder view"
+              >
+                <IconButton
+                  label="Grid view"
+                  variant={viewMode === 'grid' ? 'primary' : 'ghost'}
+                  size="sm"
+                  round={false}
+                  aria-pressed={viewMode === 'grid'}
+                  onClick={() => changeView('grid')}
+                >
+                  <LayoutGrid size={14} />
+                </IconButton>
+                <IconButton
+                  label="List view"
+                  variant={viewMode === 'list' ? 'primary' : 'ghost'}
+                  size="sm"
+                  round={false}
+                  aria-pressed={viewMode === 'list'}
+                  onClick={() => changeView('list')}
+                >
+                  <List size={14} />
+                </IconButton>
+              </div>
+            )}
 
             {selected.size === 0 && canManage && <Button size="sm" icon={<FolderPlus size={14} />} onClick={() => setDialog('folder')}>
               New folder
@@ -319,7 +358,34 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
       )}
 
       <div className="px-5 pb-24 pt-4">
-        {shownFolders.length > 0 && (
+        {folderId && viewMode === 'list' && !isEmpty && (
+          <>
+            <FolderContentsList
+              folders={shownFolders}
+              albums={visibleAlbums}
+              assets={shownAssets}
+              folderBasePath={folderBasePath}
+              albumBasePath={albumBasePath}
+              selected={selected}
+              onOpenAsset={setViewing}
+              onToggleAsset={toggle}
+              onSelectRange={(asset) => selectRange(asset, shownAssets)}
+              onAnchorAsset={setAnchor}
+              onDropFolder={actions.dropOnFolder}
+              onDropAlbum={actions.dropOnAlbum}
+              onFolderContextMenu={actions.onFolderContextMenu}
+              onAlbumContextMenu={actions.onAlbumContextMenu}
+              onAssetContextMenu={actions.onAssetContextMenu}
+            />
+            <InfiniteScrollSentinel
+              enabled={hasNextPage}
+              loading={isFetchingNextPage}
+              onVisible={() => void fetchNextPage()}
+            />
+          </>
+        )}
+
+        {(!folderId || viewMode === 'grid') && shownFolders.length > 0 && (
           <Section title="Folders">
             <VirtualGrid
               items={shownFolders}
@@ -339,7 +405,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           </Section>
         )}
 
-        {visibleAlbums.length > 0 && (
+        {(!folderId || viewMode === 'grid') && visibleAlbums.length > 0 && (
           <Section
             title="Albums"
             note={
@@ -370,7 +436,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
         {/* Only inside a folder. The top-level listing is a directory of
             folders and albums, not a photo grid — but a folder you have opened
             should show what is actually in it. */}
-        {folderId && shownAssets.length > 0 && (
+        {folderId && viewMode === 'grid' && shownAssets.length > 0 && (
           <section className="mb-7">
             <JustifiedGrid
               assets={shownAssets}
