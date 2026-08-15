@@ -204,6 +204,17 @@ docker compose up -d</code></pre>
   reverse_proxy http://192.168.1.20:1111
 }</code></pre>
 
+      <p>
+        With Nginx Proxy Manager or a custom Nginx proxy, add these advanced
+        directives so large files are not reported as a 504 while the NAS is
+        still verifying them:
+      </p>
+
+<pre><code>client_max_body_size 50G;
+proxy_request_buffering off;
+proxy_read_timeout 1h;
+proxy_send_timeout 1h;</code></pre>
+
       <p>Set the public HTTPS address in <code>.env</code>:</p>
 
 <pre><code>PUBLIC_URL=https://photos.example.com

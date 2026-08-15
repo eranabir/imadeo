@@ -75,6 +75,16 @@ photos.example.com {
 }
 ```
 
+For Nginx Proxy Manager or a hand-written Nginx proxy, allow the upload body
+and keep the upstream connection open while a large file is verified:
+
+```nginx
+client_max_body_size 50G;
+proxy_request_buffering off;
+proxy_read_timeout 1h;
+proxy_send_timeout 1h;
+```
+
 Set the public URL, then start Imadeo:
 
 ```dotenv
