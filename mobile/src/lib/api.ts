@@ -20,6 +20,14 @@ export interface Paged<T> {
   pagination?: { page: number; size: number; total: number; pages?: number };
 }
 
+/** Some container endpoints keep their media under `assets` beside metadata. */
+interface AssetPage<T> {
+  assets: T[];
+  pagination?: Paged<T>['pagination'];
+}
+
+type PageItemsKey = 'items' | 'assets';
+
 export interface Folder {
   id: string;
   name: string;
@@ -346,7 +354,11 @@ export function useResource<T>(
  * cells; this keeps their backing array bounded to the pages the user reached
  * instead of downloading a fixed, incomplete first 300 or 500 photos.
  */
-export function usePagedResource<T>(serverUrl: string, path: string | null, size = 150) {
+export function usePagedResource<T>(
+  serverUrl: string,
+  path: string | null,
+  { size = 150, itemsKey = 'items' }: { size?: number; itemsKey?: PageItemsKey } = {},
+) {
   const [items, setItems] = useState<T[]>([]);
   const [pagination, setPagination] = useState<Paged<T>['pagination'] | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -366,12 +378,21 @@ export function usePagedResource<T>(serverUrl: string, path: string | null, size
       try {
         const separator = path.includes('?') ? '&' : '?';
         const [body, auth] = await Promise.all([
-          request<Paged<T>>(serverUrl, `${path}${separator}page=${nextPage}&size=${size}`),
+          request<Paged<T> | AssetPage<T>>(
+            serverUrl,
+            `${path}${separator}page=${nextPage}&size=${size}`,
+          ),
           storedToken(),
         ]);
         if (mine !== generation.current) return;
-        page.current = nextPage;
-        setItems((current) => (replace ? body.items : [...current, ...body.items]));
+        const nextItems = itemsKey === 'assets'
+          ? ('assets' in body ? body.assets : undefined)
+          : ('items' in body ? body.items : undefined);
+        if (!Array.isArray(nextItems)) {
+          throw new Error('The server returned an invalid media page.');
+        }
+        page.current = body.pagination?.page ?? nextPage;
+        setItems((current) => (replace ? nextItems : [...current, ...nextItems]));
         setPagination(body.pagination ?? null);
         setToken(auth);
       } catch (cause) {
@@ -388,7 +409,7 @@ export function usePagedResource<T>(serverUrl: string, path: string | null, size
         }
       }
     },
-    [path, serverUrl, size],
+    [itemsKey, path, serverUrl, size],
   );
 
   const reload = useCallback(async () => {
@@ -405,7 +426,11 @@ export function usePagedResource<T>(serverUrl: string, path: string | null, size
     void reload();
   }, [reload, seen]);
 
-  const hasMore = Boolean(pagination && page.current < (pagination.pages ?? 1));
+  // Not every endpoint supplies `pages`; page, size and total are the stable
+  // pagination contract and answer the same question without guessing.
+  const hasMore = Boolean(
+    pagination && pagination.page * pagination.size < pagination.total,
+  );
   const loadMore = useCallback(() => {
     if (!hasMore || loadingMore || loading) return;
     void load(page.current + 1, false);

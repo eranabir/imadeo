@@ -23,7 +23,6 @@ import { SettingsPage } from './pages/Settings';
 import { SharingPage } from './pages/Sharing';
 import { PhotosPage } from './pages/Timeline';
 import { TrashPage } from './pages/Trash';
-import { UploadHistoryPage } from './pages/UploadHistory';
 import { useAuth } from './store/auth';
 import { applyTheme, useTheme } from './store/theme';
 import { Loading, Opening } from './ui';
@@ -140,7 +139,10 @@ function App() {
         <Route path="/locked" element={<LockedPage />} />
         <Route path="/duplicates" element={<DuplicatesPage />} />
         <Route path="/trash" element={<TrashPage />} />
-        <Route path="/upload-history" element={<UploadHistoryPage />} />
+        <Route
+          path="/upload-history"
+          element={<Navigate to="/settings?section=upload-history" replace />}
+        />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -4,6 +4,7 @@ import {
   DatabaseBackup,
   Download,
   HardDrive,
+  History,
   Info,
   KeyRound,
   Monitor,
@@ -28,6 +29,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppleMark, GoogleMark } from '../components/ProviderMarks';
+import { UploadHistorySettings } from './UploadHistory';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes, formatInstant } from '../lib/format';
 import { useAuth, type CurrentUser } from '../store/auth';
@@ -62,6 +64,7 @@ const SECTIONS = [
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup, adminOnly: true },
+  { id: 'upload-history', label: 'Upload history', icon: History },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'devices', label: 'Devices', icon: Smartphone },
   { id: 'about', label: 'About', icon: Info },
@@ -140,6 +143,7 @@ export function SettingsPage() {
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
           {section === 'backups' && <Backups />}
+          {section === 'upload-history' && <UploadHistorySettings />}
           {section === 'storage' && <Storage />}
           {section === 'devices' && <Devices />}
           {section === 'about' && <About />}

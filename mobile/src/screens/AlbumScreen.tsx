@@ -34,6 +34,7 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/albums/${albumId}?sortBy=date&order=desc`,
+    { itemsKey: 'assets' },
   );
   // Album metadata is small but the photos are paged independently. Keeping
   // it in the first response avoids a second endpoint just for its title.

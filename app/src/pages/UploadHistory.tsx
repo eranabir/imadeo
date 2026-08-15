@@ -82,7 +82,7 @@ function matchesFailedFile(candidate: UploadCandidate, failed: UploadHistoryItem
   });
 }
 
-export function UploadHistoryPage() {
+export function UploadHistorySettings() {
   const { user } = useAuth();
   const entries = useUploadHistory(user?.id);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -140,31 +140,38 @@ export function UploadHistoryPage() {
   };
 
   return (
-    <div className="min-h-full">
-      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">Upload History</h1>
-          <span className="text-xs tabular-nums text-content-muted">
-            {entries.length === 0
-              ? 'No uploads recorded'
-              : `${entries.length} ${entries.length === 1 ? 'upload' : 'uploads'}${failedCount ? ` · ${failedCount} failed` : ''}`}
-          </span>
-        </div>
+    <div className="space-y-4">
+      <section className="rounded-panel border border-border-subtle bg-surface-raised p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-sm font-semibold">Upload history</h2>
+              <span className="text-xs tabular-nums text-content-muted">
+                {entries.length === 0
+                  ? 'No uploads recorded'
+                  : `${entries.length} ${entries.length === 1 ? 'upload' : 'uploads'}${failedCount ? ` · ${failedCount} failed` : ''}`}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-content-muted">
+              Review completed uploads, understand failures, and retry files.
+            </p>
+          </div>
 
-        {entries.length > 0 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Trash2 size={14} />}
-            onClick={() => setConfirmClear(true)}
-          >
-            Clear history
-          </Button>
-        )}
-      </header>
+          {entries.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Trash2 size={14} />}
+              onClick={() => setConfirmClear(true)}
+            >
+              Clear history
+            </Button>
+          )}
+        </div>
+      </section>
 
       {message && (
-        <div className="mx-5 mt-4 flex items-center justify-between gap-3 rounded-control bg-primary-soft px-3.5 py-2.5 text-sm text-primary">
+        <div className="flex items-center justify-between gap-3 rounded-control bg-primary-soft px-3.5 py-2.5 text-sm text-primary">
           <span>{message}</span>
           <button type="button" className="font-medium" onClick={() => setMessage(null)}>
             Dismiss
@@ -173,13 +180,15 @@ export function UploadHistoryPage() {
       )}
 
       {entries.length === 0 ? (
-        <EmptyState
-          icon={Clock3}
-          title="No upload history yet"
-          description="Finished uploads and exact failure messages will stay here after you refresh the page."
-        />
+        <section className="rounded-panel border border-border-subtle bg-surface-raised">
+          <EmptyState
+            icon={Clock3}
+            title="No upload history yet"
+            description="Finished uploads and exact failure messages will stay here after you refresh the page."
+          />
+        </section>
       ) : (
-        <div className="space-y-3 px-5 py-4">
+        <div className="space-y-3">
           <p className="text-xs text-content-muted">
             Imadeo remembers file names and errors, but not the local file contents. After a refresh,
             select failed files again to retry them safely.

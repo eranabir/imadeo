@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
-import { useUploadHistory } from '../lib/uploadHistory';
 import { useAuth } from '../store/auth';
 import { useTree } from '../store/tree';
 import type { Album, FolderNode, UserStatistics } from '../types';
@@ -28,7 +27,6 @@ import {
   SharingIcon,
   SettingsIcon,
   TrashIcon,
-  UploadHistoryIcon,
 } from './NavigationIcons';
 import { TopBar } from './TopBar';
 import { OperationProgressPanel } from './OperationProgress';
@@ -39,7 +37,6 @@ export const NAV = [
   { to: '/browse', label: 'Browse', icon: BrowseIcon, tint: 'text-primary', end: false },
   { to: '/devices', label: 'Devices', icon: DevicesIcon, tint: 'text-secondary', end: false },
   { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
-  { to: '/upload-history', label: 'Upload History', icon: UploadHistoryIcon, tint: 'text-warning', end: false },
   { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
   { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },
   // ScanFace rather than a group-of-people glyph: the section is about
@@ -64,7 +61,6 @@ export function Layout() {
   const params = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const uploadHistory = useUploadHistory(user?.id);
   const { data: vault } = useVaultStatus();
   const [error, setError] = useState<string | null>(null);
   const [newAlbumOpen, setNewAlbumOpen] = useState(false);
@@ -142,8 +138,6 @@ export function Layout() {
   const badgeFor = (label: string) =>
     label === 'Trash'
       ? stats?.trashed
-      : label === 'Upload History'
-        ? uploadHistory.reduce((sum, entry) => sum + entry.summary.failed, 0)
       : label === 'Favorites'
         ? stats?.favorites
         : label === 'Duplicates'

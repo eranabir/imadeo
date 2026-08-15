@@ -779,7 +779,7 @@ export function UploadButton({
                   </p>
 
                   <Link
-                    to="/upload-history"
+                    to="/settings?section=upload-history"
                     onClick={() => setProgress(null)}
                     className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
                   >

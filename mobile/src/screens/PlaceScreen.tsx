@@ -3,7 +3,7 @@ import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
-import { useResource, type Asset, type Paged } from '../lib/api';
+import { usePagedResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
 interface Props {
@@ -17,14 +17,14 @@ interface Props {
 
 /** Everything taken in one town or city. */
 export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
-  const { data, token, error, loading, reload } = useResource<Paged<Asset>>(
+  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
-    `/assets?city=${encodeURIComponent(city)}&size=500&sortBy=date&order=desc`,
+    `/assets?city=${encodeURIComponent(city)}&sortBy=date&order=desc`,
   );
   const clearance = useHeaderClearance();
   const selection = useSelection();
 
-  const total = data?.pagination?.total ?? 0;
+  const total = pagination?.total ?? 0;
 
   useHeaderSlot(
     slot,
@@ -43,7 +43,7 @@ export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AssetGrid
         serverUrl={serverUrl}
-        assets={data?.items ?? []}
+        assets={items}
         token={token}
         loading={loading}
         onRefresh={reload}
@@ -52,6 +52,9 @@ export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={loadMore}
         header={
           error ? (
             <Text style={{ color: colors.danger, fontSize: 14, padding: 16 }}>{error}</Text>
@@ -67,7 +70,7 @@ export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
         ids={selection.ids}
         allFavorite={
           selection.ids.length > 0 &&
-          selection.ids.every((id) => data?.items.find((a) => a.id === id)?.isFavorite)
+          selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)
         }
         onClear={selection.clear}
         onDone={() => {

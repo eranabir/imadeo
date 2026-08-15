@@ -5,7 +5,7 @@ import { HeaderAction, useHeaderClearance } from '../components/Header';
 import { useHeaderSlot } from '../header';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
-import { request, useResource, type Asset, type Paged } from '../lib/api';
+import { request, usePagedResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
 interface Props {
@@ -53,14 +53,14 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
     }
   };
 
-  const { data, token, error, loading, reload } = useResource<Paged<Asset>>(
+  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
-    `/people-and-pets/${subjectId}/assets?size=500`,
+    `/people-and-pets/${subjectId}/assets`,
   );
   const clearance = useHeaderClearance();
   const selection = useSelection();
 
-  const total = data?.pagination?.total ?? 0;
+  const total = pagination?.total ?? 0;
 
   // Published rather than drawn: the shell owns the one bar, and a screen that
   // brought its own would slide it in over the top of the one already there.
@@ -98,7 +98,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AssetGrid
         serverUrl={serverUrl}
-        assets={data?.items ?? []}
+        assets={items}
         token={token}
         loading={loading}
         onRefresh={reload}
@@ -114,6 +114,9 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        hasMore={hasMore}
+        loadingMore={loadingMore}
+        onLoadMore={loadMore}
         emptyIcon="person"
         emptyTitle={loading ? 'Loading…' : 'No media'}
         emptyBody="The faces that made up this group are no longer in your library."
@@ -124,7 +127,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
         ids={selection.ids}
         allFavorite={
           selection.ids.length > 0 &&
-          selection.ids.every((id) => data?.items.find((a) => a.id === id)?.isFavorite)
+          selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)
         }
         onClear={selection.clear}
         onDone={() => {

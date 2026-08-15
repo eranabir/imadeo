@@ -47,10 +47,6 @@ export function DevicesIcon(props: NavigationIconProps) {
   return <Glyph {...props}><rect x="7" y="2" width="10" height="20" rx="2.5" /><path d="M10 5h4" /><path d="M11 19h2" /></Glyph>;
 }
 
-export function UploadHistoryIcon(props: NavigationIconProps) {
-  return <Glyph {...props}><path d="M12 16V4" /><path d="m8 8 4-4 4 4" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /><path d="M4 4v4h4" /><path d="M4.8 8A8 8 0 0 1 20 12" /></Glyph>;
-}
-
 export function PeopleAndPetsIcon(props: NavigationIconProps) {
   return <Glyph {...props}><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><path d="M9 9h.01" /><path d="M15 9h.01" /></Glyph>;
 }

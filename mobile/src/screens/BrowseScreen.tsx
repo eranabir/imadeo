@@ -89,7 +89,16 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
    */
   const contents = useResource<FolderContents>(
     serverUrl,
-    showing !== 'folders' ? null : atRoot ? '/folders/root?size=1' : `/folders/${folderId}/contents`,
+    showing !== 'folders'
+      ? null
+      : atRoot
+        ? '/folders/root?size=1'
+        : `/folders/${folderId}/contents?size=1`,
+  );
+  const folderAssets = usePagedResource<Asset>(
+    serverUrl,
+    showing === 'folders' && !atRoot ? `/folders/${folderId}/contents` : null,
+    { itemsKey: 'assets' },
   );
   const devices = useResource<Device[]>(
     serverUrl,
@@ -98,14 +107,21 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
 
   const active =
     showing === 'photos' ? timeline : showing === 'albums' ? allAlbums : contents;
-  const { token, error, loading } = active;
+  const token = showing === 'folders' && !atRoot ? folderAssets.token ?? contents.token : active.token;
+  const error = showing === 'folders' && !atRoot
+    ? contents.error ?? folderAssets.error
+    : active.error;
+  const loading = showing === 'folders' && !atRoot
+    ? contents.loading || folderAssets.loading
+    : active.loading;
 
   const reload = useCallback(() => {
     timeline.reload();
     allAlbums.reload();
     contents.reload();
+    folderAssets.reload();
     devices.reload();
-  }, [timeline.reload, allAlbums.reload, contents.reload, devices.reload]);
+  }, [timeline.reload, allAlbums.reload, contents.reload, folderAssets.reload, devices.reload]);
 
   const folders = showing === 'folders' ? contents.data?.folders ?? [] : [];
   const albums =
@@ -114,13 +130,15 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     showing === 'photos'
       ? timeline.items
       : showing === 'folders' && !atRoot
-        ? contents.data?.assets ?? []
+        ? folderAssets.items
         : [];
 
   const total =
     showing === 'photos'
       ? timeline.pagination?.total ?? null
-      : contents.data?.pagination?.total ?? null;
+      : showing === 'folders' && !atRoot
+        ? folderAssets.pagination?.total ?? null
+        : contents.data?.pagination?.total ?? null;
 
   const trail = contents.data?.breadcrumbs ?? [];
   const subtitle = onBack
@@ -313,9 +331,9 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
         onToggleDay={selection.toggleMany}
         onStartSelecting={selection.start}
         onChanged={reload}
-        hasMore={showing === 'photos' && timeline.hasMore}
-        loadingMore={showing === 'photos' && timeline.loadingMore}
-        onLoadMore={showing === 'photos' ? timeline.loadMore : undefined}
+        hasMore={showing === 'photos' ? timeline.hasMore : folderAssets.hasMore}
+        loadingMore={showing === 'photos' ? timeline.loadingMore : folderAssets.loadingMore}
+        onLoadMore={showing === 'photos' ? timeline.loadMore : folderAssets.loadMore}
         emptyIcon={showing === 'albums' ? 'album' : showing === 'photos' ? 'library' : 'folder'}
         emptyTitle={
           loading
