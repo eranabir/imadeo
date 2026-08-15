@@ -12,6 +12,7 @@ import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
 import { DateTime } from 'luxon';
 import type { AuthDto } from '../../common/auth.types';
+import { MAIN_LIBRARY_ASSET_SQL, mainLibraryAssetWhere } from '../../common/asset-scope';
 import { fromBytes, toBytes } from '../../common/bytes';
 import type { AppConfig } from '../../config/configuration';
 import { AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
@@ -389,7 +390,7 @@ export class AssetService {
 
     const [assets, recipients] = await Promise.all([
       this.prisma.asset.findMany({
-        where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
+        where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId) },
         select: { id: true, visibility: true },
       }),
       this.prisma.user.findMany({
@@ -593,8 +594,7 @@ export class AssetService {
       FROM smart_search s
       JOIN assets a ON a.id = s."assetId"
       WHERE a."ownerId" = ${userId}::uuid
-        AND a."deletedAt" IS NULL
-        AND a.visibility <> 'LOCKED'
+        ${MAIN_LIBRARY_ASSET_SQL}
       ORDER BY s.embedding <=> ${vector}::vector
       LIMIT ${limit}
     `;
@@ -638,9 +638,7 @@ export class AssetService {
 
     const items = await this.prisma.asset.findMany({
       where: {
-        ownerId: userId,
-        deletedAt: null,
-        visibility: { not: 'LOCKED' },
+        ...mainLibraryAssetWhere(userId),
         OR: [
           ...(folderIds.length ? [{ folderId: { in: folderIds } }] : []),
           ...(albums.length
@@ -728,8 +726,7 @@ export class AssetService {
       FROM asset_exif e
       JOIN assets a ON a.id = e."assetId"
       WHERE a."ownerId" = ${userId}::uuid
-        AND a."deletedAt" IS NULL
-        AND a.visibility <> 'LOCKED'
+        ${MAIN_LIBRARY_ASSET_SQL}
         AND e.city IS NOT NULL
       -- DISTINCT ON keeps the first row of each group, so ordering by date
       -- within the group is what makes the cover the newest photo there.
@@ -756,8 +753,7 @@ export class AssetService {
       FROM asset_exif e
       JOIN assets a ON a.id = e."assetId"
       WHERE a."ownerId" = ${userId}::uuid
-        AND a."deletedAt" IS NULL
-        AND a.visibility <> 'LOCKED'
+        ${MAIN_LIBRARY_ASSET_SQL}
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
       ORDER BY a."localDateTime" DESC
@@ -769,7 +765,7 @@ export class AssetService {
   async assetsMissingPlace(userId: string) {
     return this.prisma.assetExif.findMany({
       where: {
-        asset: { ownerId: userId, deletedAt: null },
+        asset: mainLibraryAssetWhere(userId),
         latitude: { not: null },
         longitude: { not: null },
         city: null,
@@ -808,6 +804,8 @@ export class AssetService {
          JOIN assets a ON a.id = e."assetId"
          WHERE a."ownerId" = $1::uuid
            AND a."deletedAt" IS NULL
+           AND a."isDeviceOnly" = false
+           AND a.visibility IN ('TIMELINE', 'ARCHIVE')
            AND e."${column}" IS NOT NULL
            AND e."${column}" <> ''
          ORDER BY value
@@ -836,8 +834,7 @@ export class AssetService {
       FROM assets a
       LEFT JOIN smart_search s ON s."assetId" = a.id
       WHERE a."ownerId" = ${userId}::uuid
-        AND a."deletedAt" IS NULL
-        AND a.visibility <> 'LOCKED'
+        ${MAIN_LIBRARY_ASSET_SQL}
         AND a."previewPath" IS NOT NULL
         AND s."assetId" IS NULL
     `;
@@ -858,13 +855,14 @@ export class AssetService {
   async searchIndexStatus(userId: string) {
     const [total, indexed] = await Promise.all([
       this.prisma.asset.count({
-        where: { ownerId: userId, deletedAt: null, visibility: { not: 'LOCKED' } },
+        where: mainLibraryAssetWhere(userId),
       }),
       this.prisma.$queryRaw<{ count: bigint }[]>`
         SELECT COUNT(*)::bigint AS count
         FROM smart_search s
         JOIN assets a ON a.id = s."assetId"
-        WHERE a."ownerId" = ${userId}::uuid AND a."deletedAt" IS NULL
+        WHERE a."ownerId" = ${userId}::uuid
+          ${MAIN_LIBRARY_ASSET_SQL}
       `.then((rows) => Number(rows[0]?.count ?? 0)),
     ]);
 

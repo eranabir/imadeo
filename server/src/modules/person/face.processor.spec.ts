@@ -65,7 +65,7 @@ describe('redundantVideoDetectionIds', () => {
     id: string,
     personId: string | null,
     sourceTimecodeMs: number,
-    kind = SubjectKind.PERSON,
+    kind: SubjectKind = SubjectKind.PERSON,
   ) => ({ id, personId, sourceTimecodeMs, kind });
 
   it('keeps the best crop for repeated subjects and removes later frames', () => {

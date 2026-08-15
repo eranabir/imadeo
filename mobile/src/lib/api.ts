@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { expireSession, refreshToken, SessionRefreshError, storedToken } from './auth';
 
 /** The asset fields every grid in the app needs, and no more. */
@@ -267,6 +268,24 @@ function useRevision(): number {
   return value;
 }
 
+/** Reloads a mounted screen whenever navigation brings it back into view. */
+function useReloadOnFocus(reload: () => Promise<void>) {
+  const reloadRef = useRef(reload);
+  const hasFocused = useRef(false);
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // The regular resource effect owns the initial request. Subsequent focus
+      // events cover changes made by the web app or another phone.
+      if (hasFocused.current) void reloadRef.current();
+      else hasFocused.current = true;
+    }, []),
+  );
+}
+
 export function useResource<T>(
   serverUrl: string,
   path: string | null,
@@ -345,6 +364,8 @@ export function useResource<T>(
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useReloadOnFocus(reload);
 
   return { data, loadedPath, token, error, loading, reload };
 }
@@ -425,6 +446,8 @@ export function usePagedResource<T>(
   useEffect(() => {
     void reload();
   }, [reload, seen]);
+
+  useReloadOnFocus(reload);
 
   // Not every endpoint supplies `pages`; page, size and total are the stable
   // pagination contract and answer the same question without guessing.

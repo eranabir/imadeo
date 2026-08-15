@@ -17,6 +17,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { Auth, AuthedUserId } from '../../common/decorators';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType } from '../../db';
 import { StorageService } from '../../infra/storage/storage.service';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
@@ -75,10 +76,8 @@ export class PeopleAndPetsController {
     const videosEnabled = this.ml.videoRecognitionEnabled;
     // Everything a scan would look at, whether or not it has yet.
     const eligible = {
-      ownerId: userId,
+      ...mainLibraryAssetWhere(userId),
       type: videosEnabled ? { in: [AssetType.IMAGE, AssetType.VIDEO] } : AssetType.IMAGE,
-      deletedAt: null,
-      visibility: { not: 'LOCKED' as const },
       previewPath: { not: null },
     };
 
@@ -122,12 +121,10 @@ export class PeopleAndPetsController {
     const scanEverything = force === 'true';
     const assets = await this.prisma.asset.findMany({
       where: {
-        ownerId: userId,
+        ...mainLibraryAssetWhere(userId),
         type: this.ml.videoRecognitionEnabled
           ? { in: [AssetType.IMAGE, AssetType.VIDEO] }
           : AssetType.IMAGE,
-        deletedAt: null,
-        visibility: { not: 'LOCKED' },
         previewPath: { not: null },
         ...(scanEverything ? {} : unrecognisedAssets(petsReady)),
       },

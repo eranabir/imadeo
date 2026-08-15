@@ -7,6 +7,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { InvitationService } from '../auth/invitation.service';
 import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
 import type { AuthDto } from '../../common/auth.types';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import type {
   AlbumAssetsQueryDto,
   AlbumQueryDto,
@@ -17,6 +18,12 @@ import type {
 
 type Access = 'owner' | 'editor' | 'viewer';
 
+const ACTIVE_ALBUM_ASSET = {
+  deletedAt: null,
+  isDeviceOnly: false,
+  visibility: { not: AssetVisibility.HIDDEN },
+} as const;
+
 /**
  * Newest few live assets in the album, used to derive a cover.
  *
@@ -25,7 +32,9 @@ type Access = 'owner' | 'editor' | 'viewer';
  */
 export const ALBUM_COVER_INCLUDE = {
   assets: {
-    where: { asset: { deletedAt: null } },
+    where: {
+      asset: ACTIVE_ALBUM_ASSET,
+    },
     orderBy: { asset: { localDateTime: 'desc' } },
     take: 8,
     select: { assetId: true },
@@ -201,7 +210,9 @@ export class AlbumService {
     const albums = await this.prisma.album.findMany({
       where,
       include: {
-        _count: { select: { assets: true } },
+        _count: {
+          select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } },
+        },
         albumUsers: { include: { user: { select: { id: true, name: true, email: true, profileImagePath: true } } } },
         owner: { select: { id: true, name: true, email: true, profileImagePath: true } },
         folder: { select: { id: true, name: true, path: true } },
@@ -227,7 +238,9 @@ export class AlbumService {
         owner: { select: { id: true, name: true, email: true, profileImagePath: true } },
         albumUsers: { include: { user: { select: { id: true, name: true, email: true, profileImagePath: true } } } },
         folder: { select: { id: true, name: true, path: true } },
-        _count: { select: { assets: true } },
+        _count: {
+          select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } },
+        },
         ...ALBUM_COVER_INCLUDE,
       },
     });
@@ -242,7 +255,12 @@ export class AlbumService {
     const rows = await this.prisma.albumAsset.findMany({
       where: {
         albumId,
-        asset: { deletedAt: null, ...(restrictTo ? { id: { in: restrictTo } } : {}) },
+        asset: {
+          deletedAt: null,
+          isDeviceOnly: false,
+          visibility: { not: AssetVisibility.HIDDEN },
+          ...(restrictTo ? { id: { in: restrictTo } } : {}),
+        },
       },
       include: { asset: { include: { exif: true } } },
       orderBy: this.orderBy(query.sortBy ?? 'date', order),
@@ -257,7 +275,12 @@ export class AlbumService {
     const total = await this.prisma.albumAsset.count({
       where: {
         albumId,
-        asset: { deletedAt: null, ...(restrictTo ? { id: { in: restrictTo } } : {}) },
+        asset: {
+          deletedAt: null,
+          isDeviceOnly: false,
+          visibility: { not: AssetVisibility.HIDDEN },
+          ...(restrictTo ? { id: { in: restrictTo } } : {}),
+        },
       },
     });
     return {
@@ -280,6 +303,8 @@ export class AlbumService {
         albumId,
         asset: {
           deletedAt: null,
+          isDeviceOnly: false,
+          visibility: { not: AssetVisibility.HIDDEN },
           ...(restrictTo ? { id: { in: restrictTo } } : {}),
         },
       },
@@ -364,7 +389,9 @@ export class AlbumService {
           })),
         },
       },
-      include: { _count: { select: { assets: true } } },
+      include: {
+        _count: { select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } } },
+      },
     });
 
     return { ...album, assetCount: album._count.assets };
@@ -720,7 +747,7 @@ export class AlbumService {
   private async filterOwnedAssets(userId: string, assetIds: string[]) {
     if (assetIds.length === 0) return [];
     const rows = await this.prisma.asset.findMany({
-      where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
+      where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId) },
       select: { id: true },
     });
     return rows.map((r) => r.id);
@@ -744,8 +771,9 @@ export class AlbumService {
         id: { in: assetIds },
         ownerId: { in: ownerIds },
         deletedAt: null,
+        isDeviceOnly: false,
         visibility: albumIsLocked
-          ? undefined
+          ? AssetVisibility.LOCKED
           : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
       },
       select: { id: true },

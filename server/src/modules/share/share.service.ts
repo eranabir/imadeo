@@ -11,6 +11,7 @@ import { randomInt } from 'node:crypto';
 import { SharedLinkType } from '../../db';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import type { CreateSharedLinkDto, UpdateSharedLinkDto } from './share.dto';
 
 // Unambiguous alphabet — no 0/O or 1/l — because people read these aloud.
@@ -51,9 +52,7 @@ export class ShareService {
           await this.prisma.asset.findMany({
             where: {
               id: { in: dto.assetIds },
-              ownerId: userId,
-              deletedAt: null,
-              visibility: { not: 'LOCKED' },
+              ...mainLibraryAssetWhere(userId),
             },
             select: { id: true },
           })
@@ -90,7 +89,9 @@ export class ShareService {
       where: { userId },
       include: {
         album: { select: { id: true, name: true, thumbnailAssetId: true } },
-        _count: { select: { assets: true } },
+        _count: {
+          select: { assets: { where: { asset: mainLibraryAssetWhere() } } },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -108,7 +109,7 @@ export class ShareService {
   async overview(userId: string) {
     const [assetRows, albumRows, folderRows, links] = await Promise.all([
       this.prisma.assetUser.findMany({
-        where: { asset: { ownerId: userId, deletedAt: null, visibility: { not: 'LOCKED' } } },
+        where: { asset: mainLibraryAssetWhere(userId) },
         include: {
           asset: { include: { exif: true } },
           user: { select: { id: true, name: true, email: true } },
@@ -119,9 +120,11 @@ export class ShareService {
         where: { ownerId: userId, deletedAt: null, albumUsers: { some: {} } },
         include: {
           albumUsers: { include: { user: { select: { id: true, name: true, email: true } } } },
-          _count: { select: { assets: true } },
+          _count: {
+            select: { assets: { where: { asset: mainLibraryAssetWhere() } } },
+          },
           assets: {
-            where: { asset: { deletedAt: null } },
+            where: { asset: mainLibraryAssetWhere() },
             orderBy: { asset: { localDateTime: 'desc' } },
             take: 8,
             select: { assetId: true },
@@ -133,7 +136,9 @@ export class ShareService {
         where: { ownerId: userId, deletedAt: null, sharedWith: { some: {} } },
         include: {
           sharedWith: { include: { user: { select: { id: true, name: true, email: true } } } },
-          _count: { select: { assets: true } },
+          _count: {
+            select: { assets: { where: mainLibraryAssetWhere() } },
+          },
         },
         orderBy: { updatedAt: 'desc' },
       }),
@@ -202,7 +207,9 @@ export class ShareService {
       include: {
         album: { select: { id: true, name: true, description: true, thumbnailAssetId: true } },
         user: { select: { id: true, name: true } },
-        _count: { select: { assets: true } },
+        _count: {
+          select: { assets: { where: { asset: mainLibraryAssetWhere() } } },
+        },
       },
     });
 
@@ -240,7 +247,7 @@ export class ShareService {
   /** Assets behind an INDIVIDUAL link. Album links go through the album API. */
   async listAssets(linkId: string) {
     const rows = await this.prisma.sharedLinkAsset.findMany({
-      where: { sharedLinkId: linkId, asset: { deletedAt: null } },
+      where: { sharedLinkId: linkId, asset: mainLibraryAssetWhere() },
       include: { asset: { include: { exif: true } } },
       orderBy: { asset: { localDateTime: 'desc' } },
     });

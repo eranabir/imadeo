@@ -26,7 +26,10 @@ describe('StorageService user isolation', () => {
       },
       thumbnail: { format: 'webp' },
     } as AppConfig);
-    return { root, storage: new StorageService(config as ConfigService<AppConfig, true>) };
+    return {
+      root,
+      storage: new StorageService(config as unknown as ConfigService<AppConfig, true>),
+    };
   };
 
   it('puts every file type below the owning user directory', async () => {

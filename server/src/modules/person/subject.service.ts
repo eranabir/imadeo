@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import sharp from 'sharp';
 import { dirname } from 'node:path';
 import type { AppConfig } from '../../config/configuration';
+import { MAIN_LIBRARY_ASSET_SQL, mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType, AssetVisibility, Prisma, SourceType } from '../../db';
 import { SubjectKind } from '../../db';
 import { MediaService } from '../../infra/media/media.service';
@@ -65,8 +66,7 @@ export class SubjectService {
       FROM people p
       JOIN asset_faces f ON f."personId" = p.id AND f."deletedAt" IS NULL
       JOIN assets a ON a.id = f."assetId"
-        AND a."deletedAt" IS NULL
-        AND a.visibility <> 'LOCKED'
+        ${MAIN_LIBRARY_ASSET_SQL}
       WHERE p."ownerId" = ${userId}::uuid
         ${query.withHidden ? Prisma.empty : Prisma.sql`AND p."isHidden" = false`}
         ${query.kind ? Prisma.sql`AND p.kind = ${query.kind}::"SubjectKind"` : Prisma.empty}
@@ -98,8 +98,7 @@ export class SubjectService {
               where: {
                 deletedAt: null,
                 asset: {
-                  deletedAt: null,
-                  visibility: { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
+                  ...mainLibraryAssetWhere(),
                 },
               },
             },
@@ -118,9 +117,7 @@ export class SubjectService {
     await this.get(userId, personId);
 
     const where: Prisma.AssetWhereInput = {
-      ownerId: userId,
-      deletedAt: null,
-      visibility: { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
+      ...mainLibraryAssetWhere(userId),
       faces: { some: { personId, deletedAt: null } },
     };
 
@@ -246,7 +243,11 @@ export class SubjectService {
    */
   async facesInAssets(userId: string, assetIds: string[]) {
     return this.prisma.assetFace.findMany({
-      where: { assetId: { in: assetIds }, deletedAt: null, asset: { ownerId: userId } },
+      where: {
+        assetId: { in: assetIds },
+        deletedAt: null,
+        asset: mainLibraryAssetWhere(userId),
+      },
       select: { id: true, assetId: true, kind: true, species: true, personId: true },
       orderBy: [{ score: 'desc' }],
     });
@@ -270,7 +271,7 @@ export class SubjectService {
     const person = await this.get(userId, personId);
 
     const assets = await this.prisma.asset.findMany({
-      where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
+      where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId) },
       select: {
         id: true,
         exif: { select: { exifImageWidth: true, exifImageHeight: true } },
@@ -346,7 +347,7 @@ export class SubjectService {
     await this.get(userId, personId);
 
     const { count } = await this.prisma.assetFace.updateMany({
-      where: { id: { in: faceIds }, asset: { ownerId: userId } },
+      where: { id: { in: faceIds }, asset: mainLibraryAssetWhere(userId) },
       // Pinned so automatic clustering respects the decision.
       data: { personId, isPinned: true, sourceType: SourceType.MANUAL },
     });
@@ -387,7 +388,12 @@ export class SubjectService {
     await this.get(userId, personId);
 
     const face = await this.prisma.assetFace.findFirst({
-      where: { personId, assetId, deletedAt: null },
+      where: {
+        personId,
+        assetId,
+        deletedAt: null,
+        asset: mainLibraryAssetWhere(userId),
+      },
       select: { id: true },
     });
     if (!face) {
@@ -428,7 +434,7 @@ export class SubjectService {
     const usable = {
       personId,
       deletedAt: null,
-      asset: { deletedAt: null, previewPath: { not: null } },
+      asset: { ...mainLibraryAssetWhere(), previewPath: { not: null } },
     };
 
     /**
@@ -566,12 +572,18 @@ export class SubjectService {
   }
 
   async statistics(userId: string) {
+    const visibleFace = {
+      deletedAt: null,
+      asset: mainLibraryAssetWhere(userId),
+    };
     const [subjects, named, detections, unassigned] = await Promise.all([
-      this.prisma.person.count({ where: { ownerId: userId } }),
-      this.prisma.person.count({ where: { ownerId: userId, name: { not: '' } } }),
-      this.prisma.assetFace.count({ where: { asset: { ownerId: userId }, deletedAt: null } }),
+      this.prisma.person.count({ where: { ownerId: userId, faces: { some: visibleFace } } }),
+      this.prisma.person.count({
+        where: { ownerId: userId, name: { not: '' }, faces: { some: visibleFace } },
+      }),
+      this.prisma.assetFace.count({ where: visibleFace }),
       this.prisma.assetFace.count({
-        where: { asset: { ownerId: userId }, personId: null, deletedAt: null },
+        where: { ...visibleFace, personId: null },
       }),
     ]);
 

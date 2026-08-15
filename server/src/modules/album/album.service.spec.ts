@@ -18,7 +18,14 @@ describe('AlbumService.getAssetIds', () => {
 
     expect(result.ids).toHaveLength(359);
     expect(findMany).toHaveBeenCalledWith({
-      where: { albumId: 'album-id', asset: { deletedAt: null } },
+      where: {
+        albumId: 'album-id',
+        asset: {
+          deletedAt: null,
+          isDeviceOnly: false,
+          visibility: { not: 'HIDDEN' },
+        },
+      },
       select: { assetId: true },
       orderBy: [{ asset: { localDateTime: 'desc' } }, { assetId: 'desc' }],
     });

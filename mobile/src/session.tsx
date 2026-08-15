@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 import { restore as restoreAutoBackup } from './lib/autobackup';
 import { onSessionExpired, signOut, storedToken } from './lib/auth';
-import { beginServerCheck } from './lib/api';
+import { beginServerCheck, libraryChanged } from './lib/api';
 import { restorePreferences } from './lib/preferences';
 import { forget, load, type ServerInfo } from './lib/server';
 
@@ -32,10 +33,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [server, setServer] = useState<ServerInfo | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const appState = useRef(AppState.currentState);
 
   // A rejected refresh token ends one shared session, not four unrelated tab
   // requests. Returning through the gate also clears every stale screen.
   useEffect(() => onSessionExpired(() => setSignedIn(false)), []);
+
+  // A delete or upload may have happened in the web app while this app was in
+  // the background. The routed tree stays mounted, so refresh every resource
+  // before old media can be shown again.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      const wasAway = appState.current === 'background' || appState.current === 'inactive';
+      appState.current = next;
+      if (wasAway && next === 'active') libraryChanged();
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Neither the address nor the session should be retyped on every launch.
   useEffect(() => {

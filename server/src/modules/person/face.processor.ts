@@ -157,6 +157,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     // Vault content is never sent to the ML service: the whole point of locking
     // something is that it stops flowing through the rest of the system.
     if (asset.visibility === 'LOCKED') return { skipped: 'locked' };
+    if (asset.visibility === 'HIDDEN') return { skipped: 'hidden companion' };
 
     if (!asset.previewPath) return { skipped: 'no preview yet' };
 

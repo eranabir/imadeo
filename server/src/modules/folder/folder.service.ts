@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -75,10 +76,15 @@ export class FolderService {
           WHERE d."ownerId" = f."ownerId"
             AND d.path LIKE f.path || '%'
             AND a."deletedAt" IS NULL
+            AND a."isDeviceOnly" = false
+            AND a.visibility <> 'HIDDEN'
         )`
       : Prisma.sql`(
           SELECT COUNT(*) FROM assets a
-          WHERE a."folderId" = f.id AND a."deletedAt" IS NULL
+          WHERE a."folderId" = f.id
+            AND a."deletedAt" IS NULL
+            AND a."isDeviceOnly" = false
+            AND a.visibility <> 'HIDDEN'
         )`;
 
     const rows = await this.prisma.$queryRaw<FlatFolderRow[]>`
@@ -128,7 +134,22 @@ export class FolderService {
         folderId: { in: [...nodes.keys()] },
         ...(query.includeLocked ? {} : { isLocked: false }),
       },
-      include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+      include: {
+        _count: {
+          select: {
+            assets: {
+              where: {
+                asset: {
+                  deletedAt: null,
+                  isDeviceOnly: false,
+                  visibility: { not: AssetVisibility.HIDDEN },
+                },
+              },
+            },
+          },
+        },
+        ...ALBUM_COVER_INCLUDE,
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -258,6 +279,7 @@ export class FolderService {
     const assetWhere: Prisma.AssetWhereInput = {
       ownerId: folder?.ownerId ?? userId,
       deletedAt: null,
+      isDeviceOnly: false,
       visibility: folder?.isLocked ? AssetVisibility.LOCKED : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
       ...(folderFilter === undefined && query.recursive && !folderId ? {} : { folderId: folderFilter }),
     };
@@ -279,7 +301,19 @@ export class FolderService {
         // The UI shows "N items" on every sub-folder card, so the counts have to
         // come back with the listing rather than in a request per folder.
         include: {
-          _count: { select: { assets: true, children: true, albums: true } },
+          _count: {
+            select: {
+              assets: {
+                where: {
+                  deletedAt: null,
+                  isDeviceOnly: false,
+                  visibility: { not: AssetVisibility.HIDDEN },
+                },
+              },
+              children: { where: { deletedAt: null } },
+              albums: { where: { deletedAt: null } },
+            },
+          },
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
@@ -290,7 +324,22 @@ export class FolderService {
           deletedAt: null,
           isLocked: false,
         },
-        include: { _count: { select: { assets: true } }, ...ALBUM_COVER_INCLUDE },
+        include: {
+          _count: {
+            select: {
+              assets: {
+                where: {
+                  asset: {
+                    deletedAt: null,
+                    isDeviceOnly: false,
+                    visibility: { not: AssetVisibility.HIDDEN },
+                  },
+                },
+              },
+            },
+          },
+          ...ALBUM_COVER_INCLUDE,
+        },
         orderBy: { name: 'asc' },
       }),
       this.prisma.asset.findMany({
@@ -808,6 +857,9 @@ export class FolderService {
       where: { id: { in: assetIds }, ownerId: userId, deletedAt: null },
       data: {
         folderId,
+        // Organising a device backup is the explicit import into the main
+        // library; until then it remains visible only inside Devices.
+        isDeviceOnly: false,
         // Keep visibility consistent with where the asset now lives.
         visibility: folder.isLocked ? AssetVisibility.LOCKED : undefined,
       },
@@ -826,7 +878,7 @@ export class FolderService {
   async getAssetIds(userId: string, folderId: string) {
     await this.getOwnedById(userId, folderId);
     const assets = await this.prisma.asset.findMany({
-      where: { ownerId: userId, folderId, deletedAt: null },
+      where: { ...mainLibraryAssetWhere(userId), folderId },
       select: { id: true },
       orderBy: [{ localDateTime: 'desc' }, { id: 'desc' }],
     });

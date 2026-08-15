@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../../config/configuration';
-import { SubjectKind } from '../../db';
+import { MAIN_LIBRARY_ASSET_SQL, mainLibraryAssetWhere } from '../../common/asset-scope';
+import { Prisma, SubjectKind } from '../../db';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
 interface Candidate {
@@ -50,6 +51,7 @@ export class FaceClusteringService {
     ownerId: string,
     embedding: number[],
     kind: SubjectKind = SubjectKind.PERSON,
+    deviceOnly = false,
   ): Promise<Candidate | null> {
     const vector = `[${embedding.join(',')}]`;
 
@@ -58,11 +60,9 @@ export class FaceClusteringService {
       FROM asset_faces f
       JOIN assets a ON a.id = f."assetId"
       WHERE a."ownerId" = ${ownerId}::uuid
-        -- Trashed photos may be restored with their existing grouping, but
-        -- must not teach a newly uploaded photo who it is. Otherwise a new
-        -- dog can inherit the name and group of a dog that only exists in
-        -- Trash.
-        AND a."deletedAt" IS NULL
+        ${deviceOnly
+          ? Prisma.sql`AND a."deletedAt" IS NULL AND a."isDeviceOnly" = true`
+          : MAIN_LIBRARY_ASSET_SQL}
         AND f."personId" IS NOT NULL
         AND f."deletedAt" IS NULL
         AND f.embedding IS NOT NULL
@@ -101,6 +101,12 @@ export class FaceClusteringService {
    * Returns the subjects this asset ended up touching.
    */
   async assignFacesForAsset(assetId: string, ownerId: string): Promise<string[]> {
+    const asset = await this.prisma.asset.findFirst({
+      where: { id: assetId, ownerId, deletedAt: null },
+      select: { isDeviceOnly: true, visibility: true },
+    });
+    if (!asset || asset.visibility === 'HIDDEN' || asset.visibility === 'LOCKED') return [];
+
     const faces = await this.prisma.$queryRaw<
       { id: string; embedding: string; kind: SubjectKind; species: string | null }[]
     >`
@@ -120,7 +126,7 @@ export class FaceClusteringService {
       const embedding = this.parseVector(face.embedding);
       if (embedding.length !== 512) continue;
 
-      const match = await this.findPerson(ownerId, embedding, face.kind);
+      const match = await this.findPerson(ownerId, embedding, face.kind, asset.isDeviceOnly);
 
       const personId =
         match?.personId ??
@@ -161,6 +167,7 @@ export class FaceClusteringService {
       FROM assets a
       WHERE f."assetId" = a.id
         AND a."ownerId" = ${ownerId}::uuid
+        ${MAIN_LIBRARY_ASSET_SQL}
         AND f."isPinned" = false
         AND f."personId" IN (
           SELECT id FROM people WHERE "ownerId" = ${ownerId}::uuid AND name = ''
@@ -176,7 +183,10 @@ export class FaceClusteringService {
     `;
 
     const assets = await this.prisma.asset.findMany({
-      where: { ownerId, deletedAt: null, faces: { some: { personId: null, deletedAt: null } } },
+      where: {
+        ...mainLibraryAssetWhere(ownerId),
+        faces: { some: { personId: null, deletedAt: null } },
+      },
       select: { id: true },
       orderBy: { localDateTime: 'asc' },
     });

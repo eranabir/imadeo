@@ -277,7 +277,13 @@ describe('FolderService.getAssetIds', () => {
       ids: ['photo-2', 'photo-1'],
     });
     expect(findMany).toHaveBeenCalledWith({
-      where: { ownerId: 'owner-id', folderId: 'folder-id', deletedAt: null },
+      where: {
+        ownerId: 'owner-id',
+        folderId: 'folder-id',
+        deletedAt: null,
+        isDeviceOnly: false,
+        visibility: { in: ['TIMELINE', 'ARCHIVE'] },
+      },
       select: { id: true },
       orderBy: [{ localDateTime: 'desc' }, { id: 'desc' }],
     });

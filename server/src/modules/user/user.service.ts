@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { UserStatus } from '../../db';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
@@ -343,8 +344,8 @@ export class UserService {
 
   async statistics(userId: string) {
     const [images, videos, usage] = await Promise.all([
-      this.prisma.asset.count({ where: { ownerId: userId, type: 'IMAGE', deletedAt: null } }),
-      this.prisma.asset.count({ where: { ownerId: userId, type: 'VIDEO', deletedAt: null } }),
+      this.prisma.asset.count({ where: { ...mainLibraryAssetWhere(userId), type: 'IMAGE' } }),
+      this.prisma.asset.count({ where: { ...mainLibraryAssetWhere(userId), type: 'VIDEO' } }),
       this.prisma.asset.aggregate({
         where: { ownerId: userId, deletedAt: null },
         _sum: { fileSizeInByte: true },

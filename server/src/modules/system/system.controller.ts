@@ -4,6 +4,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { Auth, AuthedUserId } from '../../common/decorators';
+import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType } from '../../db';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
@@ -105,9 +106,8 @@ export class SystemController {
       : [AssetType.VIDEO];
     const assets = await this.prisma.asset.findMany({
       where: {
+        ...mainLibraryAssetWhere(),
         type: { in: types },
-        deletedAt: null,
-        visibility: { not: 'LOCKED' },
         previewPath: { not: null },
         OR: [{ jobStatus: null }, { jobStatus: { facesRecognizedAt: null } }],
       },
