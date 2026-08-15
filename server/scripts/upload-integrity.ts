@@ -110,15 +110,26 @@ async function buildCorpus(): Promise<CorpusFile[]> {
   return files;
 }
 
-async function uploadFile(file: CorpusFile, token: string, allowDuplicate = false) {
+async function uploadFile(
+  file: CorpusFile,
+  token: string,
+  allowDuplicate = false,
+  uploadId?: string,
+  folderId?: string,
+) {
   const form = new FormData();
   form.append('assetData', new File([file.bytes], file.name, { type: file.mime }));
   form.append('fileCreatedAt', fixedDate);
   form.append('fileModifiedAt', fixedDate);
   form.append('relativePath', file.relativePath);
   if (allowDuplicate) form.append('allowDuplicate', 'true');
+  if (uploadId) form.append('uploadId', uploadId);
+  if (folderId) form.append('folderId', folderId);
 
-  return jsonRequest<{ id: string; status: 'created' | 'duplicate' | 'organized' | 'restored' }>(
+  return jsonRequest<{
+    id: string;
+    status: 'created' | 'duplicate' | 'organized' | 'restored' | 'confirmed';
+  }>(
     '/assets/upload',
     { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
   );
@@ -266,31 +277,89 @@ async function main() {
   const allowed = await uploadFile(corpus[0], session.accessToken, true);
   if (allowed.status !== 'created') throw new Error(`Allowed duplicate returned ${allowed.status}`);
 
+  const receiptBytes = Buffer.concat([corpus[1].bytes, Buffer.from('lost-success-response')]);
+  const receiptFile: CorpusFile = {
+    name: 'receipt.png',
+    relativePath: 'upload-integrity/receipt/receipt.png',
+    mime: 'image/png',
+    bytes: receiptBytes,
+    hash: sha1(receiptBytes),
+  };
+  const uploadId = 'integrity-lost-response-receipt';
+  const receiptCreated = await uploadFile(receiptFile, session.accessToken, false, uploadId);
+  if (receiptCreated.status !== 'created') {
+    throw new Error(`Receipt upload returned ${receiptCreated.status}`);
+  }
+  const [receiptStatus] = await jsonRequest<
+    Array<{ uploadId: string; assetId: string | null; exists: boolean }>
+  >('/assets/upload-status', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uploadIds: [uploadId] }),
+  });
+  if (!receiptStatus.exists || receiptStatus.assetId !== receiptCreated.id) {
+    throw new Error('Committed upload could not be confirmed after its response was lost');
+  }
+  const receiptReplay = await uploadFile(receiptFile, session.accessToken, false, uploadId);
+  if (receiptReplay.status !== 'confirmed' || receiptReplay.id !== receiptCreated.id) {
+    throw new Error('Replayed upload receipt created another asset');
+  }
+
   const retryBytes = await sharp({
     create: { width: 96, height: 64, channels: 3, background: { r: 12, g: 220, b: 90 } },
   }).png().toBuffer();
   const retryFile: CorpusFile = {
     name: 'retry.png',
-    relativePath: 'upload-integrity/retry/retry.png',
+    relativePath: 'existing-child/retry.png',
     mime: 'image/png',
     bytes: retryBytes,
     hash: sha1(retryBytes),
   };
+  const retryRoot = await jsonRequest<{ id: string }>('/folders', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Existing retry target' }),
+  });
   if (!uploaded[0].storedPath) throw new Error('Stored path was not returned for failure testing');
   const storageYear = dirname(uploaded[0].storedPath);
   const originalMode = (await stat(storageYear)).mode & 0o777;
   let forcedFailure = false;
   await chmod(storageYear, 0o500);
   try {
-    await uploadFile(retryFile, session.accessToken);
+    await uploadFile(retryFile, session.accessToken, false, undefined, retryRoot.id);
   } catch {
     forcedFailure = true;
   } finally {
     await chmod(storageYear, originalMode);
   }
   if (!forcedFailure) throw new Error('Read-only storage did not reject the upload');
-  const retried = await uploadFile(retryFile, session.accessToken);
+  const treeAfterFailure = await jsonRequest<
+    Array<{ id: string; name: string; children: Array<{ id: string; name: string }> }>
+  >('/folders/tree', { headers: auth });
+  const failedRoot = treeAfterFailure.find((folder) => folder.id === retryRoot.id);
+  const failedChild = failedRoot?.children.filter((folder) => folder.name === 'existing-child');
+  if (failedChild?.length !== 1) {
+    throw new Error('Failed upload did not resolve exactly one destination folder');
+  }
+
+  const retried = await uploadFile(
+    retryFile,
+    session.accessToken,
+    false,
+    undefined,
+    retryRoot.id,
+  );
   if (retried.status !== 'created') throw new Error(`Retry returned ${retried.status}`);
+  const treeAfterRetry = await jsonRequest<
+    Array<{ id: string; name: string; children: Array<{ id: string; name: string }> }>
+  >('/folders/tree', { headers: auth });
+  const retriedRoot = treeAfterRetry.find((folder) => folder.id === retryRoot.id);
+  const retriedChildren = retriedRoot?.children.filter(
+    (folder) => folder.name === 'existing-child',
+  );
+  if (retriedChildren?.length !== 1 || retriedChildren[0].id !== failedChild[0].id) {
+    throw new Error('Retry recreated its folder instead of using the existing destination');
+  }
   const retryDownload = await fetch(`${baseUrl}/assets/${retried.id}/original`, { headers: auth });
   if (!retryDownload.ok || sha1(Buffer.from(await retryDownload.arrayBuffer())) !== retryFile.hash) {
     throw new Error('Retried upload does not match the source bytes');
@@ -310,8 +379,8 @@ async function main() {
   const afterDuplicates = await jsonRequest<{ pagination: { total: number } }>('/assets?size=1', {
     headers: auth,
   });
-  if (afterDuplicates.pagination.total !== 405) {
-    throw new Error(`Upload handling left ${afterDuplicates.pagination.total} assets, expected 405`);
+  if (afterDuplicates.pagination.total !== 406) {
+    throw new Error(`Upload handling left ${afterDuplicates.pagination.total} assets, expected 406`);
   }
 
   const video = uploaded.find(({ mime }) => mime === 'video/mp4');
@@ -326,11 +395,16 @@ async function main() {
   if (mediaRoot) {
     const library = join(mediaRoot, 'users', session.user.id, 'library');
     const diskFiles = await filesBelow(library);
-    if (diskFiles.length !== 405 || new Set(diskFiles).size !== 405) {
-      throw new Error(`Storage contains ${diskFiles.length} originals, expected 405 unique paths`);
+    if (diskFiles.length !== 406 || new Set(diskFiles).size !== 406) {
+      throw new Error(`Storage contains ${diskFiles.length} originals, expected 406 unique paths`);
     }
     const diskBytes = await Promise.all(diskFiles.map(async (path) => (await stat(path)).size));
-    const expectedDiskBytes = sourceBytes + (raceBytes.length * 5) + corpus[0].bytes.length + retryBytes.length;
+    const expectedDiskBytes =
+      sourceBytes +
+      (raceBytes.length * 5) +
+      corpus[0].bytes.length +
+      receiptBytes.length +
+      retryBytes.length;
     if (diskBytes.reduce((total, size) => total + size, 0) !== expectedDiskBytes) {
       throw new Error('Storage byte total does not match the accepted uploads');
     }
@@ -351,7 +425,9 @@ async function main() {
     sameBytesInDifferentFoldersPreserved: locationCopies.length,
     duplicateRejected: true,
     deliberateDuplicateCreated: true,
+    lostResponseConfirmedWithoutDuplicate: true,
     forcedFailureRetried: true,
+    failedUploadRetryReusedFolder: true,
     oversizedUploadRejected: true,
     videoRangeVerified: true,
   }, null, 2));

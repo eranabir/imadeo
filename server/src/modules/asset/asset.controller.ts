@@ -26,6 +26,7 @@ import {
   BulkAssetIdsDto,
   BulkUpdateAssetsDto,
   CheckDuplicateDto,
+  CheckUploadReceiptsDto,
   DeleteAssetsDto,
   ShareAssetsDto,
   StackAssetsDto,
@@ -58,6 +59,7 @@ export class AssetController {
       required: ['assetData'],
       properties: {
         assetData: { type: 'string', format: 'binary' },
+        uploadId: { type: 'string' },
         deviceAssetId: { type: 'string' },
         deviceId: { type: 'string' },
         deviceName: { type: 'string', example: 'Eran’s iPhone' },
@@ -79,6 +81,16 @@ export class AssetController {
   ) {
     if (!file) throw new BadRequestException('No file was uploaded under the field "assetData"');
     return this.assetService.createFromUpload(userId, file, dto);
+  }
+
+  @Post('upload-status')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Confirm which web uploads committed after a lost response' })
+  checkUploadReceipts(
+    @AuthedUserId() userId: string,
+    @Body() dto: CheckUploadReceiptsDto,
+  ) {
+    return this.assetService.checkUploadReceipts(userId, dto.uploadIds);
   }
 
   @Post('check-duplicates')

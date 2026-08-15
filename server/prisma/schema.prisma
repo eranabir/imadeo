@@ -299,6 +299,9 @@ model Asset {
   // still cannot register the same local photo twice.
   deviceAssetId     String?
   deviceId          String?
+  /// Stable receipt supplied by the web client. If the response is lost after
+  /// the file commits, a retry can confirm this asset without sending it again.
+  uploadId          String?         @db.VarChar(100)
 
   fileCreatedAt     DateTime
   fileModifiedAt    DateTime
@@ -359,6 +362,7 @@ model Asset {
   /// allowed through — a database constraint could only ever refuse it.
   @@index([ownerId, checksum])
   @@unique([ownerId, deviceId, deviceAssetId])
+  @@unique([ownerId, uploadId])
   @@index([ownerId, localDateTime(sort: Desc)])
   @@index([ownerId, visibility, deletedAt])
   @@index([ownerId, isFavorite])

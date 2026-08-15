@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -24,6 +25,14 @@ const toInt = ({ value }: { value: unknown }) =>
 
 /** Multipart fields that accompany an upload. */
 export class UploadAssetDto {
+  @ApiPropertyOptional({
+    description: 'Stable web upload receipt used to confirm a retry without resending the file',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  uploadId?: string;
+
   @ApiPropertyOptional({ description: 'Stable id from the client library, for backup de-duplication' })
   @IsOptional()
   @IsString()
@@ -99,6 +108,14 @@ export class UploadAssetDto {
   @IsOptional()
   @IsString()
   checksum?: string;
+}
+
+export class CheckUploadReceiptsDto {
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  uploadIds!: string[];
 }
 
 export class UpdateAssetDto {

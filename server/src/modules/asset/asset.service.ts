@@ -75,17 +75,32 @@ export class AssetService {
   /**
    * Ingests one uploaded file.
    *
-   * The checksum is the contract that makes re-running a phone backup safe: the
-   * same bytes from the same owner can only ever produce one asset, so an
-  * interrupted upload can simply be retried.
-  */
+   * A web upload receipt is checked before hashing so a retry after a lost HTTP
+   * response does not ingest the same request twice. The checksum lock then
+   * serializes separate requests carrying the same bytes.
+   */
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
+    if (dto.uploadId && !dto.allowDuplicate) {
+      return this.withUploadLock(`receipt:${userId}:${dto.uploadId}`, async () => {
+        const receipt = await this.findUploadReceipt(userId, dto.uploadId!);
+        if (receipt) {
+          await this.storage.remove(file.path);
+          return { id: receipt.id, status: 'confirmed' as const };
+        }
+        return this.createFromNewUpload(userId, file, dto);
+      });
+    }
+
+    return this.createFromNewUpload(userId, file, dto);
+  }
+
+  private async createFromNewUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     const checksum = await this.hashFile(file.path);
     if (dto.allowDuplicate) {
       return this.createFromHashedUpload(userId, file, dto, checksum);
     }
 
-    const lockKey = `${userId}:${fromBytes(checksum).toString('hex')}`;
+    const lockKey = `checksum:${userId}:${fromBytes(checksum).toString('hex')}`;
     return this.withUploadLock(lockKey, () =>
       this.createFromHashedUpload(userId, file, dto, checksum),
     );
@@ -194,6 +209,7 @@ export class AssetService {
         fileSizeInByte: BigInt(file.size),
         deviceAssetId: dto.deviceAssetId || null,
         deviceId: dto.deviceId || null,
+        uploadId: dto.allowDuplicate ? null : dto.uploadId || null,
         fileCreatedAt,
         fileModifiedAt,
         // Refined once EXIF gives us the real capture time and timezone.
@@ -291,6 +307,13 @@ export class AssetService {
     return folder.id;
   }
 
+  private findUploadReceipt(userId: string, uploadId: string) {
+    return this.prisma.asset.findFirst({
+      where: { ownerId: userId, uploadId },
+      select: { id: true },
+    });
+  }
+
   private hashFile(path: string): Promise<Uint8Array<ArrayBuffer>> {
     return new Promise((resolve, reject) => {
       const hash = createHash('sha1');
@@ -325,6 +348,57 @@ export class AssetService {
       const hex = fromBytes(this.parseChecksum(checksum)).toString('hex');
       return { checksum, assetId: byHex.get(hex) ?? null, exists: byHex.has(hex) };
     });
+  }
+
+  /** Confirms committed web uploads after a client lost the success response. */
+  async checkUploadReceipts(userId: string, uploadIds: string[]) {
+    const uniqueIds = [...new Set(uploadIds)];
+    const assets = await this.prisma.asset.findMany({
+      where: { ownerId: userId, uploadId: { in: uniqueIds } },
+      select: {
+        id: true,
+        uploadId: true,
+        deletedAt: true,
+        folder: { select: { deletedAt: true } },
+        jobStatus: { select: { metadataExtractedAt: true } },
+      },
+    });
+    const unprocessed = assets.filter(
+      (asset) =>
+        !asset.deletedAt && !asset.folder?.deletedAt && !asset.jobStatus?.metadataExtractedAt,
+    );
+    if (unprocessed.length > 0) {
+      await this.jobs
+        .releaseJobIds(
+          QUEUE.METADATA,
+          JOB.EXTRACT_METADATA,
+          unprocessed.map((asset) => asset.id),
+        )
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Stored upload processing jobs could not be released for retry: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
+    await Promise.all(
+      unprocessed.map((asset) =>
+        this.jobs.onAssetUploaded(asset.id).catch((error: unknown) => {
+            this.logger.warn(
+              `Upload ${asset.uploadId} is stored but its processing queue could not be resumed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }),
+      ),
+    );
+    const byUploadId = new Map(
+      assets
+        .filter((asset) => asset.uploadId)
+        .map((asset) => [asset.uploadId!, asset.id]),
+    );
+    return uploadIds.map((uploadId) => ({
+      uploadId,
+      assetId: byUploadId.get(uploadId) ?? null,
+      exists: byUploadId.has(uploadId),
+    }));
   }
 
   private parseChecksum(value: string): Uint8Array<ArrayBuffer> {

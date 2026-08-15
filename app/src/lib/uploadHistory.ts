@@ -4,6 +4,7 @@ export type UploadStatus =
   | 'queued'
   | 'uploading'
   | 'added'
+  | 'confirmed'
   | 'duplicate'
   | 'failed'
   | 'cancelled';
@@ -50,12 +51,15 @@ export interface UploadHistoryEntry {
 export interface UploadCandidate {
   file: File;
   relativePath?: string;
+  /** Stable receipt reused when an uncertain upload is retried. */
+  uploadId?: string;
 }
 
 export interface UploadRetryRequest {
   files: UploadCandidate[];
   destination: UploadDestination;
   source: UploadSource;
+  confirmBeforeRetry?: boolean;
 }
 
 const STORAGE_PREFIX = 'imadeo.upload-history.v1.';
@@ -77,7 +81,7 @@ export const createUploadHistoryId = () =>
 function summaryFor(items: UploadHistoryItem[]): UploadHistorySummary {
   return {
     total: items.length,
-    added: items.filter((item) => item.status === 'added').length,
+    added: items.filter((item) => item.status === 'added' || item.status === 'confirmed').length,
     duplicates: items.filter((item) => item.status === 'duplicate').length,
     failed: items.filter((item) => item.status === 'failed').length,
     cancelled: items.filter((item) => item.status === 'cancelled').length,
@@ -100,7 +104,10 @@ function writeStorage(userId: string, entries: UploadHistoryEntry[]) {
         (item) => item.status === 'failed' || item.status === 'cancelled',
       );
       const successes = entry.items
-        .filter((item) => item.status === 'added' || item.status === 'duplicate')
+        .filter(
+          (item) =>
+            item.status === 'added' || item.status === 'confirmed' || item.status === 'duplicate',
+        )
         .slice(0, 50);
       const pending = entry.items.filter(
         (item) => item.status === 'queued' || item.status === 'uploading',

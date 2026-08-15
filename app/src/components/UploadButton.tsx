@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
+import { buildUploadForm } from '../lib/uploadForm';
 import { filesFromDrop, isMediaFile, MEDIA_ACCEPT } from '../lib/uploadSelection';
 import { runUploadQueue } from '../lib/uploadQueue';
 import {
@@ -41,9 +42,11 @@ interface Progress {
   ignored: number;
   done: number;
   created: number;
+  confirmed: number;
   duplicates: number;
   failed: number;
   bytesSent: number;
+  bytesConfirmed: number;
   bytesTotal: number;
   items: UploadProgressItem[];
 }
@@ -61,11 +64,25 @@ interface UploadProgressItem {
 /** Keeps uploads fast without saturating a typical self-hosted NAS or browser. */
 const WEB_UPLOAD_CONCURRENCY = 4;
 
+interface UploadReceiptStatus {
+  uploadId: string;
+  assetId: string | null;
+  exists: boolean;
+}
+
+async function checkUploadReceipts(uploadIds: string[]) {
+  if (uploadIds.length === 0) return [];
+  const { data } = await api.post<UploadReceiptStatus[]>('/assets/upload-status', { uploadIds });
+  return data;
+}
+
 function UploadStatusIcon({ status }: { status: UploadStatus }) {
   if (status === 'uploading') {
     return <LoaderCircle size={14} className="animate-spin text-primary" />;
   }
-  if (status === 'added') return <CheckCircle2 size={14} className="text-success" />;
+  if (status === 'added' || status === 'confirmed') {
+    return <CheckCircle2 size={14} className="text-success" />;
+  }
   if (status === 'duplicate') return <Copy size={14} className="text-content-muted" />;
   if (status === 'failed') return <CircleAlert size={14} className="text-danger" />;
   if (status === 'cancelled') return <X size={14} className="text-content-muted" />;
@@ -75,6 +92,7 @@ function UploadStatusIcon({ status }: { status: UploadStatus }) {
 function uploadStatusLabel(item: UploadProgressItem) {
   if (item.status === 'uploading') return `${Math.round(item.fraction * 100)}%`;
   if (item.status === 'added') return 'Added';
+  if (item.status === 'confirmed') return 'Confirmed on server';
   if (item.status === 'duplicate') return 'Already here';
   if (item.status === 'failed') return 'Failed';
   if (item.status === 'cancelled') return 'Stopped';
@@ -156,17 +174,26 @@ export function UploadButton({
     forceDuplicate = false,
     destinationOverride?: UploadDestination,
     source: UploadSource = 'files',
+    confirmBeforeRetry = false,
   ) => {
     if (!fileList || fileList.length === 0) return;
 
-    const candidates: UploadCandidate[] = [...fileList].map((item) =>
-      item instanceof File
-        ? {
+    const candidates: UploadCandidate[] = [...fileList].map((item) => {
+      const candidate: UploadCandidate =
+        item instanceof File
+          ? {
             file: item,
             relativePath: (item as File & { webkitRelativePath?: string }).webkitRelativePath || undefined,
           }
-        : item,
-    );
+          : item;
+      return {
+        ...candidate,
+        uploadId:
+          forceDuplicate || !candidate.uploadId
+            ? createUploadHistoryId()
+            : candidate.uploadId,
+      };
+    });
     const files = candidates.filter(({ file }) => isMediaFile(file));
     const ignored = candidates.length - files.length;
     if (files.length === 0) {
@@ -176,8 +203,8 @@ export function UploadButton({
       return;
     }
     const bytesTotal = files.reduce((sum, { file }) => sum + file.size, 0);
-    const uploadItems: UploadProgressItem[] = files.map(({ file, relativePath }, index) => ({
-      id: `${createUploadHistoryId()}:${index}`,
+    const uploadItems: UploadProgressItem[] = files.map(({ file, relativePath, uploadId }) => ({
+      id: uploadId!,
       name: relativePath || file.name,
       size: file.size,
       status: 'queued',
@@ -210,8 +237,10 @@ export function UploadButton({
     setMinimized(false);
 
     let created = 0;
+    let confirmed = 0;
     let duplicates = 0;
     let failed = 0;
+    let bytesConfirmed = 0;
     let done = 0;
     const uploadedBytes = files.map(() => 0);
 
@@ -227,16 +256,18 @@ export function UploadButton({
         ignored,
         done,
         created,
+        confirmed,
         duplicates,
         failed,
         bytesSent: uploadedBytes.reduce((sum, bytes) => sum + bytes, 0),
+        bytesConfirmed,
         bytesTotal,
         items: [...uploadItems],
       });
 
     const uploadOne = async (index: number) => {
       const candidate = files[index];
-      const { file, relativePath } = candidate;
+      const { file, uploadId } = candidate;
       uploadItems[index] = { ...uploadItems[index], status: 'uploading', fraction: 0 };
       if (user && historyId) {
         const { fraction: _fraction, ...item } = uploadItems[index];
@@ -244,24 +275,26 @@ export function UploadButton({
       }
       publishProgress();
 
-      const form = new FormData();
-      form.append('assetData', file);
-      form.append('fileCreatedAt', new Date(file.lastModified).toISOString());
-      form.append('fileModifiedAt', new Date(file.lastModified).toISOString());
-
-      if (relativePath) form.append('relativePath', relativePath);
-
-      // Whatever is on screen is the destination.
-      if (folderId) form.append('folderId', folderId);
-      if (albumId) form.append('albumId', albumId);
-
-      if (allowDuplicate || forceDuplicate) form.append('allowDuplicate', 'true');
+      const form = buildUploadForm(candidate, destination, allowDuplicate || forceDuplicate);
 
       const controller = new AbortController();
       controllers.current.add(controller);
 
       try {
-        const { data } = await api.post('/assets/upload', form, {
+        if (confirmationError) throw new Error(confirmationError);
+
+        const existingReceipt = confirmedReceipts.get(uploadId!);
+        if (existingReceipt) {
+          if (destination.albumId) {
+            await api.put(`/albums/${destination.albumId}/assets`, {
+              assetIds: [existingReceipt],
+            });
+          }
+          confirmed += 1;
+          bytesConfirmed += file.size;
+          uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
+        } else {
+          const { data } = await api.post('/assets/upload', form, {
           signal: controller.signal,
           // A multi-gigabyte video must not be cut off by a client timeout.
           timeout: 0,
@@ -271,44 +304,69 @@ export function UploadButton({
             uploadItems[index] = { ...uploadItems[index], fraction };
             publishProgress();
           },
-        });
+          });
 
-        if (data.status === 'duplicate') {
-          if (albumId) {
+          if (data.status === 'confirmed') {
+            confirmed += 1;
+            uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
+          } else if (data.status === 'duplicate') {
+            if (destination.albumId) {
             // A duplicate means the bytes already exist in Photos, not that
             // the existing asset is already in this album. Link it instead of
             // asking the user to create another physical copy.
-            await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
+              await api.put(`/albums/${destination.albumId}/assets`, { assetIds: [data.id] });
+              created += 1;
+              uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
+            } else {
+              duplicates += 1;
+              skipped.push(candidate);
+              uploadItems[index] = { ...uploadItems[index], status: 'duplicate', fraction: 1 };
+            }
+          } else {
+            // A restored/organised asset already has bytes on disk, but it was
+            // still added to the destination the user chose.
+            if (destination.albumId && data.status !== 'created') {
+              await api.put(`/albums/${destination.albumId}/assets`, { assetIds: [data.id] });
+            }
             created += 1;
             uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
-          } else {
-            duplicates += 1;
-            skipped.push(candidate);
-            uploadItems[index] = { ...uploadItems[index], status: 'duplicate', fraction: 1 };
           }
-        } else {
-          // A restored/organised asset already has bytes on disk, but it was
-          // still added to the destination the user chose.
-          if (albumId && data.status !== 'created') {
-            await api.put(`/albums/${albumId}/assets`, { assetIds: [data.id] });
-          }
-          created += 1;
-          uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
+          uploadedBytes[index] = file.size;
         }
-        uploadedBytes[index] = file.size;
       } catch (error) {
         if (cancelled.current) {
           uploadItems[index] = { ...uploadItems[index], status: 'cancelled' };
         } else {
-          const message = errorMessage(error);
-          failed += 1;
-          retryable.push(candidate);
-          uploadItems[index] = {
-            ...uploadItems[index],
-            status: 'failed',
-            error: message,
-          };
-          onError?.(`${file.name}: ${message}`);
+          let committedAssetId: string | null = null;
+          if (!confirmationError && uploadedBytes[index] >= file.size) {
+            try {
+              const [receipt] = await checkUploadReceipts([uploadId!]);
+              committedAssetId = receipt?.exists ? receipt.assetId : null;
+              if (committedAssetId && destination.albumId) {
+                await api.put(`/albums/${destination.albumId}/assets`, {
+                  assetIds: [committedAssetId],
+                });
+              }
+            } catch {
+              // The connection may still be unavailable; Retry performs this
+              // confirmation again before it sends any bytes.
+            }
+          }
+
+          if (committedAssetId) {
+            confirmed += 1;
+            uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
+          } else {
+            const message = errorMessage(error);
+            failed += 1;
+            retryable.push(candidate);
+            uploadItems[index] = {
+              ...uploadItems[index],
+              status: 'failed',
+              error: message,
+            };
+            onError?.(`${file.name}: ${message}`);
+          }
         }
       } finally {
         controllers.current.delete(controller);
@@ -323,7 +381,21 @@ export function UploadButton({
       publishProgress();
     };
 
+    const confirmedReceipts = new Map<string, string>();
+    let confirmationError: string | null = null;
     publishProgress();
+    if (confirmBeforeRetry) {
+      try {
+        const receipts = await checkUploadReceipts(files.map((file) => file.uploadId!));
+        for (const receipt of receipts) {
+          if (receipt.exists && receipt.assetId) {
+            confirmedReceipts.set(receipt.uploadId, receipt.assetId);
+          }
+        }
+      } catch (error) {
+        confirmationError = `Could not confirm the upload with the server: ${errorMessage(error)}`;
+      }
+    }
     await runUploadQueue(
       files,
       WEB_UPLOAD_CONCURRENCY,
@@ -345,9 +417,11 @@ export function UploadButton({
       ignored,
       done: files.length,
       created,
+      confirmed,
       duplicates,
       failed,
       bytesSent: uploadedBytes.reduce((sum, bytes) => sum + bytes, 0),
+      bytesConfirmed,
       bytesTotal,
       items: [...uploadItems],
     });
@@ -363,7 +437,13 @@ export function UploadButton({
   useEffect(() => {
     if (!externalDrop) return;
     return listenForUploadRetry((request) => {
-      void uploadAll(request.files, false, request.destination, request.source);
+      void uploadAll(
+        request.files,
+        false,
+        request.destination,
+        request.source,
+        request.confirmBeforeRetry,
+      );
     });
   });
 
@@ -667,7 +747,9 @@ export function UploadButton({
           {!minimized && (
             <>
               <p className="mt-2 text-[11px] tabular-nums text-content-muted">
-                {formatBytes(progress.bytesSent)} of {formatBytes(progress.bytesTotal)}
+                {formatBytes(progress.bytesSent)} uploaded of {formatBytes(progress.bytesTotal)}
+                {progress.bytesConfirmed > 0 &&
+                  ` · ${formatBytes(progress.bytesConfirmed)} already on server`}
               </p>
 
               <div
@@ -696,7 +778,7 @@ export function UploadButton({
                     </span>
                     <span
                       className={`shrink-0 text-[11px] tabular-nums ${
-                        item.status === 'added'
+                        item.status === 'added' || item.status === 'confirmed'
                           ? 'text-success'
                           : item.status === 'failed'
                             ? 'text-danger'
@@ -715,6 +797,7 @@ export function UploadButton({
                 <>
                   <p className="mt-2 text-xs text-content-muted">
                     {progress.created} added
+                    {progress.confirmed > 0 && `, ${progress.confirmed} confirmed on server`}
                     {progress.duplicates > 0 && `, ${progress.duplicates} already here`}
                     {progress.failed > 0 && `, ${progress.failed} failed`}
                     {cancelledCount > 0 && `, ${cancelledCount} stopped`}
@@ -743,6 +826,7 @@ export function UploadButton({
                               false,
                               retryDestination ?? undefined,
                               retrySource,
+                              true,
                             );
                           }}
                         >

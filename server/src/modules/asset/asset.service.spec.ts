@@ -45,6 +45,21 @@ describe('AssetService duplicate upload destinations', () => {
     size: 100,
   };
 
+  it('confirms a committed upload receipt without ingesting the retry again', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      folder: null,
+    });
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, { uploadId: 'web-upload-1' }),
+    ).resolves.toEqual({ id: 'asset-id', status: 'confirmed' });
+    expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
+    expect(test.registerDevice).not.toHaveBeenCalled();
+    expect(test.assertQuota).not.toHaveBeenCalled();
+  });
+
   it('restores a trashed asset into the rebuilt directory destination', async () => {
     const test = createService({
       id: 'asset-id',

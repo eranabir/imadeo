@@ -44,7 +44,9 @@ function statusTitle(entry: UploadHistoryEntry) {
 }
 
 function ItemIcon({ item }: { item: UploadHistoryItem }) {
-  if (item.status === 'added') return <CheckCircle2 size={14} className="text-success" />;
+  if (item.status === 'added' || item.status === 'confirmed') {
+    return <CheckCircle2 size={14} className="text-success" />;
+  }
   if (item.status === 'duplicate') return <Copy size={14} className="text-content-muted" />;
   if (item.status === 'failed') return <CircleAlert size={14} className="text-danger" />;
   if (item.status === 'cancelled') return <XCircle size={14} className="text-content-muted" />;
@@ -53,6 +55,7 @@ function ItemIcon({ item }: { item: UploadHistoryItem }) {
 
 function itemLabel(item: UploadHistoryItem) {
   if (item.status === 'added') return 'Added';
+  if (item.status === 'confirmed') return 'Confirmed on server';
   if (item.status === 'duplicate') return 'Already here';
   if (item.status === 'failed') return 'Failed';
   if (item.status === 'cancelled') return 'Stopped';
@@ -71,9 +74,9 @@ function candidatesFromFiles(files: FileList): UploadCandidate[] {
   }));
 }
 
-function matchesFailedFile(candidate: UploadCandidate, failed: UploadHistoryItem[]) {
+function matchingFailedFile(candidate: UploadCandidate, failed: UploadHistoryItem[]) {
   const path = (candidate.relativePath || candidate.file.name).replaceAll('\\', '/');
-  return failed.some((item) => {
+  return failed.find((item) => {
     const expected = item.name.replaceAll('\\', '/');
     return (
       item.size === candidate.file.size &&
@@ -100,6 +103,7 @@ export function UploadHistorySettings() {
       files,
       destination: entry.destination,
       source: entry.source,
+      confirmBeforeRetry: true,
     });
     setMessage(`Retrying ${files.length} ${files.length === 1 ? 'file' : 'files'}.`);
     return true;
@@ -119,9 +123,10 @@ export function UploadHistorySettings() {
     if (!entry || !list?.length) return;
 
     const failed = problemItems(entry);
-    const selected = candidatesFromFiles(list).filter((candidate) =>
-      matchesFailedFile(candidate, failed),
-    );
+    const selected = candidatesFromFiles(list).flatMap((candidate) => {
+      const failedItem = matchingFailedFile(candidate, failed);
+      return failedItem ? [{ ...candidate, uploadId: failedItem.id }] : [];
+    });
     if (selected.length === 0) {
       setMessage('None of the selected files match the failed upload names.');
       return;
@@ -131,6 +136,7 @@ export function UploadHistorySettings() {
       files: selected,
       destination: entry.destination,
       source: entry.source,
+      confirmBeforeRetry: true,
     });
     setMessage(
       selected.length === failed.length
