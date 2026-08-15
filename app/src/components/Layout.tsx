@@ -25,7 +25,6 @@ import {
   PeopleAndPetsIcon,
   PhotosIcon,
   SharingIcon,
-  SettingsIcon,
   TrashIcon,
 } from './NavigationIcons';
 import { TopBar } from './TopBar';
@@ -52,7 +51,6 @@ export const NAV = [
   { to: '/locked', label: 'Locked', icon: LockedIcon, tint: 'text-indigo-400', end: false },
   { to: '/duplicates', label: 'Duplicates', icon: DuplicatesIcon, tint: 'text-orange-500', end: false },
   { to: '/trash', label: 'Trash', icon: TrashIcon, tint: 'text-slate-400', end: false },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, tint: 'text-emerald-500', end: false },
 ] as const;
 
 export function Layout() {
