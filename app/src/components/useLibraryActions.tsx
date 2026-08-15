@@ -92,6 +92,7 @@ export function useLibraryActions({
     null,
   );
   const [trashingAssets, setTrashingAssets] = useState<string[] | null>(null);
+  const [permanentlyDeletingAssets, setPermanentlyDeletingAssets] = useState<string[] | null>(null);
   const [newFolderIn, setNewFolderIn] = useState<string | null>(null);
   const [newAlbumIn, setNewAlbumIn] = useState<string | null>(null);
   const [vaultPrompt, setVaultPrompt] = useState(false);
@@ -357,7 +358,7 @@ export function useLibraryActions({
             icon: <Trash2 size={15} />,
             danger: true,
             separated: true,
-            onSelect: () => deleteAssetsForever.mutate(ids),
+            onSelect: () => setPermanentlyDeletingAssets(ids),
           },
         ];
       }
@@ -694,6 +695,22 @@ export function useLibraryActions({
         destructive
         onConfirm={() => trashingAssets && trashAssets.mutate(trashingAssets)}
         onClose={() => setTrashingAssets(null)}
+      />
+
+      <ConfirmDialog
+        open={permanentlyDeletingAssets !== null}
+        title={
+          permanentlyDeletingAssets?.length === 1
+            ? 'Permanently delete this item?'
+            : `Permanently delete these ${permanentlyDeletingAssets?.length ?? 0} items?`
+        }
+        description="The files are removed from disk. This cannot be undone."
+        confirmLabel="Delete forever"
+        destructive
+        onConfirm={() =>
+          permanentlyDeletingAssets && deleteAssetsForever.mutate(permanentlyDeletingAssets)
+        }
+        onClose={() => setPermanentlyDeletingAssets(null)}
       />
 
       <ConfirmDialog

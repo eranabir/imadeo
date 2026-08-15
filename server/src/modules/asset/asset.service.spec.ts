@@ -4,6 +4,9 @@ import { AssetService } from './asset.service';
 
 function createService(existing: Record<string, unknown>) {
   const assetUpdate = vi.fn().mockResolvedValue({ id: existing.id });
+  const albumFindFirst = vi.fn().mockResolvedValue({ id: 'album-id' });
+  const albumAssetCreateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const albumUpdate = vi.fn().mockResolvedValue({ id: 'album-id' });
   const storageRemove = vi.fn().mockResolvedValue(undefined);
   const ensurePath = vi.fn().mockResolvedValue({ id: 'new-folder' });
   const refreshThumbnails = vi.fn().mockResolvedValue(undefined);
@@ -11,7 +14,12 @@ function createService(existing: Record<string, unknown>) {
   const registerDevice = vi.fn().mockResolvedValue(null);
   const recordDeviceAsset = vi.fn().mockResolvedValue(undefined);
   const service = new AssetService(
-    { asset: { findFirst: vi.fn().mockResolvedValue(existing), update: assetUpdate } } as never,
+    {
+      asset: { findFirst: vi.fn().mockResolvedValue(existing), update: assetUpdate },
+      album: { findFirst: albumFindFirst, update: albumUpdate },
+      albumAsset: { createMany: albumAssetCreateMany },
+      $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    } as never,
     { remove: storageRemove } as never,
     {} as never,
     { ensurePath, getById: vi.fn() } as never,
@@ -34,6 +42,9 @@ function createService(existing: Record<string, unknown>) {
     assertQuota,
     registerDevice,
     recordDeviceAsset,
+    albumFindFirst,
+    albumAssetCreateMany,
+    albumUpdate,
   };
 }
 
@@ -58,6 +69,56 @@ describe('AssetService duplicate upload destinations', () => {
     expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
     expect(test.registerDevice).not.toHaveBeenCalled();
     expect(test.assertQuota).not.toHaveBeenCalled();
+  });
+
+  it('confirms a committed upload only after restoring its requested album membership', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      folder: null,
+    });
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, {
+        uploadId: 'web-upload-1',
+        albumId: 'album-id',
+      }),
+    ).resolves.toEqual({ id: 'asset-id', status: 'confirmed' });
+    expect(test.albumFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'album-id',
+        deletedAt: null,
+        OR: [
+          { ownerId: 'owner-id' },
+          { albumUsers: { some: { userId: 'owner-id', role: 'EDITOR' } } },
+        ],
+      },
+      select: { id: true },
+    });
+    expect(test.albumAssetCreateMany).toHaveBeenCalledWith({
+      data: [{ albumId: 'album-id', assetId: 'asset-id', addedById: 'owner-id' }],
+      skipDuplicates: true,
+    });
+    expect(test.albumUpdate).toHaveBeenCalledWith({
+      where: { id: 'album-id' },
+      data: { updatedAt: expect.any(Date) },
+    });
+  });
+
+  it('does not report a receipt as successful when its album membership cannot be written', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      folder: null,
+    });
+    test.albumAssetCreateMany.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, {
+        uploadId: 'web-upload-1',
+        albumId: 'album-id',
+      }),
+    ).rejects.toThrow('database unavailable');
   });
 
   it('restores a trashed asset into the rebuilt directory destination', async () => {

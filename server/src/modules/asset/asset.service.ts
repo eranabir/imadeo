@@ -15,7 +15,7 @@ import type { AuthDto } from '../../common/auth.types';
 import { MAIN_LIBRARY_ASSET_SQL, mainLibraryAssetWhere } from '../../common/asset-scope';
 import { fromBytes, toBytes } from '../../common/bytes';
 import type { AppConfig } from '../../config/configuration';
-import { AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
+import { AlbumUserRole, AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
@@ -85,6 +85,7 @@ export class AssetService {
         const receipt = await this.findUploadReceipt(userId, dto.uploadId!);
         if (receipt) {
           await this.storage.remove(file.path);
+          if (dto.albumId) await this.attachUploadToAlbum(userId, dto.albumId, receipt.id);
           return { id: receipt.id, status: 'confirmed' as const };
         }
         return this.createFromNewUpload(userId, file, dto);
@@ -165,6 +166,8 @@ export class AssetService {
       if (sourceDevice && dto.deviceAssetId) {
         await this.devices.recordAsset(sourceDevice.id, dto.deviceAssetId, existing.id);
       }
+
+      if (dto.albumId) await this.attachUploadToAlbum(userId, dto.albumId, existing.id);
 
       const wasOrphaned = Boolean(existing.folder?.deletedAt);
       const promotedToPhotos = !sourceDevice && existing.isDeviceOnly;
@@ -249,18 +252,10 @@ export class AssetService {
       throw error;
     }
 
-    if (dto.albumId) {
-      // Uploading from inside an album should land in that album.
-      await this.prisma.albumAsset
-        .create({ data: { albumId: dto.albumId, assetId: asset.id, addedById: userId } })
-        .catch(() => undefined);
-      await this.prisma.album
-        .update({
-          where: { id: dto.albumId },
-          data: { updatedAt: new Date() },
-        })
-        .catch(() => undefined);
-    }
+    // Uploading from inside an album must not report success until the new
+    // asset is actually a member. The old best-effort writes swallowed errors,
+    // leaving a successful upload visible in Photos but missing from its album.
+    if (dto.albumId) await this.attachUploadToAlbum(userId, dto.albumId, asset.id);
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -312,6 +307,32 @@ export class AssetService {
       where: { ownerId: userId, uploadId },
       select: { id: true },
     });
+  }
+
+  private async attachUploadToAlbum(userId: string, albumId: string, assetId: string) {
+    const album = await this.prisma.album.findFirst({
+      where: {
+        id: albumId,
+        deletedAt: null,
+        OR: [
+          { ownerId: userId },
+          { albumUsers: { some: { userId, role: AlbumUserRole.EDITOR } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!album) throw new ForbiddenException('This album does not accept uploads from this account');
+
+    await this.prisma.$transaction([
+      this.prisma.albumAsset.createMany({
+        data: [{ albumId, assetId, addedById: userId }],
+        skipDuplicates: true,
+      }),
+      this.prisma.album.update({
+        where: { id: albumId },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
   }
 
   private hashFile(path: string): Promise<Uint8Array<ArrayBuffer>> {

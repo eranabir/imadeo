@@ -307,6 +307,9 @@ export function UploadButton({
           });
 
           if (data.status === 'confirmed') {
+            if (destination.albumId) {
+              await api.put(`/albums/${destination.albumId}/assets`, { assetIds: [data.id] });
+            }
             confirmed += 1;
             uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
           } else if (data.status === 'duplicate') {

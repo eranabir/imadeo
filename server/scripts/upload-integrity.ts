@@ -116,6 +116,7 @@ async function uploadFile(
   allowDuplicate = false,
   uploadId?: string,
   folderId?: string,
+  albumId?: string,
 ) {
   const form = new FormData();
   form.append('assetData', new File([file.bytes], file.name, { type: file.mime }));
@@ -125,6 +126,7 @@ async function uploadFile(
   if (allowDuplicate) form.append('allowDuplicate', 'true');
   if (uploadId) form.append('uploadId', uploadId);
   if (folderId) form.append('folderId', folderId);
+  if (albumId) form.append('albumId', albumId);
 
   return jsonRequest<{
     id: string;
@@ -365,6 +367,66 @@ async function main() {
     throw new Error('Retried upload does not match the source bytes');
   }
 
+  // Re-uploading an existing 299-file selection into an album must make all
+  // 299 members visible there. This catches both swallowed membership errors
+  // and a second page that is never returned after the first 250.
+  const targetAlbum = await jsonRequest<{ id: string }>('/albums', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ albumName: '299-file upload destination' }),
+  });
+  const albumResults: string[] = [];
+  await runQueue(corpus.slice(0, 299), async (file) => {
+    const result = await uploadFile(
+      file,
+      session.accessToken,
+      false,
+      undefined,
+      undefined,
+      targetAlbum.id,
+    );
+    if (result.status !== 'duplicate') {
+      throw new Error(`${file.relativePath}: album re-upload returned ${result.status}`);
+    }
+    albumResults.push(result.id);
+  });
+
+  const albumAssetIds: string[] = [];
+  for (const page of [1, 2]) {
+    const listing = await jsonRequest<{
+      assets: Array<{ id: string }>;
+      pagination: { page: number; size: number; total: number };
+    }>(`/albums/${targetAlbum.id}?page=${page}&size=250`, { headers: auth });
+    if (listing.pagination.total !== 299) {
+      throw new Error(`Album reports ${listing.pagination.total} members, expected 299`);
+    }
+    albumAssetIds.push(...listing.assets.map((asset) => asset.id));
+  }
+  if (albumAssetIds.length !== 299 || new Set(albumAssetIds).size !== 299) {
+    throw new Error(`Album displays ${new Set(albumAssetIds).size}/299 unique uploaded files`);
+  }
+  if (albumResults.some((id) => !albumAssetIds.includes(id))) {
+    throw new Error('One or more successful upload responses are missing from the album');
+  }
+
+  const receiptAlbumReplay = await uploadFile(
+    receiptFile,
+    session.accessToken,
+    false,
+    uploadId,
+    undefined,
+    targetAlbum.id,
+  );
+  if (receiptAlbumReplay.status !== 'confirmed') {
+    throw new Error(`Album receipt replay returned ${receiptAlbumReplay.status}`);
+  }
+  const albumAfterReceipt = await jsonRequest<{
+    pagination: { total: number };
+  }>(`/albums/${targetAlbum.id}?page=1&size=1`, { headers: auth });
+  if (albumAfterReceipt.pagination.total !== 300) {
+    throw new Error('A confirmed retry was not restored to its requested album');
+  }
+
   const oversizedBytes = Buffer.alloc((50 * 1024 * 1024) + 1, 0x5a);
   const oversizedForm = new FormData();
   oversizedForm.append('assetData', new File([oversizedBytes], 'too-large.jpg', { type: 'image/jpeg' }));
@@ -428,6 +490,9 @@ async function main() {
     lostResponseConfirmedWithoutDuplicate: true,
     forcedFailureRetried: true,
     failedUploadRetryReusedFolder: true,
+    albumUploadSelected: 299,
+    albumUploadVisible: albumAssetIds.length,
+    lostResponseAlbumMembershipRestored: true,
     oversizedUploadRejected: true,
     videoRangeVerified: true,
   }, null, 2));

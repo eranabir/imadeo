@@ -294,7 +294,9 @@ export class AssetController {
 
   @Delete()
   @HttpCode(200)
-  @ApiOperation({ summary: 'Move assets to the trash, or delete them outright with force' })
+  @ApiOperation({
+    summary: 'Move active assets to Trash, or permanently delete assets already in Trash',
+  })
   remove(@AuthedUserId() userId: string, @Body() dto: DeleteAssetsDto) {
     return dto.force
       ? this.assetService.deletePermanently(userId, dto.ids)
