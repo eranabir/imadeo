@@ -46,12 +46,61 @@ describe('AssetLifecycleService.deletePermanently', () => {
       null,
     ]);
     expect(deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id', deletedAt: { not: null } },
+      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id' },
     });
     expect(updateUser).toHaveBeenCalledWith({
       where: { id: 'owner-id' },
       data: { quotaUsageInBytes: { decrement: 42n } },
     });
     expect(refresh).toHaveBeenCalledWith(['asset-id']);
+  });
+
+  it('removes a hidden Live Photo motion clip with its trashed still', async () => {
+    const still = {
+      id: 'still-id',
+      livePhotoVideoId: 'video-id',
+      originalPath: '/data/still.heic',
+      thumbnailPath: '/data/still-thumb.jpg',
+      previewPath: '/data/still-preview.jpg',
+      encodedVideoPath: null,
+      fileSizeInByte: 40n,
+    };
+    const video = {
+      id: 'video-id',
+      livePhotoVideoId: null,
+      originalPath: '/data/motion.mov',
+      thumbnailPath: '/data/motion-thumb.jpg',
+      previewPath: '/data/motion-preview.jpg',
+      encodedVideoPath: '/data/motion.mp4',
+      fileSizeInByte: 60n,
+    };
+    const findMany = vi.fn().mockResolvedValueOnce([still]).mockResolvedValueOnce([video]);
+    const deleteMany = vi.fn().mockResolvedValue({ count: 2 });
+    const updateUser = vi.fn().mockResolvedValue({});
+    const removeMany = vi.fn().mockResolvedValue(undefined);
+    const service = new AssetLifecycleService(
+      {
+        asset: { findMany, deleteMany },
+        user: { update: updateUser },
+        $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      } as never,
+      { removeMany } as never,
+      { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
+    );
+
+    await expect(service.deletePermanently('owner-id', ['still-id'])).resolves.toEqual({
+      deleted: 2,
+      freedBytes: 100n,
+    });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['still-id', 'video-id'] },
+        ownerId: 'owner-id',
+      },
+    });
+    expect(updateUser).toHaveBeenCalledWith({
+      where: { id: 'owner-id' },
+      data: { quotaUsageInBytes: { decrement: 100n } },
+    });
   });
 });

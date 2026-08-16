@@ -82,8 +82,8 @@ export class JobService {
    * BullMQ reserves `:` in custom job ids (it namespaces its own Redis keys with
    * it), so the two halves are joined with `--`.
    */
-  private static jobIdFor(name: string, assetId: string) {
-    return `${name}--${assetId}`;
+  private static jobIdFor(name: string, targetId: string) {
+    return `${name}--${targetId}`;
   }
 
   private optionsFor(queue: QueueName) {
@@ -95,7 +95,11 @@ export class JobService {
       ...this.optionsFor(queue),
       priority,
       jobId:
-        'assetId' in data ? JobService.jobIdFor(name, (data as AssetJobData).assetId) : undefined,
+        'assetId' in data
+          ? JobService.jobIdFor(name, (data as AssetJobData).assetId)
+          : 'userId' in data && typeof data.userId === 'string'
+            ? JobService.jobIdFor(name, data.userId)
+            : undefined,
     });
   }
 

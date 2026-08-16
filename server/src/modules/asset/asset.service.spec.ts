@@ -225,6 +225,112 @@ describe('AssetService duplicate upload destinations', () => {
       },
     });
   });
+
+  it('treats lower- and uppercase MOV extensions as videos', () => {
+    const { service } = createService({ id: 'asset-id' });
+    const detectType = (service as unknown as {
+      detectType: (filename: string, mimetype: string) => string;
+    }).detectType.bind(service);
+
+    expect(detectType('clip.mov', '')).toBe('VIDEO');
+    expect(detectType('clip.MOV', '')).toBe('VIDEO');
+  });
+});
+
+describe('AssetService Live Photo recovery', () => {
+  it('reveals and resumes processing orphaned motion clips on startup', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'video-id',
+        isDeviceOnly: false,
+        previewPath: '/data/preview.jpg',
+        jobStatus: { metadataExtractedAt: new Date(), thumbnailAt: new Date() },
+      },
+    ]);
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const releaseJobIds = vi.fn().mockResolvedValue(1);
+    const enqueueMany = vi.fn().mockResolvedValue(undefined);
+    const service = new AssetService(
+      { asset: { findMany, updateMany } } as never,
+      {} as never,
+      { releaseJobIds, enqueueMany } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { faceRecognitionEnabled: true, videoRecognitionEnabled: true } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.onModuleInit();
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        type: 'VIDEO',
+        visibility: 'HIDDEN',
+        deletedAt: null,
+        livePhotoStill: { none: {} },
+      },
+      select: {
+        id: true,
+        isDeviceOnly: true,
+        previewPath: true,
+        jobStatus: { select: { metadataExtractedAt: true, thumbnailAt: true } },
+      },
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['video-id'] }, visibility: 'HIDDEN' },
+      data: { visibility: 'TIMELINE' },
+    });
+    expect(releaseJobIds).toHaveBeenCalledWith(
+      'face-detection',
+      'detect-faces',
+      ['video-id'],
+    );
+    expect(enqueueMany).toHaveBeenCalledWith(
+      'face-detection',
+      'detect-faces',
+      [{ assetId: 'video-id' }],
+      20,
+    );
+  });
+});
+
+describe('AssetService Live Photo Trash lifecycle', () => {
+  it('moves a visible still and its hidden motion clip to Trash together', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const service = new AssetService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: 'still-id', livePhotoVideoId: 'video-id' },
+          ]),
+          updateMany,
+        },
+        assetUser: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.trash('owner-id', ['still-id'])).resolves.toEqual({
+      trashed: 2,
+      removedShares: 0,
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['still-id', 'video-id'] } },
+      data: { deletedAt: expect.any(Date), status: 'TRASHED' },
+    });
+  });
 });
 
 describe('AssetService.listTrash', () => {

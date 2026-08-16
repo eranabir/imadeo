@@ -36,6 +36,28 @@ interface VideoFaceQuality {
   minSharpness: number;
 }
 
+interface VideoPetQuality extends VideoFaceQuality {}
+
+/** NanoDet occasionally labels a person as a cat or dog. A strong YuNet face
+ * centred in that box is better evidence that the object is actually human. */
+export function isHumanMisclassifiedAsPet(
+  pet: Pick<DetectedPet, 'boundingBox'>,
+  faces: Pick<DetectedFace, 'boundingBox' | 'score'>[],
+  minimumFaceScore: number,
+) {
+  return faces.some((face) => {
+    if (face.score <= minimumFaceScore) return false;
+    const centerX = (face.boundingBox.x1 + face.boundingBox.x2) / 2;
+    const centerY = (face.boundingBox.y1 + face.boundingBox.y2) / 2;
+    return (
+      centerX >= pet.boundingBox.x1 &&
+      centerX <= pet.boundingBox.x2 &&
+      centerY >= pet.boundingBox.y1 &&
+      centerY <= pet.boundingBox.y2
+    );
+  });
+}
+
 /** Rejects video-only false positives, partial faces and unusably blurry crops. */
 export function isUsableVideoFace(
   face: Pick<DetectedFace, 'boundingBox' | 'score'>,
@@ -47,7 +69,9 @@ export function isUsableVideoFace(
   const { x1, y1, x2, y2 } = face.boundingBox;
   const marginX = imageWidth * 0.01;
   const marginY = imageHeight * 0.01;
-  const minimumSize = Math.min(48, Math.min(imageWidth, imageHeight) * 0.08);
+  // Tiny background faces are both blurry and unstable between frames. The old
+  // 48px ceiling admitted them even in 4K video, producing one group per frame.
+  const minimumSize = Math.max(64, Math.min(imageWidth, imageHeight) * 0.1);
 
   return (
     face.score >= quality.minScore &&
@@ -58,6 +82,24 @@ export function isUsableVideoFace(
     y1 > marginY &&
     x2 < imageWidth - marginX &&
     y2 < imageHeight - marginY
+  );
+}
+
+/** Rejects weak, tiny or blurry animals found in moving video. */
+export function isUsableVideoPet(
+  pet: Pick<DetectedPet, 'boundingBox' | 'score'>,
+  imageWidth: number,
+  imageHeight: number,
+  sharpness: number,
+  quality: VideoPetQuality,
+) {
+  const { x1, y1, x2, y2 } = pet.boundingBox;
+  const minimumSize = Math.max(96, Math.min(imageWidth, imageHeight) * 0.12);
+  return (
+    pet.score >= quality.minScore &&
+    sharpness >= quality.minSharpness &&
+    x2 - x1 >= minimumSize &&
+    y2 - y1 >= minimumSize
   );
 }
 
@@ -97,7 +139,7 @@ export function redundantVideoDetectionIds(
     kind: SubjectKind;
     sourceTimecodeMs: number | null;
   }[],
-  minimumPersonFrames = 1,
+  minimumFrames = 1,
 ) {
   const bySubject = new Map<string, typeof detections>();
   for (const detection of detections) {
@@ -110,7 +152,7 @@ export function redundantVideoDetectionIds(
   const remove: string[] = [];
   for (const subject of bySubject.values()) {
     const distinctFrames = new Set(subject.map(({ sourceTimecodeMs }) => sourceTimecodeMs)).size;
-    if (subject[0].kind === SubjectKind.PERSON && distinctFrames < minimumPersonFrames) {
+    if (distinctFrames < minimumFrames) {
       remove.push(...subject.map(({ id }) => id));
     } else {
       // The query is score-descending, so the first crop is the clearest avatar.
@@ -129,6 +171,7 @@ export function redundantVideoDetectionIds(
 @Processor(QUEUE.FACE_DETECTION, { concurrency: 2 })
 export class FaceDetectionProcessor extends WorkerHost {
   private readonly logger = new Logger(FaceDetectionProcessor.name);
+  private readonly assetLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -144,6 +187,10 @@ export class FaceDetectionProcessor extends WorkerHost {
   }
 
   async process(job: Job<AssetJobData>) {
+    return this.withAssetLock(job.data.assetId, () => this.processAsset(job));
+  }
+
+  private async processAsset(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
 
@@ -302,9 +349,42 @@ export class FaceDetectionProcessor extends WorkerHost {
     const petResult = await this.ml.detectPets(frame.path);
     const result = await this.ml.detectFaces(frame.path);
     if (!result) throw new Error('Face detection returned no result');
-    const pets: DetectedPet[] = [...(petResult?.pets ?? [])];
+    const maximumPetCandidateFaceScore = this.config.get(
+      'machineLearning.petCandidateMaxFaceScore',
+      { infer: true },
+    );
+    const detectedPets = (petResult?.pets ?? []).filter(
+      (pet) =>
+        !isHumanMisclassifiedAsPet(pet, result.faces, maximumPetCandidateFaceScore),
+    );
+    const pets: DetectedPet[] = [];
+    for (const pet of detectedPets) {
+      if (frame.timecodeMs !== null) {
+        const sharpness = await this.media.regionSharpness(frame.path, pet.boundingBox, {
+          width: petResult?.imageWidth ?? 0,
+          height: petResult?.imageHeight ?? 0,
+        });
+        if (
+          !isUsableVideoPet(
+            pet,
+            petResult?.imageWidth ?? 0,
+            petResult?.imageHeight ?? 0,
+            sharpness,
+            {
+              minScore: this.config.get('machineLearning.videoPetMinScore', { infer: true }),
+              minSharpness: this.config.get('machineLearning.videoPetMinSharpness', {
+                infer: true,
+              }),
+            },
+          )
+        ) {
+          continue;
+        }
+      }
+      pets.push(pet);
+    }
     const isInsidePet = (face: DetectedFace) =>
-      pets.some((pet) => {
+      detectedPets.some((pet) => {
         const centerX = (face.boundingBox.x1 + face.boundingBox.x2) / 2;
         const centerY = (face.boundingBox.y1 + face.boundingBox.y2) / 2;
         return (
@@ -317,6 +397,11 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     for (const face of result.faces) {
       if (isInsidePet(face)) continue;
+      // The fallback is intentionally still-image only. Motion blur makes CLIP
+      // crop classification unstable, and repeated video frames already give
+      // the whole-animal detector several chances to find a real cat or dog.
+      if (frame.timecodeMs !== null) continue;
+      if (face.score > maximumPetCandidateFaceScore) continue;
       const recovered = await this.ml.classifyPetFaceCandidate(frame.path, face.boundingBox);
       if (recovered) pets.push({ ...recovered, boundingBox: face.boundingBox });
     }
@@ -424,6 +509,25 @@ export class FaceDetectionProcessor extends WorkerHost {
       await this.storage.removeMany(emptySubjects.map(({ thumbnailPath }) => thumbnailPath));
     }
   }
+
+  /** A duplicate queue delivery must not replace and insert detections for the
+   * same asset concurrently; that race used to create duplicate face groups. */
+  private async withAssetLock<T>(assetId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.assetLocks.get(assetId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.assetLocks.set(assetId, current);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.assetLocks.get(assetId) === current) this.assetLocks.delete(assetId);
+    }
+  }
 }
 
 /** Library-wide re-clustering, triggered from the admin surface. */
@@ -433,11 +537,20 @@ export class FaceClusterProcessor extends WorkerHost {
     private readonly clustering: FaceClusteringService,
     private readonly subjects: SubjectService,
     private readonly prisma: PrismaService,
+    private readonly jobs: JobService,
   ) {
     super();
   }
 
   async process(job: Job<{ userId: string }>) {
+    // Scan and cluster live on separate queues. Wait for every detector job to
+    // settle so a library rescan rebuilds groups once, from the complete set.
+    while (true) {
+      const queue = await this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION);
+      if (queue.active + queue.waiting + queue.delayed === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+
     const result = await this.clustering.recluster(job.data.userId);
 
     // Every surviving group needs an avatar again.

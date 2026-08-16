@@ -157,14 +157,22 @@ export const configuration = () => {
       videoMaxFrames: int(process.env.ML_VIDEO_MAX_FRAMES, 20),
       // Video frames are commonly blurred, partly off-screen, or contain face-like
       // patterns. Keep their acceptance stricter than deliberately taken photos.
-      videoFaceMinScore: num(process.env.ML_VIDEO_FACE_MIN_SCORE, 0.85),
-      videoFaceMinSharpness: num(process.env.ML_VIDEO_FACE_MIN_SHARPNESS, 0.35),
+      videoFaceMinScore: num(process.env.ML_VIDEO_FACE_MIN_SCORE, 0.9),
+      videoFaceMinSharpness: num(process.env.ML_VIDEO_FACE_MIN_SHARPNESS, 0.5),
+      videoPetMinScore: num(process.env.ML_VIDEO_PET_MIN_SCORE, 0.55),
+      videoPetMinSharpness: num(process.env.ML_VIDEO_PET_MIN_SHARPNESS, 0.5),
+      // YuNet is extremely confident on real human faces. Only its weaker,
+      // animal-shaped candidates should be allowed through the CLIP pet fallback.
+      petCandidateMaxFaceScore: num(process.env.ML_PET_CANDIDATE_MAX_FACE_SCORE, 0.88),
       // SFace keeps the same person close across photos, but a 0.50 limit
       // fragmented ordinary changes of angle and lighting into new people.
       faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),
-      /// Tighter than faces on purpose. Pets are matched on how they look rather
-      /// than on facial geometry, so a loose threshold folds every black cat in
-      /// the library into one animal.
+      // Borderline matches are accepted only when the nearest subject is
+      // unambiguous. This remains below SFace's published 0.637 distance.
+      faceClusterRelaxedDistance: num(process.env.ML_FACE_CLUSTER_RELAXED_DISTANCE, 0.6),
+      // Tighter than faces on purpose. Pets are matched on how they look rather
+      // than on facial geometry, so a loose threshold folds every black cat in
+      // the library into one animal.
       petClusterDistance: num(process.env.ML_PET_CLUSTER_DISTANCE, 0.12),
       /// A person is only surfaced in the UI once it has this many faces.
       faceMinCount: int(process.env.ML_FACE_MIN_COUNT, 3),

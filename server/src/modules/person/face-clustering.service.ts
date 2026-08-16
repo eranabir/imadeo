@@ -25,6 +25,7 @@ interface Candidate {
 @Injectable()
 export class FaceClusteringService {
   private readonly logger = new Logger(FaceClusteringService.name);
+  private readonly ownerLocks = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -37,6 +38,10 @@ export class FaceClusteringService {
 
   private get petThreshold() {
     return this.config.get('machineLearning.petClusterDistance', { infer: true });
+  }
+
+  private get relaxedFaceThreshold() {
+    return this.config.get('machineLearning.faceClusterRelaxedDistance', { infer: true });
   }
 
   /**
@@ -76,7 +81,10 @@ export class FaceClusteringService {
 
     // Appearance is a blunter signal than face geometry, so pets need to look
     // markedly more alike before they are called the same animal.
-    const threshold = kind === SubjectKind.PET ? this.petThreshold : this.threshold;
+    const threshold =
+      kind === SubjectKind.PET
+        ? this.petThreshold
+        : Math.max(this.threshold, this.relaxedFaceThreshold);
     const withinThreshold = neighbours.filter((n) => n.distance <= threshold);
     if (withinThreshold.length === 0) return null;
 
@@ -89,9 +97,17 @@ export class FaceClusteringService {
       tally.set(neighbour.personId, entry);
     }
 
-    const [personId, winner] = [...tally.entries()].sort(
+    const ranked = [...tally.entries()].sort(
       (a, b) => b[1].votes - a[1].votes || a[1].best - b[1].best,
-    )[0];
+    );
+    const [personId, winner] = ranked[0];
+
+    if (kind === SubjectKind.PERSON && winner.best > this.threshold) {
+      const runnerUp = ranked[1]?.[1];
+      const unambiguous =
+        winner.votes >= 2 || !runnerUp || runnerUp.best - winner.best >= 0.06;
+      if (!unambiguous) return null;
+    }
 
     return { personId, distance: winner.best };
   }
@@ -101,6 +117,10 @@ export class FaceClusteringService {
    * Returns the subjects this asset ended up touching.
    */
   async assignFacesForAsset(assetId: string, ownerId: string): Promise<string[]> {
+    return this.withOwnerLock(ownerId, () => this.assignFacesForAssetUnlocked(assetId, ownerId));
+  }
+
+  private async assignFacesForAssetUnlocked(assetId: string, ownerId: string): Promise<string[]> {
     const asset = await this.prisma.asset.findFirst({
       where: { id: assetId, ownerId, deletedAt: null },
       select: { isDeviceOnly: true, visibility: true },
@@ -158,6 +178,10 @@ export class FaceClusteringService {
    * against. Manually named or pinned faces are left alone.
    */
   async recluster(ownerId: string) {
+    return this.withOwnerLock(ownerId, () => this.reclusterUnlocked(ownerId));
+  }
+
+  private async reclusterUnlocked(ownerId: string) {
     this.logger.log(`Re-clustering faces for ${ownerId}`);
 
     // Detach everything that was grouped automatically, keeping human decisions.
@@ -193,7 +217,7 @@ export class FaceClusteringService {
 
     let assigned = 0;
     for (const asset of assets) {
-      assigned += (await this.assignFacesForAsset(asset.id, ownerId)).length;
+      assigned += (await this.assignFacesForAssetUnlocked(asset.id, ownerId)).length;
     }
 
     this.logger.log(`Re-clustering touched ${assets.length} assets`);
@@ -206,5 +230,24 @@ export class FaceClusteringService {
       .replace(/^\[|\]$/g, '')
       .split(',')
       .map(Number);
+  }
+
+  /** Recognition workers may finish together. Serialising one owner's writes
+   * closes the find-none/create-two race without blocking other accounts. */
+  private async withOwnerLock<T>(ownerId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.ownerLocks.get(ownerId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.ownerLocks.set(ownerId, current);
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.ownerLocks.get(ownerId) === current) this.ownerLocks.delete(ownerId);
+    }
   }
 }

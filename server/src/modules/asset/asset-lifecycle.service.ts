@@ -23,6 +23,7 @@ export class AssetLifecycleService {
       where: { id: { in: uniqueIds }, ownerId: userId, deletedAt: { not: null } },
       select: {
         id: true,
+        livePhotoVideoId: true,
         originalPath: true,
         thumbnailPath: true,
         previewPath: true,
@@ -31,7 +32,33 @@ export class AssetLifecycleService {
       },
     });
 
-    for (const asset of assets) {
+    const companionIds = assets.flatMap(({ livePhotoVideoId }) =>
+      livePhotoVideoId ? [livePhotoVideoId] : [],
+    );
+    const companions = companionIds.length
+      ? await this.prisma.asset.findMany({
+          where: {
+            id: { in: companionIds },
+            ownerId: userId,
+            visibility: 'HIDDEN',
+          },
+          select: {
+            id: true,
+            livePhotoVideoId: true,
+            originalPath: true,
+            thumbnailPath: true,
+            previewPath: true,
+            encodedVideoPath: true,
+            fileSizeInByte: true,
+          },
+        })
+      : [];
+    const allAssets = [
+      ...assets,
+      ...companions.filter((companion) => !assets.some(({ id }) => id === companion.id)),
+    ];
+
+    for (const asset of allAssets) {
       await this.storage.removeMany([
         asset.originalPath,
         asset.thumbnailPath,
@@ -40,11 +67,14 @@ export class AssetLifecycleService {
       ]);
     }
 
-    const assetIds = assets.map((asset) => asset.id);
-    const freedBytes = assets.reduce((sum, asset) => sum + asset.fileSizeInByte, 0n);
+    const assetIds = allAssets.map((asset) => asset.id);
+    const freedBytes = allAssets.reduce((sum, asset) => sum + asset.fileSizeInByte, 0n);
     await this.prisma.$transaction([
       this.prisma.asset.deleteMany({
-        where: { id: { in: assetIds }, ownerId: userId, deletedAt: { not: null } },
+        // The requested rows were selected from Trash above. Their hidden
+        // Live Photo companions are part of that same logical media item even
+        // in databases created before companions were trashed together.
+        where: { id: { in: assetIds }, ownerId: userId },
       }),
       this.prisma.user.update({
         where: { id: userId },
@@ -53,6 +83,6 @@ export class AssetLifecycleService {
     ]);
     await this.subjects.refreshThumbnailsForAssets(assetIds);
 
-    return { deleted: assets.length, freedBytes };
+    return { deleted: allAssets.length, freedBytes };
   }
 }

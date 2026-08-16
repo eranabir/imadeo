@@ -47,6 +47,7 @@ describe('web upload selection', () => {
     expect(MEDIA_EXTENSIONS).toEqual(serverExtensions);
     for (const extension of serverExtensions) {
       expect(isMediaFile(new File(['media'], `capture${extension}`))).toBe(true);
+      expect(isMediaFile(new File(['media'], `capture${extension.toUpperCase()}`))).toBe(true);
     }
   });
 

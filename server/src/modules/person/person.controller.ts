@@ -165,6 +165,11 @@ export class PeopleAndPetsController {
       20,
     );
 
+    if (ids.length > 0) {
+      await this.jobs.releaseJobIds(QUEUE.FACE_CLUSTER, JOB.CLUSTER_FACES, [userId]);
+      await this.jobs.enqueue(QUEUE.FACE_CLUSTER, JOB.CLUSTER_FACES, { userId });
+    }
+
     return { queued: ids.length, retried, forced: scanEverything };
   }
 
@@ -175,6 +180,7 @@ export class PeopleAndPetsController {
       'Useful after changing the grouping threshold. Names and manual corrections are kept.',
   })
   async recluster(@AuthedUserId() userId: string) {
+    await this.jobs.releaseJobIds(QUEUE.FACE_CLUSTER, JOB.CLUSTER_FACES, [userId]);
     await this.jobs.enqueue(QUEUE.FACE_CLUSTER, JOB.CLUSTER_FACES, { userId });
     return { queued: true };
   }

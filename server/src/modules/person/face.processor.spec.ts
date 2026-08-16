@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isHumanMisclassifiedAsPet,
   isUsableVideoFace,
+  isUsableVideoPet,
   redundantVideoDetectionIds,
   videoRecognitionTimestamps,
 } from './face.processor';
@@ -33,7 +35,7 @@ describe('isUsableVideoFace', () => {
     boundingBox: { x1: number; y1: number; x2: number; y2: number },
     score = 0.9,
   ) => ({ boundingBox, score });
-  const quality = { minScore: 0.85, minSharpness: 0.35 };
+  const quality = { minScore: 0.9, minSharpness: 0.5 };
 
   it('accepts a clear, confident face fully inside the frame', () => {
     expect(
@@ -41,7 +43,7 @@ describe('isUsableVideoFace', () => {
         face({ x1: 200, y1: 100, x2: 320, y2: 240 }),
         1280,
         720,
-        0.5,
+        0.6,
         quality,
       ),
     ).toBe(true);
@@ -53,10 +55,66 @@ describe('isUsableVideoFace', () => {
       clipped: { x1: 200, y1: 1, x2: 320, y2: 140 },
       tiny: { x1: 200, y1: 100, x2: 220, y2: 120 },
     };
-    expect(isUsableVideoFace(face(boxes.good, 0.8), 1280, 720, 0.5, quality)).toBe(false);
+    expect(isUsableVideoFace(face(boxes.good, 0.8), 1280, 720, 0.6, quality)).toBe(false);
     expect(isUsableVideoFace(face(boxes.good), 1280, 720, 0.2, quality)).toBe(false);
-    expect(isUsableVideoFace(face(boxes.clipped), 1280, 720, 0.5, quality)).toBe(false);
-    expect(isUsableVideoFace(face(boxes.tiny), 1280, 720, 0.5, quality)).toBe(false);
+    expect(isUsableVideoFace(face(boxes.clipped), 1280, 720, 0.6, quality)).toBe(false);
+    expect(isUsableVideoFace(face(boxes.tiny), 1280, 720, 0.6, quality)).toBe(false);
+  });
+
+  it('rejects background faces that are too small for a high-resolution frame', () => {
+    expect(
+      isUsableVideoFace(
+        face({ x1: 500, y1: 500, x2: 620, y2: 620 }),
+        3840,
+        2160,
+        0.7,
+        quality,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('isUsableVideoPet', () => {
+  const quality = { minScore: 0.55, minSharpness: 0.5 };
+
+  it('requires a confident, sharp animal large enough to identify', () => {
+    const clear = { boundingBox: { x1: 100, y1: 100, x2: 300, y2: 300 }, score: 0.7 };
+    expect(isUsableVideoPet(clear, 1280, 720, 0.7, quality)).toBe(true);
+    expect(isUsableVideoPet({ ...clear, score: 0.4 }, 1280, 720, 0.7, quality)).toBe(false);
+    expect(isUsableVideoPet(clear, 1280, 720, 0.2, quality)).toBe(false);
+    expect(
+      isUsableVideoPet(
+        { boundingBox: { x1: 100, y1: 100, x2: 150, y2: 150 }, score: 0.7 },
+        1280,
+        720,
+        0.7,
+        quality,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('isHumanMisclassifiedAsPet', () => {
+  const pet = { boundingBox: { x1: 100, y1: 100, x2: 400, y2: 500 } };
+
+  it('rejects a pet box containing a strong human face', () => {
+    expect(
+      isHumanMisclassifiedAsPet(
+        pet,
+        [{ boundingBox: { x1: 180, y1: 140, x2: 280, y2: 260 }, score: 0.94 }],
+        0.88,
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps an animal whose YuNet-like candidate is weak', () => {
+    expect(
+      isHumanMisclassifiedAsPet(
+        pet,
+        [{ boundingBox: { x1: 180, y1: 140, x2: 280, y2: 260 }, score: 0.77 }],
+        0.88,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -80,7 +138,7 @@ describe('redundantVideoDetectionIds', () => {
     ).toEqual(['later-a', 'later-b']);
   });
 
-  it('removes one-off people from multi-frame videos but retains pets', () => {
+  it('removes one-off people and pets from multi-frame videos', () => {
     expect(
       redundantVideoDetectionIds(
         [
@@ -89,6 +147,18 @@ describe('redundantVideoDetectionIds', () => {
         ],
         2,
       ),
-    ).toEqual(['person-once']);
+    ).toEqual(['person-once', 'pet-once']);
+  });
+
+  it('keeps only the best pet crop when it appears in multiple frames', () => {
+    expect(
+      redundantVideoDetectionIds(
+        [
+          detection('pet-best', 'pet', 1_000, SubjectKind.PET),
+          detection('pet-later', 'pet', 30_000, SubjectKind.PET),
+        ],
+        2,
+      ),
+    ).toEqual(['pet-later']);
   });
 });

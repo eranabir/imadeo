@@ -43,7 +43,7 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
    * same reason, and a group that cannot be seen cannot be named or merged into
    * the right person, which is exactly what a two-face group usually needs.
    */
-  const subjectsPath = `/people-and-pets?kind=${kind}&minFaces=1&size=300`;
+  const subjectsPath = `/people-and-pets?kind=${kind}&minFaces=1`;
   const { data, loadedPath, token, error, loading, reload } = useResource<Subject[]>(
     serverUrl,
     subjectsPath,

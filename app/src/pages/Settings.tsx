@@ -711,7 +711,7 @@ function PeopleAndPetsRecognition() {
         hint={
           status?.pendingAssets
             ? `Retry the ${status.pendingAssets.toLocaleString()} media items that did not finish.`
-            : 'Run recognition again after changing settings or correcting older results.'
+            : 'Rescan media and rebuild matching groups to clean up older results.'
         }
       >
         <Button

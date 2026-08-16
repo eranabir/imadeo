@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  type OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -53,7 +54,7 @@ export interface UploadedFile {
 }
 
 @Injectable()
-export class AssetService {
+export class AssetService implements OnModuleInit {
   private readonly logger = new Logger(AssetService.name);
   private readonly uploadLocks = new Map<string, Promise<void>>();
 
@@ -69,6 +70,82 @@ export class AssetService {
     private readonly config: ConfigService<AppConfig, true>,
     private readonly lifecycle: AssetLifecycleService,
   ) {}
+
+  /**
+   * A Live Photo's motion clip is hidden while its still exists. Older builds
+   * did not include that clip when the still was permanently deleted, leaving
+   * a valid MOV on disk that no library page or processing queue could see.
+   * Recover those clips as ordinary videos and resume their interrupted stage.
+   */
+  async onModuleInit() {
+    const orphans = await this.prisma.asset.findMany({
+      where: {
+        type: AssetType.VIDEO,
+        visibility: AssetVisibility.HIDDEN,
+        deletedAt: null,
+        livePhotoStill: { none: {} },
+      },
+      select: {
+        id: true,
+        isDeviceOnly: true,
+        previewPath: true,
+        jobStatus: { select: { metadataExtractedAt: true, thumbnailAt: true } },
+      },
+    });
+    if (orphans.length === 0) return;
+
+    const ids = orphans.map(({ id }) => id);
+    await this.prisma.asset.updateMany({
+      where: { id: { in: ids }, visibility: AssetVisibility.HIDDEN },
+      data: { visibility: AssetVisibility.TIMELINE },
+    });
+
+    const metadata = orphans.filter(({ jobStatus }) => !jobStatus?.metadataExtractedAt);
+    const thumbnails = orphans.filter(
+      ({ jobStatus }) => jobStatus?.metadataExtractedAt && !jobStatus.thumbnailAt,
+    );
+    const recognition = orphans.filter(
+      ({ isDeviceOnly, previewPath, jobStatus }) =>
+        !isDeviceOnly &&
+        Boolean(previewPath) &&
+        Boolean(jobStatus?.metadataExtractedAt) &&
+        Boolean(jobStatus?.thumbnailAt),
+    );
+
+    await this.jobs.releaseJobIds(
+      QUEUE.METADATA,
+      JOB.EXTRACT_METADATA,
+      metadata.map(({ id }) => id),
+    );
+    await this.jobs.enqueueMany(
+      QUEUE.METADATA,
+      JOB.EXTRACT_METADATA,
+      metadata.map(({ id }) => ({ assetId: id })),
+    );
+    await this.jobs.releaseJobIds(
+      QUEUE.THUMBNAIL,
+      JOB.GENERATE_THUMBNAILS,
+      thumbnails.map(({ id }) => id),
+    );
+    await this.jobs.enqueueMany(
+      QUEUE.THUMBNAIL,
+      JOB.GENERATE_THUMBNAILS,
+      thumbnails.map(({ id }) => ({ assetId: id })),
+    );
+
+    if (this.ml.faceRecognitionEnabled && this.ml.videoRecognitionEnabled) {
+      const recognitionIds = recognition.map(({ id }) => id);
+      await this.jobs.releaseJobIds(QUEUE.FACE_DETECTION, JOB.DETECT_FACES, recognitionIds);
+      await this.jobs.enqueueMany(
+        QUEUE.FACE_DETECTION,
+        JOB.DETECT_FACES,
+        recognitionIds.map((assetId) => ({ assetId })),
+        20,
+      );
+    }
+
+    this.logger.log(`Recovered ${orphans.length} orphaned Live Photo video(s)`);
+  }
 
   // -- upload ---------------------------------------------------------------
 
@@ -1143,9 +1220,13 @@ export class AssetService {
     const uniqueIds = [...new Set(ids)];
     const assets = await this.prisma.asset.findMany({
       where: { id: { in: uniqueIds }, ownerId: userId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, livePhotoVideoId: true },
     });
-    const affectedIds = assets.map((asset) => asset.id);
+    const affectedIds = [
+      ...new Set(
+        assets.flatMap((asset) => [asset.id, ...(asset.livePhotoVideoId ? [asset.livePhotoVideoId] : [])]),
+      ),
+    ];
     const [trashed, removedShares] = await this.prisma.$transaction([
       this.prisma.asset.updateMany({
         where: { id: { in: affectedIds } },
@@ -1170,6 +1251,7 @@ export class AssetService {
       where: { id: { in: ids }, ownerId: userId, deletedAt: { not: null } },
       select: {
         id: true,
+        livePhotoVideoId: true,
         folderId: true,
         folder: { select: { deletedAt: true } },
       },
@@ -1187,7 +1269,15 @@ export class AssetService {
       if ('restoredAssetIds' in restored) restoredFromFolders.push(...restored.restoredAssetIds);
     }
 
-    const affectedIds = [...new Set([...assets.map((asset) => asset.id), ...restoredFromFolders])];
+    const affectedIds = [
+      ...new Set([
+        ...assets.flatMap((asset) => [
+          asset.id,
+          ...(asset.livePhotoVideoId ? [asset.livePhotoVideoId] : []),
+        ]),
+        ...restoredFromFolders,
+      ]),
+    ];
     await this.prisma.asset.updateMany({
       where: { id: { in: affectedIds }, deletedAt: { not: null } },
       data: { deletedAt: null, status: 'ACTIVE' },
@@ -1228,6 +1318,7 @@ export class AssetService {
       LEFT JOIN folders f ON f.id = a."folderId"
       WHERE a."ownerId" = ${userId}::uuid
         AND a."deletedAt" IS NOT NULL
+        AND a.visibility <> 'HIDDEN'
         AND (a."folderId" IS NULL OR f."deletedAt" IS NULL)
         AND NOT EXISTS (
           SELECT 1

@@ -74,7 +74,6 @@ export class SubjectService {
       -- A named person is always worth showing, however few photos they have.
       HAVING COUNT(f.id) >= ${minimum} OR p.name <> ''
       ORDER BY p."isFavorite" DESC, (p.name <> '') DESC, COUNT(f.id) DESC
-      LIMIT ${Math.min(500, query.size ?? 200)}
     `;
 
     return rows.map(({ faceCount, ...person }) => ({
