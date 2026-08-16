@@ -39,6 +39,7 @@ export class MetadataProcessor extends WorkerHost {
 
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     const tags = await this.metadata.extract(asset.originalPath);
 
@@ -86,6 +87,11 @@ export class MetadataProcessor extends WorkerHost {
       tags.latitude !== null && tags.longitude !== null
         ? await this.geocoding.lookup(tags.latitude, tags.longitude)
         : null;
+
+    // Metadata extraction and geocoding can take long enough for the user to
+    // trash the asset while this job is active. Do not write or start the next
+    // stage after that deletion event.
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     await this.prisma.$transaction([
       this.prisma.assetExif.upsert({
@@ -174,6 +180,7 @@ export class MetadataProcessor extends WorkerHost {
    * the three fields it is there to fill.
    */
   private async reverseGeocode(assetId: string) {
+    if (!(await this.assetStillActive(assetId))) return { skipped: 'asset deleted' };
     const exif = await this.prisma.assetExif.findUnique({
       where: { assetId },
       select: { latitude: true, longitude: true, city: true },
@@ -193,6 +200,15 @@ export class MetadataProcessor extends WorkerHost {
     });
 
     return { city: place.city, country: place.country };
+  }
+
+  private async assetStillActive(assetId: string) {
+    return Boolean(
+      await this.prisma.asset.findFirst({
+        where: { id: assetId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
   }
 
   /**

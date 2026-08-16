@@ -27,6 +27,7 @@ import {
   BulkUpdateAssetsDto,
   CheckDuplicateDto,
   CheckUploadReceiptsDto,
+  CompleteUploadBatchDto,
   DeleteAssetsDto,
   ShareAssetsDto,
   StackAssetsDto,
@@ -60,6 +61,8 @@ export class AssetController {
       properties: {
         assetData: { type: 'string', format: 'binary' },
         uploadId: { type: 'string' },
+        uploadBatchId: { type: 'string' },
+        deferProcessing: { type: 'boolean' },
         deviceAssetId: { type: 'string' },
         deviceId: { type: 'string' },
         deviceName: { type: 'string', example: 'Eran’s iPhone' },
@@ -90,7 +93,20 @@ export class AssetController {
     @AuthedUserId() userId: string,
     @Body() dto: CheckUploadReceiptsDto,
   ) {
-    return this.assetService.checkUploadReceipts(userId, dto.uploadIds);
+    return this.assetService.checkUploadReceipts(userId, dto.uploadIds, {
+      batchId: dto.uploadBatchId,
+      deferProcessing: dto.deferProcessing,
+    });
+  }
+
+  @Post('upload-complete')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Start backend processing after a web upload batch is stored' })
+  completeUploadBatch(
+    @AuthedUserId() userId: string,
+    @Body() dto: CompleteUploadBatchDto,
+  ) {
+    return this.assetService.completeUploadBatch(userId, dto.batchId, dto.assetIds);
   }
 
   @Post('check-duplicates')

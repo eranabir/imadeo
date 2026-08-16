@@ -34,6 +34,7 @@ export class ThumbnailProcessor extends WorkerHost {
   async process(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     // The file the image pipeline will actually read. For a video or a RAW this
     // is an intermediate JPEG rather than the original.
@@ -89,6 +90,11 @@ export class ThumbnailProcessor extends WorkerHost {
       // sharp cannot read.
       const perceptualHash = await this.media.perceptualHash(source).catch(() => null);
 
+      if (!(await this.assetStillActive(asset.id))) {
+        await this.storage.removeMany([thumbnailPath, previewPath]);
+        return { skipped: 'asset deleted' };
+      }
+
       await this.prisma.$transaction([
         this.prisma.asset.update({
           where: { id: asset.id },
@@ -127,5 +133,14 @@ export class ThumbnailProcessor extends WorkerHost {
     } finally {
       if (temporary) await this.storage.remove(temporary);
     }
+  }
+
+  private async assetStillActive(assetId: string) {
+    return Boolean(
+      await this.prisma.asset.findFirst({
+        where: { id: assetId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
   }
 }

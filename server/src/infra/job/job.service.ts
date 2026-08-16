@@ -132,6 +132,48 @@ export class JobService {
     return removed;
   }
 
+  /**
+   * Removes every queued processing stage for assets that entered Trash.
+   *
+   * BullMQ cannot remove a job while a worker owns its lock, so active jobs are
+   * left for the processor's deleted-asset guard. Waiting, delayed, failed and
+   * completed jobs are removed so they cannot run later or reserve their job id
+   * when the asset is restored.
+   */
+  async cancelAssetProcessing(assetIds: string[]) {
+    const stages: [QueueName, string][] = [
+      [QUEUE.METADATA, JOB.EXTRACT_METADATA],
+      [QUEUE.METADATA, JOB.REVERSE_GEOCODE],
+      [QUEUE.THUMBNAIL, JOB.GENERATE_THUMBNAILS],
+      [QUEUE.VIDEO, JOB.TRANSCODE_VIDEO],
+      [QUEUE.SMART_SEARCH, JOB.ENCODE_CLIP],
+      [QUEUE.FACE_DETECTION, JOB.DETECT_FACES],
+      [QUEUE.DUPLICATE, JOB.DETECT_DUPLICATES],
+    ];
+    let removed = 0;
+
+    await Promise.all(
+      stages.flatMap(([queue, name]) =>
+        assetIds.map(async (assetId) => {
+          const job = await this.queues[queue].getJob(JobService.jobIdFor(name, assetId));
+          if (!job || (await job.getState()) === 'active') return;
+
+          try {
+            await job.remove();
+            removed++;
+          } catch (error) {
+            // The worker may have acquired the job between getState and remove.
+            this.logger.debug(
+              `Asset job ${job.id ?? `${name}/${assetId}`} became active before cancellation: ${String(error)}`,
+            );
+          }
+        }),
+      ),
+    );
+
+    return removed;
+  }
+
   async enqueueMany(queue: QueueName, name: string, items: AssetJobData[], priority?: number) {
     if (items.length === 0) return;
     await this.queues[queue].addBulk(

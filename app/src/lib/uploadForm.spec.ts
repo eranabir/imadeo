@@ -18,10 +18,14 @@ describe('buildUploadForm', () => {
         label: 'Folder · Existing',
         path: '/browse/folders/existing-folder-id',
       },
+      'web-batch-id',
     );
 
     expect(form.get('folderId')).toBe('existing-folder-id');
     expect(form.get('relativePath')).toBe('Trip/Day 1/photo.jpg');
     expect(form.get('uploadId')).toBe('stable-upload-receipt');
+    expect(form.get('uploadBatchId')).toBe('web-batch-id');
+    expect(form.get('deferProcessing')).toBe('true');
+    expect(form.has('allowDuplicate')).toBe(false);
   });
 });

@@ -27,10 +27,12 @@ export class VideoProcessor extends WorkerHost {
   async process(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset || asset.type !== 'VIDEO') return { skipped: 'not a video' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     const probe = await this.media.probeVideo(asset.originalPath);
 
     if (!this.media.needsTranscode(probe)) {
+      if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
       // The original already plays in a browser; a second copy would waste space.
       await this.prisma.assetJobStatus.upsert({
         where: { assetId: asset.id },
@@ -50,6 +52,11 @@ export class VideoProcessor extends WorkerHost {
       throw error;
     }
 
+    if (!(await this.assetStillActive(asset.id))) {
+      await this.storage.remove(destination);
+      return { skipped: 'asset deleted' };
+    }
+
     await this.prisma.$transaction([
       this.prisma.asset.update({
         where: { id: asset.id },
@@ -63,5 +70,14 @@ export class VideoProcessor extends WorkerHost {
     ]);
 
     return { destination, size: await this.storage.size(destination) };
+  }
+
+  private async assetStillActive(assetId: string) {
+    return Boolean(
+      await this.prisma.asset.findFirst({
+        where: { id: assetId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
   }
 }

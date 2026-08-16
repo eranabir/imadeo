@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmod, mkdtemp, readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -113,20 +113,16 @@ async function buildCorpus(): Promise<CorpusFile[]> {
 async function uploadFile(
   file: CorpusFile,
   token: string,
-  allowDuplicate = false,
-  uploadId?: string,
-  folderId?: string,
-  albumId?: string,
+  options: { uploadId?: string; folderId?: string; albumId?: string } = {},
 ) {
   const form = new FormData();
   form.append('assetData', new File([file.bytes], file.name, { type: file.mime }));
   form.append('fileCreatedAt', fixedDate);
   form.append('fileModifiedAt', fixedDate);
   form.append('relativePath', file.relativePath);
-  if (allowDuplicate) form.append('allowDuplicate', 'true');
-  if (uploadId) form.append('uploadId', uploadId);
-  if (folderId) form.append('folderId', folderId);
-  if (albumId) form.append('albumId', albumId);
+  if (options.uploadId) form.append('uploadId', options.uploadId);
+  if (options.folderId) form.append('folderId', options.folderId);
+  if (options.albumId) form.append('albumId', options.albumId);
 
   return jsonRequest<{
     id: string;
@@ -181,7 +177,7 @@ async function main() {
 
   const uploaded: Uploaded[] = [];
   await runQueue(corpus, async (file) => {
-    const result = await uploadFile(file, session.accessToken);
+    const result = await uploadFile(file, session.accessToken, { uploadId: randomUUID() });
     if (result.status !== 'created') throw new Error(`${file.relativePath}: ${result.status}`);
     uploaded.push({ ...file, id: result.id });
   });
@@ -247,19 +243,18 @@ async function main() {
     hash: sha1(raceBytes),
   };
   const raceResults = await Promise.all(
-    Array.from({ length: 4 }, () => uploadFile(raceBase, session.accessToken)),
+    Array.from({ length: 4 }, () =>
+      uploadFile(raceBase, session.accessToken, { uploadId: randomUUID() }),
+    ),
   );
   const raceCreated = raceResults.filter(({ status }) => status === 'created');
-  const raceDuplicates = raceResults.filter(({ status }) => status === 'duplicate');
-  if (raceCreated.length !== 1 || raceDuplicates.length !== 3) {
-    throw new Error(
-      `Concurrent duplicate upload created ${raceCreated.length} assets and rejected ${raceDuplicates.length}`,
-    );
+  if (raceCreated.length !== 4) {
+    throw new Error(`Concurrent duplicate upload preserved ${raceCreated.length}/4 selected copies`);
   }
   const raceDownload = await fetch(`${baseUrl}/assets/${raceCreated[0].id}/original`, { headers: auth });
   const raceDownloaded = Buffer.from(await raceDownload.arrayBuffer());
   if (!raceDownload.ok || sha1(raceDownloaded) !== raceBase.hash) {
-    throw new Error('Concurrent duplicate winner does not match the source bytes');
+    throw new Error('Concurrent duplicate copy does not match the source bytes');
   }
 
   const locationCopies = await Promise.all(
@@ -267,6 +262,7 @@ async function main() {
       uploadFile(
         { ...raceBase, relativePath: `upload-integrity/copy-${index}/race.png` },
         session.accessToken,
+        { uploadId: randomUUID() },
       ),
     ),
   );
@@ -274,10 +270,11 @@ async function main() {
     throw new Error(`Same bytes in separate folders were not all preserved: ${locationCopies.map(({ status }) => status)}`);
   }
 
-  const duplicate = await uploadFile(corpus[0], session.accessToken);
-  if (duplicate.status !== 'duplicate') throw new Error(`Duplicate returned ${duplicate.status}`);
-  const allowed = await uploadFile(corpus[0], session.accessToken, true);
-  if (allowed.status !== 'created') throw new Error(`Allowed duplicate returned ${allowed.status}`);
+  const copyOne = await uploadFile(corpus[0], session.accessToken, { uploadId: randomUUID() });
+  const copyTwo = await uploadFile(corpus[0], session.accessToken, { uploadId: randomUUID() });
+  if (copyOne.status !== 'created' || copyTwo.status !== 'created') {
+    throw new Error(`Selected copies returned ${copyOne.status} and ${copyTwo.status}`);
+  }
 
   const receiptBytes = Buffer.concat([corpus[1].bytes, Buffer.from('lost-success-response')]);
   const receiptFile: CorpusFile = {
@@ -288,7 +285,7 @@ async function main() {
     hash: sha1(receiptBytes),
   };
   const uploadId = 'integrity-lost-response-receipt';
-  const receiptCreated = await uploadFile(receiptFile, session.accessToken, false, uploadId);
+  const receiptCreated = await uploadFile(receiptFile, session.accessToken, { uploadId });
   if (receiptCreated.status !== 'created') {
     throw new Error(`Receipt upload returned ${receiptCreated.status}`);
   }
@@ -302,7 +299,7 @@ async function main() {
   if (!receiptStatus.exists || receiptStatus.assetId !== receiptCreated.id) {
     throw new Error('Committed upload could not be confirmed after its response was lost');
   }
-  const receiptReplay = await uploadFile(receiptFile, session.accessToken, false, uploadId);
+  const receiptReplay = await uploadFile(receiptFile, session.accessToken, { uploadId });
   if (receiptReplay.status !== 'confirmed' || receiptReplay.id !== receiptCreated.id) {
     throw new Error('Replayed upload receipt created another asset');
   }
@@ -326,9 +323,13 @@ async function main() {
   const storageYear = dirname(uploaded[0].storedPath);
   const originalMode = (await stat(storageYear)).mode & 0o777;
   let forcedFailure = false;
+  const retryUploadId = randomUUID();
   await chmod(storageYear, 0o500);
   try {
-    await uploadFile(retryFile, session.accessToken, false, undefined, retryRoot.id);
+    await uploadFile(retryFile, session.accessToken, {
+      uploadId: retryUploadId,
+      folderId: retryRoot.id,
+    });
   } catch {
     forcedFailure = true;
   } finally {
@@ -347,9 +348,7 @@ async function main() {
   const retried = await uploadFile(
     retryFile,
     session.accessToken,
-    false,
-    undefined,
-    retryRoot.id,
+    { uploadId: retryUploadId, folderId: retryRoot.id },
   );
   if (retried.status !== 'created') throw new Error(`Retry returned ${retried.status}`);
   const treeAfterRetry = await jsonRequest<
@@ -380,12 +379,9 @@ async function main() {
     const result = await uploadFile(
       file,
       session.accessToken,
-      false,
-      undefined,
-      undefined,
-      targetAlbum.id,
+      { uploadId: randomUUID(), albumId: targetAlbum.id },
     );
-    if (result.status !== 'duplicate') {
+    if (result.status !== 'created') {
       throw new Error(`${file.relativePath}: album re-upload returned ${result.status}`);
     }
     albumResults.push(result.id);
@@ -412,10 +408,7 @@ async function main() {
   const receiptAlbumReplay = await uploadFile(
     receiptFile,
     session.accessToken,
-    false,
-    uploadId,
-    undefined,
-    targetAlbum.id,
+    { uploadId, albumId: targetAlbum.id },
   );
   if (receiptAlbumReplay.status !== 'confirmed') {
     throw new Error(`Album receipt replay returned ${receiptAlbumReplay.status}`);
@@ -441,8 +434,8 @@ async function main() {
   const afterDuplicates = await jsonRequest<{ pagination: { total: number } }>('/assets?size=1', {
     headers: auth,
   });
-  if (afterDuplicates.pagination.total !== 406) {
-    throw new Error(`Upload handling left ${afterDuplicates.pagination.total} assets, expected 406`);
+  if (afterDuplicates.pagination.total !== 709) {
+    throw new Error(`Upload handling left ${afterDuplicates.pagination.total} assets, expected 709`);
   }
 
   const video = uploaded.find(({ mime }) => mime === 'video/mp4');
@@ -457,16 +450,20 @@ async function main() {
   if (mediaRoot) {
     const library = join(mediaRoot, 'users', session.user.id, 'library');
     const diskFiles = await filesBelow(library);
-    if (diskFiles.length !== 406 || new Set(diskFiles).size !== 406) {
-      throw new Error(`Storage contains ${diskFiles.length} originals, expected 406 unique paths`);
+    if (diskFiles.length !== 709 || new Set(diskFiles).size !== 709) {
+      throw new Error(`Storage contains ${diskFiles.length} originals, expected 709 unique paths`);
     }
     const diskBytes = await Promise.all(diskFiles.map(async (path) => (await stat(path)).size));
+    const albumCopyBytes = corpus
+      .slice(0, 299)
+      .reduce((total, file) => total + file.bytes.length, 0);
     const expectedDiskBytes =
       sourceBytes +
-      (raceBytes.length * 5) +
-      corpus[0].bytes.length +
+      (raceBytes.length * 8) +
+      (corpus[0].bytes.length * 2) +
       receiptBytes.length +
-      retryBytes.length;
+      retryBytes.length +
+      albumCopyBytes;
     if (diskBytes.reduce((total, size) => total + size, 0) !== expectedDiskBytes) {
       throw new Error('Storage byte total does not match the accepted uploads');
     }
@@ -482,11 +479,10 @@ async function main() {
     smallestFileBytes: Math.min(...corpus.map(({ bytes }) => bytes.length)),
     largestFileBytes: Math.max(...corpus.map(({ bytes }) => bytes.length)),
     exactHashMatches: uploaded.length,
-    concurrentDuplicateCreated: raceCreated.length,
-    concurrentDuplicatesRejected: raceDuplicates.length,
+    concurrentCopiesCreated: raceCreated.length,
+    concurrentCopiesRejected: 0,
     sameBytesInDifferentFoldersPreserved: locationCopies.length,
-    duplicateRejected: true,
-    deliberateDuplicateCreated: true,
+    selectedDuplicateCopiesCreated: 2,
     lostResponseConfirmedWithoutDuplicate: true,
     forcedFailureRetried: true,
     failedUploadRetryReusedFolder: true,

@@ -26,11 +26,18 @@ export class DuplicateProcessor extends WorkerHost {
   async process(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({
       where: { id: job.data.assetId },
-      select: { ownerId: true },
+      select: { ownerId: true, deletedAt: true },
     });
     if (!asset) return { skipped: 'asset gone' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     const result = await this.duplicates.detectForOwner(asset.ownerId);
+
+    const active = await this.prisma.asset.findFirst({
+      where: { id: job.data.assetId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!active) return { skipped: 'asset deleted' };
 
     await this.prisma.assetJobStatus.upsert({
       where: { assetId: job.data.assetId },

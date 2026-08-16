@@ -33,6 +33,18 @@ export class UploadAssetDto {
   @MaxLength(100)
   uploadId?: string;
 
+  @ApiPropertyOptional({ description: 'Groups web uploads so processing can start after the batch' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  uploadBatchId?: string;
+
+  @ApiPropertyOptional({ description: 'Store this file now and process it when its batch completes' })
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  deferProcessing?: boolean;
+
   @ApiPropertyOptional({ description: 'Stable id from the client library, for backup de-duplication' })
   @IsOptional()
   @IsString()
@@ -91,15 +103,6 @@ export class UploadAssetDto {
   @IsBoolean()
   isLocked?: boolean;
 
-  @ApiPropertyOptional({
-    description:
-      'Keep a second copy even when these exact bytes are already in the library. Off by default, so repeating a backup still dedupes.',
-  })
-  @IsOptional()
-  @Transform(toBool)
-  @IsBoolean()
-  allowDuplicate?: boolean;
-
   @IsOptional()
   @IsString()
   duration?: string;
@@ -116,6 +119,27 @@ export class CheckUploadReceiptsDto {
   @IsString({ each: true })
   @MaxLength(100, { each: true })
   uploadIds!: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  uploadBatchId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  deferProcessing?: boolean;
+}
+
+export class CompleteUploadBatchDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  batchId!: string;
+
+  @IsArray()
+  @ArrayMaxSize(20_000)
+  @IsUUID('4', { each: true })
+  assetIds!: string[];
 }
 
 export class UpdateAssetDto {

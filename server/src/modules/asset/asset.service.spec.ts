@@ -15,19 +15,26 @@ function createService(existing: Record<string, unknown>) {
   const recordDeviceAsset = vi.fn().mockResolvedValue(undefined);
   const service = new AssetService(
     {
-      asset: { findFirst: vi.fn().mockResolvedValue(existing), update: assetUpdate },
+      asset: {
+        findFirst: vi.fn().mockResolvedValue(existing),
+        findMany: vi.fn().mockResolvedValue([]),
+        update: assetUpdate,
+      },
       album: { findFirst: albumFindFirst, update: albumUpdate },
       albumAsset: { createMany: albumAssetCreateMany },
       $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     } as never,
     { remove: storageRemove } as never,
-    {} as never,
+    {
+      releaseJobIds: vi.fn().mockResolvedValue(0),
+      enqueueMany: vi.fn().mockResolvedValue(undefined),
+    } as never,
     { ensurePath, getById: vi.fn() } as never,
     { register: registerDevice, recordAsset: recordDeviceAsset } as never,
     { refreshThumbnailsForAssets: refreshThumbnails } as never,
     { assertQuota } as never,
     {} as never,
-    {} as never,
+    { get: vi.fn().mockReturnValue(false) } as never,
     {} as never,
   );
   Object.defineProperty(service, 'hashFile', {
@@ -68,6 +75,22 @@ describe('AssetService duplicate upload destinations', () => {
     ).resolves.toEqual({ id: 'asset-id', status: 'confirmed' });
     expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
     expect(test.registerDevice).not.toHaveBeenCalled();
+    expect(test.assertQuota).not.toHaveBeenCalled();
+  });
+
+  it('uses the receipt to make a deliberate duplicate retry idempotent', async () => {
+    const test = createService({
+      id: 'asset-id',
+      deletedAt: null,
+      folder: null,
+    });
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, {
+        uploadId: 'duplicate-request-id',
+      }),
+    ).resolves.toEqual({ id: 'asset-id', status: 'confirmed' });
+    expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
     expect(test.assertQuota).not.toHaveBeenCalled();
   });
 
@@ -237,6 +260,140 @@ describe('AssetService duplicate upload destinations', () => {
   });
 });
 
+describe('AssetService deferred upload processing', () => {
+  it('stores each new web receipt as a copy without starting backend processing', async () => {
+    const assetId = '2d32251a-2616-4a23-ac3a-e0f5026a9019';
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const findMany = vi.fn().mockResolvedValue([{ id: assetId }]);
+    const onAssetUploaded = vi.fn();
+    const releaseJobIds = vi.fn().mockResolvedValue(0);
+    const enqueueMany = vi.fn().mockResolvedValue(undefined);
+    const service = new AssetService(
+      {
+        asset: {
+          findFirst,
+          findMany,
+          create: vi.fn().mockResolvedValue({ id: assetId, originalFileName: 'photo.jpg' }),
+          update: vi.fn().mockResolvedValue({ id: assetId }),
+          delete: vi.fn(),
+        },
+        user: { update: vi.fn().mockResolvedValue({}) },
+      } as never,
+      {
+        buildOriginalPath: vi.fn().mockReturnValue('/data/photo.jpg'),
+        move: vi.fn().mockResolvedValue('/data/photo.jpg'),
+        remove: vi.fn(),
+      } as never,
+      { onAssetUploaded, releaseJobIds, enqueueMany } as never,
+      { getById: vi.fn() } as never,
+      { register: vi.fn().mockResolvedValue(null) } as never,
+      {} as never,
+      { assertQuota: vi.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    Object.defineProperty(service, 'hashFile', {
+      value: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    });
+
+    await expect(
+      service.createFromUpload(
+        'owner-id',
+        { path: '/tmp/photo.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5 },
+        { uploadId: 'upload-id', uploadBatchId: 'batch-id', deferProcessing: true },
+      ),
+    ).resolves.toEqual({ id: assetId, status: 'created' });
+    expect(findFirst).toHaveBeenCalledOnce();
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { ownerId: 'owner-id', uploadId: 'upload-id' },
+      select: { id: true },
+    });
+    expect(onAssetUploaded).not.toHaveBeenCalled();
+    expect(enqueueMany).not.toHaveBeenCalled();
+
+    await service.completeUploadBatch('owner-id', 'batch-id', [assetId]);
+    expect(enqueueMany).toHaveBeenCalledWith(
+      'metadata',
+      'extract-metadata',
+      [{ assetId }],
+    );
+  });
+
+  it('queues stored files only after the web batch completes', async () => {
+    const assets = [
+      { id: 'asset-a', uploadId: 'upload-a', deletedAt: null, folder: null, jobStatus: null },
+      { id: 'asset-b', uploadId: 'upload-b', deletedAt: null, folder: null, jobStatus: null },
+    ];
+    const findMany = vi.fn().mockResolvedValue(assets);
+    const releaseJobIds = vi.fn().mockResolvedValue(0);
+    const enqueueMany = vi.fn().mockResolvedValue(undefined);
+    const service = new AssetService(
+      { asset: { findMany } } as never,
+      {} as never,
+      { releaseJobIds, enqueueMany } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.checkUploadReceipts('owner-id', ['upload-a', 'upload-b'], {
+      batchId: 'batch-id',
+      deferProcessing: true,
+    });
+    expect(enqueueMany).not.toHaveBeenCalled();
+
+    await expect(
+      service.completeUploadBatch('owner-id', 'batch-id', ['asset-a', 'asset-b']),
+    ).resolves.toEqual({ stored: 2, queued: 2 });
+    expect(releaseJobIds).toHaveBeenCalledWith(
+      'metadata',
+      'extract-metadata',
+      ['asset-a', 'asset-b'],
+    );
+    expect(enqueueMany).toHaveBeenCalledWith(
+      'metadata',
+      'extract-metadata',
+      [{ assetId: 'asset-a' }, { assetId: 'asset-b' }],
+    );
+  });
+
+  it('never queues another account assets supplied to batch completion', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const enqueueMany = vi.fn();
+    const service = new AssetService(
+      { asset: { findMany } } as never,
+      {} as never,
+      { releaseJobIds: vi.fn(), enqueueMany } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.completeUploadBatch('owner-id', 'batch-id', ['other-account-asset']),
+    ).resolves.toEqual({ stored: 1, queued: 0 });
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['other-account-asset'] },
+        ownerId: 'owner-id',
+        deletedAt: null,
+        OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
+      },
+      select: { id: true },
+    });
+    expect(enqueueMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('AssetService Live Photo recovery', () => {
   it('reveals and resumes processing orphaned motion clips on startup', async () => {
     const findMany = vi.fn().mockResolvedValue([
@@ -300,6 +457,7 @@ describe('AssetService Live Photo recovery', () => {
 describe('AssetService Live Photo Trash lifecycle', () => {
   it('moves a visible still and its hidden motion clip to Trash together', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const cancelAssetProcessing = vi.fn().mockResolvedValue(0);
     const service = new AssetService(
       {
         asset: {
@@ -312,7 +470,7 @@ describe('AssetService Live Photo Trash lifecycle', () => {
         $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
       } as never,
       {} as never,
-      {} as never,
+      { cancelAssetProcessing } as never,
       {} as never,
       {} as never,
       { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
@@ -330,6 +488,51 @@ describe('AssetService Live Photo Trash lifecycle', () => {
       where: { id: { in: ['still-id', 'video-id'] } },
       data: { deletedAt: expect.any(Date), status: 'TRASHED' },
     });
+    expect(cancelAssetProcessing).toHaveBeenCalledWith(['still-id', 'video-id']);
+  });
+
+  it('resumes the first incomplete processing stage when an asset is restored', async () => {
+    const releaseJobIds = vi.fn().mockResolvedValue(0);
+    const enqueueMany = vi.fn().mockResolvedValue(undefined);
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { id: 'asset-id', livePhotoVideoId: null, folderId: null, folder: null },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'asset-id',
+          type: 'IMAGE',
+          visibility: 'TIMELINE',
+          jobStatus: { metadataExtractedAt: new Date(), thumbnailAt: null },
+        },
+      ]);
+    const service = new AssetService(
+      {
+        asset: { findMany, updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      } as never,
+      {} as never,
+      { releaseJobIds, enqueueMany } as never,
+      {} as never,
+      {} as never,
+      { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
+      {} as never,
+      { faceRecognitionEnabled: false } as never,
+      { get: vi.fn().mockReturnValue(false) } as never,
+      {} as never,
+    );
+
+    await expect(service.restore('owner-id', ['asset-id'])).resolves.toEqual({ restored: 1 });
+    expect(releaseJobIds).toHaveBeenCalledWith(
+      'thumbnail',
+      'generate-thumbnails',
+      ['asset-id'],
+    );
+    expect(enqueueMany).toHaveBeenCalledWith(
+      'thumbnail',
+      'generate-thumbnails',
+      [{ assetId: 'asset-id' }],
+    );
   });
 });
 

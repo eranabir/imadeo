@@ -35,7 +35,7 @@ import {
   type UploadStatus,
 } from '../lib/uploadHistory';
 import { useAuth } from '../store/auth';
-import { Button, Checkbox, Tooltip } from '../ui';
+import { Button, Tooltip } from '../ui';
 
 interface Progress {
   total: number;
@@ -70,9 +70,13 @@ interface UploadReceiptStatus {
   exists: boolean;
 }
 
-async function checkUploadReceipts(uploadIds: string[]) {
+async function checkUploadReceipts(uploadIds: string[], uploadBatchId: string) {
   if (uploadIds.length === 0) return [];
-  const { data } = await api.post<UploadReceiptStatus[]>('/assets/upload-status', { uploadIds });
+  const { data } = await api.post<UploadReceiptStatus[]>('/assets/upload-status', {
+    uploadIds,
+    uploadBatchId,
+    deferProcessing: true,
+  });
   return data;
 }
 
@@ -138,13 +142,6 @@ export function UploadButton({
   const [dropError, setDropError] = useState<string | null>(null);
   const externalDragDepth = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  /**
-   * Opt-in, because the common case is repeating a backup and expecting it not
-   * to double everything. Ticking this is how you say "yes, I mean it".
-   */
-  const [allowDuplicate, setAllowDuplicate] = useState(false);
-  /** Files the server already had, kept so they can be sent again on request. */
-  const [skippedFiles, setSkippedFiles] = useState<UploadCandidate[]>([]);
   /** Failed candidates are retained so Retry sends only the files that need it. */
   const [failedFiles, setFailedFiles] = useState<UploadCandidate[]>([]);
   const [retryDestination, setRetryDestination] = useState<UploadDestination | null>(null);
@@ -171,12 +168,13 @@ export function UploadButton({
 
   const uploadAll = async (
     fileList: FileList | File[] | UploadCandidate[] | null,
-    forceDuplicate = false,
     destinationOverride?: UploadDestination,
     source: UploadSource = 'files',
     confirmBeforeRetry = false,
   ) => {
     if (!fileList || fileList.length === 0) return;
+
+    const uploadBatchId = createUploadHistoryId();
 
     const candidates: UploadCandidate[] = [...fileList].map((item) => {
       const candidate: UploadCandidate =
@@ -188,10 +186,9 @@ export function UploadButton({
           : item;
       return {
         ...candidate,
-        uploadId:
-          forceDuplicate || !candidate.uploadId
-            ? createUploadHistoryId()
-            : candidate.uploadId,
+        // Retrying keeps this id so a lost response confirms the same request;
+        // selecting the same bytes again creates a new candidate and a new id.
+        uploadId: candidate.uploadId ?? createUploadHistoryId(),
       };
     });
     const files = candidates.filter(({ file }) => isMediaFile(file));
@@ -230,7 +227,6 @@ export function UploadButton({
       : null;
     if (historyId) rememberUploadFiles(historyId, historyItems(), files);
     cancelled.current = false;
-    setSkippedFiles([]);
     setFailedFiles([]);
     setRetryDestination(destination);
     setRetrySource(source);
@@ -243,11 +239,8 @@ export function UploadButton({
     let bytesConfirmed = 0;
     let done = 0;
     const uploadedBytes = files.map(() => 0);
+    const storedAssetIds = new Set<string>();
 
-    // Held so the finished panel can offer to send the skipped ones again as
-    // deliberate copies — far easier to find than a checkbox you have to know
-    // about before you start.
-    const skipped: UploadCandidate[] = [];
     const retryable: UploadCandidate[] = [];
 
     const publishProgress = () =>
@@ -275,7 +268,7 @@ export function UploadButton({
       }
       publishProgress();
 
-      const form = buildUploadForm(candidate, destination, allowDuplicate || forceDuplicate);
+      const form = buildUploadForm(candidate, destination, uploadBatchId);
 
       const controller = new AbortController();
       controllers.current.add(controller);
@@ -285,6 +278,7 @@ export function UploadButton({
 
         const existingReceipt = confirmedReceipts.get(uploadId!);
         if (existingReceipt) {
+          storedAssetIds.add(existingReceipt);
           if (destination.albumId) {
             await api.put(`/albums/${destination.albumId}/assets`, {
               assetIds: [existingReceipt],
@@ -305,6 +299,7 @@ export function UploadButton({
             publishProgress();
           },
           });
+          storedAssetIds.add(data.id);
 
           if (data.status === 'confirmed') {
             if (destination.albumId) {
@@ -322,7 +317,6 @@ export function UploadButton({
               uploadItems[index] = { ...uploadItems[index], status: 'added', fraction: 1 };
             } else {
               duplicates += 1;
-              skipped.push(candidate);
               uploadItems[index] = { ...uploadItems[index], status: 'duplicate', fraction: 1 };
             }
           } else {
@@ -343,8 +337,9 @@ export function UploadButton({
           let committedAssetId: string | null = null;
           if (!confirmationError && uploadedBytes[index] >= file.size) {
             try {
-              const [receipt] = await checkUploadReceipts([uploadId!]);
+              const [receipt] = await checkUploadReceipts([uploadId!], uploadBatchId);
               committedAssetId = receipt?.exists ? receipt.assetId : null;
+              if (committedAssetId) storedAssetIds.add(committedAssetId);
               if (committedAssetId && destination.albumId) {
                 await api.put(`/albums/${destination.albumId}/assets`, {
                   assetIds: [committedAssetId],
@@ -389,7 +384,10 @@ export function UploadButton({
     publishProgress();
     if (confirmBeforeRetry) {
       try {
-        const receipts = await checkUploadReceipts(files.map((file) => file.uploadId!));
+        const receipts = await checkUploadReceipts(
+          files.map((file) => file.uploadId!),
+          uploadBatchId,
+        );
         for (const receipt of receipts) {
           if (receipt.exists && receipt.assetId) {
             confirmedReceipts.set(receipt.uploadId, receipt.assetId);
@@ -405,6 +403,16 @@ export function UploadButton({
       (_candidate, index) => uploadOne(index),
       () => cancelled.current,
     );
+
+    // Only now do metadata, thumbnails, video conversion, search, and
+    // recognition begin. If this request is lost, the server's idle recovery
+    // starts the same stored assets later without re-uploading their bytes.
+    await api
+      .post('/assets/upload-complete', {
+        batchId: uploadBatchId,
+        assetIds: [...storedAssetIds],
+      })
+      .catch(() => undefined);
 
     if (cancelled.current) {
       for (const [index, item] of uploadItems.entries()) {
@@ -431,9 +439,11 @@ export function UploadButton({
 
     if (user && historyId) finishUploadHistory(user.id, historyId, historyItems());
 
-    setSkippedFiles(skipped);
     setFailedFiles(retryable);
     await queryClient.invalidateQueries();
+    for (const delay of [3_000, 15_000]) {
+      window.setTimeout(() => void queryClient.invalidateQueries(), delay);
+    }
 
   };
 
@@ -442,7 +452,6 @@ export function UploadButton({
     return listenForUploadRetry((request) => {
       void uploadAll(
         request.files,
-        false,
         request.destination,
         request.source,
         request.confirmBeforeRetry,
@@ -479,7 +488,6 @@ export function UploadButton({
         .then((files) => {
           return uploadAll(
             files,
-            false,
             undefined,
             files.some((candidate) => candidate.relativePath?.includes('/')) ? 'folder' : 'drop',
           );
@@ -546,7 +554,6 @@ export function UploadButton({
     }
     setProgress(null);
     setFailedFiles([]);
-    setSkippedFiles([]);
     setMinimized(false);
   };
 
@@ -609,24 +616,6 @@ export function UploadButton({
                 <span className="block text-[11px] text-content-muted">Keeps its sub-folders</span>
               </span>
             </button>
-
-            <div className="my-1 h-px bg-border-subtle" />
-
-            <div className="rounded-[0.5rem] px-2.5 py-2 hover:bg-surface-sunken">
-              <Checkbox
-                checked={allowDuplicate}
-                onChange={setAllowDuplicate}
-                className="items-start gap-2.5"
-                label={
-                  <span>
-                    Allow duplicates
-                    <span className="block text-[11px] text-content-muted">
-                      Keep a second copy of a file you already have
-                    </span>
-                  </span>
-                }
-              />
-            </div>
           </div>
         )}
       </div>
@@ -638,7 +627,7 @@ export function UploadButton({
         accept={MEDIA_ACCEPT}
         className="hidden"
         onChange={(event) => {
-          void uploadAll(event.target.files, false, undefined, 'files');
+          void uploadAll(event.target.files, undefined, 'files');
           event.target.value = '';
         }}
       />
@@ -650,7 +639,7 @@ export function UploadButton({
         {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
         className="hidden"
         onChange={(event) => {
-          void uploadAll(event.target.files, false, undefined, 'folder');
+          void uploadAll(event.target.files, undefined, 'folder');
           event.target.value = '';
         }}
       />
@@ -826,7 +815,6 @@ export function UploadButton({
                             setFailedFiles([]);
                             void uploadAll(
                               retry,
-                              false,
                               retryDestination ?? undefined,
                               retrySource,
                               true,
@@ -854,48 +842,6 @@ export function UploadButton({
                     </div>
                   )}
 
-                  {/* Skipping is the right default for a repeated backup, but when
-                      someone deliberately picked a file they already have, "nothing
-                      happened" is a dead end. Offer the way through, here, rather
-                      than expecting them to have found a checkbox beforehand. */}
-                  {skippedFiles.length > 0 && (
-                    <div className="mt-3 border-t border-border-subtle pt-3">
-                      <p className="text-xs text-content-muted">
-                        {skippedFiles.length === 1
-                          ? 'That file is already in your library.'
-                          : `${skippedFiles.length} of those files are already in your library.`}{' '}
-                        Upload again to keep a second copy?
-                      </p>
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const again = skippedFiles;
-                            setSkippedFiles([]);
-                            void uploadAll(
-                              again,
-                              true,
-                              retryDestination ?? undefined,
-                              retrySource,
-                            );
-                          }}
-                          className="rounded-control bg-primary px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-hover"
-                        >
-                          Upload anyway
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSkippedFiles([]);
-                            setProgress(null);
-                          }}
-                          className="rounded-control px-2.5 py-1.5 text-xs font-medium hover:bg-surface-sunken"
-                        >
-                          No thanks
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </>

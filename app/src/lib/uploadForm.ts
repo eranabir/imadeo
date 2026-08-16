@@ -4,7 +4,7 @@ import type { UploadCandidate, UploadDestination } from './uploadHistory';
 export function buildUploadForm(
   candidate: UploadCandidate,
   destination: UploadDestination,
-  allowDuplicate = false,
+  uploadBatchId?: string,
 ) {
   const { file, relativePath, uploadId } = candidate;
   const form = new FormData();
@@ -12,9 +12,12 @@ export function buildUploadForm(
   form.append('fileCreatedAt', new Date(file.lastModified).toISOString());
   form.append('fileModifiedAt', new Date(file.lastModified).toISOString());
   if (uploadId) form.append('uploadId', uploadId);
+  if (uploadBatchId) {
+    form.append('uploadBatchId', uploadBatchId);
+    form.append('deferProcessing', 'true');
+  }
   if (relativePath) form.append('relativePath', relativePath);
   if (destination.folderId) form.append('folderId', destination.folderId);
   if (destination.albumId) form.append('albumId', destination.albumId);
-  if (allowDuplicate) form.append('allowDuplicate', 'true');
   return form;
 }

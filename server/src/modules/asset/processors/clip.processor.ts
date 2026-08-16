@@ -25,6 +25,7 @@ export class ClipProcessor extends WorkerHost {
   async process(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     // Vault content never leaves the app, the same rule the face pipeline follows.
     if (asset.visibility === 'LOCKED') return { skipped: 'locked' };
@@ -36,6 +37,7 @@ export class ClipProcessor extends WorkerHost {
     // Null means the model is switched off, which is a supported configuration
     // rather than a failure — searching by content simply stays unavailable.
     if (!embedding) return { skipped: 'search encoding unavailable' };
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     // `vector(512)` is beyond what Prisma can express, so this goes through SQL.
     await this.prisma.$executeRaw`
@@ -51,5 +53,14 @@ export class ClipProcessor extends WorkerHost {
     });
 
     return { encoded: true };
+  }
+
+  private async assetStillActive(assetId: string) {
+    return Boolean(
+      await this.prisma.asset.findFirst({
+        where: { id: assetId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
   }
 }

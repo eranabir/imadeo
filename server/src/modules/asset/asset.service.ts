@@ -7,6 +7,7 @@ import {
   type OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -57,6 +58,15 @@ export interface UploadedFile {
 export class AssetService implements OnModuleInit {
   private readonly logger = new Logger(AssetService.name);
   private readonly uploadLocks = new Map<string, Promise<void>>();
+  private readonly deferredUploadBatches = new Map<
+    string,
+    { assetIds: Set<string>; timer: NodeJS.Timeout }
+  >();
+  private deferredRecoveryRunning = false;
+
+  /** Long enough that large files can finish, short enough to recover a closed browser. */
+  private static readonly DEFERRED_UPLOAD_TIMEOUT_MS = 30 * 60 * 1_000;
+  private static readonly PROCESSING_QUEUE_BATCH_SIZE = 500;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -157,12 +167,15 @@ export class AssetService implements OnModuleInit {
    * serializes separate requests carrying the same bytes.
    */
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
-    if (dto.uploadId && !dto.allowDuplicate) {
+    if (dto.uploadId) {
       return this.withUploadLock(`receipt:${userId}:${dto.uploadId}`, async () => {
         const receipt = await this.findUploadReceipt(userId, dto.uploadId!);
         if (receipt) {
           await this.storage.remove(file.path);
           if (dto.albumId) await this.attachUploadToAlbum(userId, dto.albumId, receipt.id);
+          if (dto.deferProcessing && dto.uploadBatchId) {
+            this.deferAssetProcessing(userId, dto.uploadBatchId, receipt.id);
+          }
           return { id: receipt.id, status: 'confirmed' as const };
         }
         return this.createFromNewUpload(userId, file, dto);
@@ -174,7 +187,10 @@ export class AssetService implements OnModuleInit {
 
   private async createFromNewUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     const checksum = await this.hashFile(file.path);
-    if (dto.allowDuplicate) {
+    // Every web selection has a fresh upload receipt and therefore represents
+    // a new library item. A retry keeps that same receipt and is caught before
+    // this method, while device backup still deduplicates repeated library scans.
+    if (dto.uploadId) {
       return this.createFromHashedUpload(userId, file, dto, checksum);
     }
 
@@ -212,7 +228,7 @@ export class AssetService implements OnModuleInit {
     // A retry is a duplicate only at the same logical location. Identical
     // files in two source folders are still two backed-up items and must keep
     // both names/locations. A deleted copy can be reused at a rebuilt path.
-    let existing = dto.allowDuplicate
+    let existing = dto.uploadId
       ? null
       : await this.prisma.asset.findFirst({
           where: {
@@ -223,7 +239,7 @@ export class AssetService implements OnModuleInit {
           },
           select: duplicateSelect,
         });
-    existing ??= dto.allowDuplicate
+    existing ??= dto.uploadId
       ? null
       : await this.prisma.asset.findFirst({
           where: {
@@ -264,6 +280,7 @@ export class AssetService implements OnModuleInit {
         });
         if (existing.deletedAt) {
           await this.subjects.refreshThumbnailsForAssets([existing.id]);
+          await this.resumeAssetProcessing(userId, [existing.id]);
           return { id: existing.id, status: 'restored' as const };
         }
         return { id: existing.id, status: 'organized' as const };
@@ -289,7 +306,9 @@ export class AssetService implements OnModuleInit {
         fileSizeInByte: BigInt(file.size),
         deviceAssetId: dto.deviceAssetId || null,
         deviceId: dto.deviceId || null,
-        uploadId: dto.allowDuplicate ? null : dto.uploadId || null,
+        // The receipt identifies this request, not its bytes. Keeping it for a
+        // deliberate duplicate prevents a lost response from creating it twice.
+        uploadId: dto.uploadId || null,
         fileCreatedAt,
         fileModifiedAt,
         // Refined once EXIF gives us the real capture time and timezone.
@@ -339,7 +358,11 @@ export class AssetService implements OnModuleInit {
       data: { quotaUsageInBytes: { increment: BigInt(file.size) } },
     });
 
-    await this.jobs.onAssetUploaded(asset.id);
+    if (dto.deferProcessing && dto.uploadBatchId) {
+      this.deferAssetProcessing(userId, dto.uploadBatchId, asset.id);
+    } else {
+      await this.jobs.onAssetUploaded(asset.id);
+    }
 
     return { id: asset.id, status: 'created' as const };
   }
@@ -449,7 +472,11 @@ export class AssetService implements OnModuleInit {
   }
 
   /** Confirms committed web uploads after a client lost the success response. */
-  async checkUploadReceipts(userId: string, uploadIds: string[]) {
+  async checkUploadReceipts(
+    userId: string,
+    uploadIds: string[],
+    options: { batchId?: string; deferProcessing?: boolean } = {},
+  ) {
     const uniqueIds = [...new Set(uploadIds)];
     const assets = await this.prisma.asset.findMany({
       where: { ownerId: userId, uploadId: { in: uniqueIds } },
@@ -465,28 +492,16 @@ export class AssetService implements OnModuleInit {
       (asset) =>
         !asset.deletedAt && !asset.folder?.deletedAt && !asset.jobStatus?.metadataExtractedAt,
     );
-    if (unprocessed.length > 0) {
-      await this.jobs
-        .releaseJobIds(
-          QUEUE.METADATA,
-          JOB.EXTRACT_METADATA,
-          unprocessed.map((asset) => asset.id),
-        )
-        .catch((error: unknown) => {
-          this.logger.warn(
-            `Stored upload processing jobs could not be released for retry: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
+    if (options.deferProcessing && options.batchId) {
+      for (const asset of unprocessed) {
+        this.deferAssetProcessing(userId, options.batchId, asset.id);
+      }
+    } else {
+      await this.queueStoredAssetProcessing(
+        userId,
+        unprocessed.map((asset) => asset.id),
+      );
     }
-    await Promise.all(
-      unprocessed.map((asset) =>
-        this.jobs.onAssetUploaded(asset.id).catch((error: unknown) => {
-            this.logger.warn(
-              `Upload ${asset.uploadId} is stored but its processing queue could not be resumed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }),
-      ),
-    );
     const byUploadId = new Map(
       assets
         .filter((asset) => asset.uploadId)
@@ -497,6 +512,204 @@ export class AssetService implements OnModuleInit {
       assetId: byUploadId.get(uploadId) ?? null,
       exists: byUploadId.has(uploadId),
     }));
+  }
+
+  /** Marks the storage phase complete and starts the normal processing pipeline in bulk. */
+  async completeUploadBatch(userId: string, batchId: string, assetIds: string[]) {
+    const key = this.deferredBatchKey(userId, batchId);
+    const deferred = this.deferredUploadBatches.get(key);
+    if (deferred) {
+      clearTimeout(deferred.timer);
+      this.deferredUploadBatches.delete(key);
+    }
+
+    const queued = await this.queueStoredAssetProcessing(userId, [
+      ...new Set([...(deferred?.assetIds ?? []), ...assetIds]),
+    ]);
+    return { stored: new Set(assetIds).size, queued };
+  }
+
+  private deferAssetProcessing(userId: string, batchId: string, assetId: string) {
+    const key = this.deferredBatchKey(userId, batchId);
+    const existing = this.deferredUploadBatches.get(key);
+    if (existing) clearTimeout(existing.timer);
+
+    const assetIds = existing?.assetIds ?? new Set<string>();
+    assetIds.add(assetId);
+    const timer = setTimeout(() => {
+      this.deferredUploadBatches.delete(key);
+      void this.queueStoredAssetProcessing(userId, [...assetIds]).catch((error: unknown) => {
+        this.logger.warn(
+          `Deferred upload batch ${batchId} could not start processing: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    }, AssetService.DEFERRED_UPLOAD_TIMEOUT_MS) as unknown as NodeJS.Timeout;
+    timer.unref();
+    this.deferredUploadBatches.set(key, { assetIds, timer });
+  }
+
+  private deferredBatchKey(userId: string, batchId: string) {
+    return `${userId}:${batchId}`;
+  }
+
+  private async queueStoredAssetProcessing(userId: string, assetIds: string[]) {
+    const ids = [...new Set(assetIds)];
+    if (ids.length === 0) return 0;
+
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        id: { in: ids },
+        ownerId: userId,
+        deletedAt: null,
+        OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
+      },
+      select: { id: true },
+    });
+    const pendingIds = assets.map(({ id }) => id);
+
+    for (let index = 0; index < pendingIds.length; index += AssetService.PROCESSING_QUEUE_BATCH_SIZE) {
+      const batch = pendingIds.slice(index, index + AssetService.PROCESSING_QUEUE_BATCH_SIZE);
+      await this.jobs.releaseJobIds(QUEUE.METADATA, JOB.EXTRACT_METADATA, batch);
+      await this.jobs.enqueueMany(
+        QUEUE.METADATA,
+        JOB.EXTRACT_METADATA,
+        batch.map((assetId) => ({ assetId })),
+      );
+    }
+    return pendingIds.length;
+  }
+
+  /** Restarts only the incomplete stages of assets brought back from Trash. */
+  private async resumeAssetProcessing(userId: string, assetIds: string[]) {
+    const assets = await this.prisma.asset.findMany({
+      where: { id: { in: [...new Set(assetIds)] }, ownerId: userId, deletedAt: null },
+      select: {
+        id: true,
+        type: true,
+        visibility: true,
+        jobStatus: true,
+      },
+    });
+    const metadata = assets.filter(({ jobStatus }) => !jobStatus?.metadataExtractedAt);
+    const thumbnails = assets.filter(
+      ({ jobStatus }) => jobStatus?.metadataExtractedAt && !jobStatus.thumbnailAt,
+    );
+    const ready = assets.filter(({ jobStatus }) => Boolean(jobStatus?.thumbnailAt));
+
+    await this.enqueueMissingStage(
+      QUEUE.METADATA,
+      JOB.EXTRACT_METADATA,
+      metadata.map(({ id }) => id),
+    );
+    await this.enqueueMissingStage(
+      QUEUE.THUMBNAIL,
+      JOB.GENERATE_THUMBNAILS,
+      thumbnails.map(({ id }) => id),
+    );
+    await this.enqueueMissingStage(
+      QUEUE.VIDEO,
+      JOB.TRANSCODE_VIDEO,
+      ready
+        .filter(({ type, jobStatus }) => type === AssetType.VIDEO && !jobStatus?.videoEncodedAt)
+        .map(({ id }) => id),
+    );
+
+    if (this.config.get('duplicates.enabled', { infer: true })) {
+      await this.enqueueMissingStage(
+        QUEUE.DUPLICATE,
+        JOB.DETECT_DUPLICATES,
+        ready.filter(({ jobStatus }) => !jobStatus?.duplicatesDetectedAt).map(({ id }) => id),
+      );
+    }
+    if (this.config.get('machineLearning.enabled', { infer: true })) {
+      await this.enqueueMissingStage(
+        QUEUE.SMART_SEARCH,
+        JOB.ENCODE_CLIP,
+        ready
+          .filter(
+            ({ visibility, jobStatus }) =>
+              visibility !== AssetVisibility.LOCKED &&
+              visibility !== AssetVisibility.HIDDEN &&
+              !jobStatus?.smartSearchAt,
+          )
+          .map(({ id }) => id),
+      );
+    }
+    if (this.ml.faceRecognitionEnabled) {
+      const recognition = ready.filter(
+        ({ type, visibility, jobStatus }) =>
+          visibility !== AssetVisibility.LOCKED &&
+          visibility !== AssetVisibility.HIDDEN &&
+          (type !== AssetType.VIDEO || this.ml.videoRecognitionEnabled) &&
+          (!jobStatus?.facesRecognizedAt || !jobStatus.petsRecognizedAt),
+      );
+      await this.enqueueMissingStage(
+        QUEUE.FACE_DETECTION,
+        JOB.DETECT_FACES,
+        recognition.map(({ id }) => id),
+      );
+    }
+  }
+
+  private async enqueueMissingStage(
+    queue: (typeof QUEUE)[keyof typeof QUEUE],
+    job: string,
+    assetIds: string[],
+  ) {
+    for (let index = 0; index < assetIds.length; index += AssetService.PROCESSING_QUEUE_BATCH_SIZE) {
+      const batch = assetIds.slice(index, index + AssetService.PROCESSING_QUEUE_BATCH_SIZE);
+      await this.jobs.releaseJobIds(queue, job, batch);
+      await this.jobs.enqueueMany(
+        queue,
+        job,
+        batch.map((assetId) => ({ assetId })),
+      );
+    }
+  }
+
+  private forgetDeferredAssetProcessing(assetIds: string[]) {
+    const removed = new Set(assetIds);
+    for (const [key, deferred] of this.deferredUploadBatches) {
+      for (const assetId of removed) deferred.assetIds.delete(assetId);
+      if (deferred.assetIds.size > 0) continue;
+      clearTimeout(deferred.timer);
+      this.deferredUploadBatches.delete(key);
+    }
+  }
+
+  /** Recovers browser batches that vanished before sending upload-complete. */
+  @Interval(60_000)
+  async resumeInterruptedUploadBatches() {
+    if (this.deferredRecoveryRunning) return;
+    this.deferredRecoveryRunning = true;
+    try {
+      const assets = await this.prisma.asset.findMany({
+        where: {
+          uploadId: { not: null },
+          deletedAt: null,
+          createdAt: {
+            lte: new Date(Date.now() - AssetService.DEFERRED_UPLOAD_TIMEOUT_MS),
+          },
+          OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
+        },
+        select: { id: true, ownerId: true },
+        take: AssetService.PROCESSING_QUEUE_BATCH_SIZE,
+      });
+      const byOwner = new Map<string, typeof assets>();
+      for (const asset of assets) {
+        const ownerAssets = byOwner.get(asset.ownerId) ?? [];
+        ownerAssets.push(asset);
+        byOwner.set(asset.ownerId, ownerAssets);
+      }
+      for (const [ownerId, ownerAssets] of byOwner) {
+        await this.queueStoredAssetProcessing(
+          ownerId,
+          ownerAssets.map(({ id }) => id),
+        );
+      }
+    } finally {
+      this.deferredRecoveryRunning = false;
+    }
   }
 
   private parseChecksum(value: string): Uint8Array<ArrayBuffer> {
@@ -1238,6 +1451,10 @@ export class AssetService implements OnModuleInit {
         where: { assetId: { in: uniqueIds }, userId },
       }),
     ]);
+    this.forgetDeferredAssetProcessing(affectedIds);
+    await this.jobs.cancelAssetProcessing(affectedIds).catch((error) =>
+      this.logger.warn(`Could not cancel processing for trashed assets: ${String(error)}`),
+    );
     // Cover regeneration is cleanup, not part of moving the asset to Trash.
     // A bad historical crop must not turn a successful delete into HTTP 500.
     await this.subjects.refreshThumbnailsForAssets(affectedIds).catch((error) =>
@@ -1282,6 +1499,7 @@ export class AssetService implements OnModuleInit {
       where: { id: { in: affectedIds }, deletedAt: { not: null } },
       data: { deletedAt: null, status: 'ACTIVE' },
     });
+    await this.resumeAssetProcessing(userId, affectedIds);
     await this.subjects.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }
@@ -1305,6 +1523,7 @@ export class AssetService implements OnModuleInit {
       data: { deletedAt: null, status: 'ACTIVE' },
     });
     const affectedIds = assets.map((asset) => asset.id);
+    await this.resumeAssetProcessing(userId, affectedIds);
     await this.subjects.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }

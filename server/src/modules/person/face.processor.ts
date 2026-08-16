@@ -193,6 +193,7 @@ export class FaceDetectionProcessor extends WorkerHost {
   private async processAsset(job: Job<AssetJobData>) {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
+    if (asset.deletedAt) return { skipped: 'asset deleted' };
 
     if (asset.type !== AssetType.IMAGE && asset.type !== AssetType.VIDEO) {
       return { skipped: 'unsupported asset type' };
@@ -236,6 +237,8 @@ export class FaceDetectionProcessor extends WorkerHost {
         detections.push(...analysed.detections);
         petsRecognised &&= analysed.petsRecognised;
       }
+
+      if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
       // Replace previous automatic detections only after every frame completed;
       // a failure midway through a video must not erase its previous results.
@@ -300,6 +303,15 @@ export class FaceDetectionProcessor extends WorkerHost {
       subjects: subjects.length,
       frames: frames.length,
     };
+  }
+
+  private async assetStillActive(assetId: string) {
+    return Boolean(
+      await this.prisma.asset.findFirst({
+        where: { id: assetId, deletedAt: null },
+        select: { id: true },
+      }),
+    );
   }
 
   private async framesFor(asset: {
