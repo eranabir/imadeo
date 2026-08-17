@@ -95,6 +95,13 @@ const writes = {
       body: JSON.stringify({ assetIds }),
     }),
 
+  /** Moves known detections instead of adding a second link to the photo. */
+  reassignSubject: (server: string, subjectId: string, faceIds: string[]) =>
+    request(server, '/people-and-pets/faces/reassign', {
+      method: 'POST',
+      body: JSON.stringify({ faceIds, personId: subjectId }),
+    }),
+
   createSubject: (server: string, name: string, kind: 'PERSON' | 'PET') =>
     request<{ id: string }>(server, '/people-and-pets', {
       method: 'POST',

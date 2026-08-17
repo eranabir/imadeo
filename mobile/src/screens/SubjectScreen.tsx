@@ -16,9 +16,14 @@ interface Props {
   title: string;
   /** Whether the server has this grouped with the people or with the pets. */
   kind: 'PERSON' | 'PET';
-  /** Kept even when a recognised dog or cat is moved to People. */
+  /** "cat" or "dog" for Pets; null for People. */
   species: string | null;
   onBack: () => void;
+}
+
+interface SubjectAsset extends Asset {
+  /** Only this subject's detections, returned by the subject assets endpoint. */
+  faces?: { id: string }[];
 }
 
 /** Every photo one person or pet appears in. */
@@ -28,18 +33,21 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
   const [saveError, setSaveError] = useState<string | null>(null);
   /** Held locally so the header answers the press before the server does. */
   const [is, setIs] = useState(kind);
+  const [shownSpecies, setShownSpecies] = useState(species);
 
   /**
    * Moves this group between People and Pets.
    *
    * Detection decides which of the two something is, and it gets it wrong — a
    * dog photographed face-on lands among the people often enough that there had
-   * to be a way to say so. Nothing else changes; the faces, the name and the
-   * cover all go with it.
+   * to be a way to say so. The faces, name and cover move with it; a pet-only
+   * cat or dog label is cleared when the group becomes a person.
    */
   const swapKind = async () => {
     const next = is === 'PET' ? 'PERSON' : 'PET';
+    const previousSpecies = shownSpecies;
     setIs(next);
+    if (next === 'PERSON') setShownSpecies(null);
     setSaveError(null);
     try {
       await request(serverUrl, `/people-and-pets/${subjectId}`, {
@@ -49,11 +57,12 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
     } catch (e) {
       // Put back what was there: the group did not move.
       setIs(is);
+      setShownSpecies(previousSpecies);
       setSaveError(e instanceof Error ? e.message : 'Could not move this group.');
     }
   };
 
-  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
+  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<SubjectAsset>(
     serverUrl,
     `/people-and-pets/${subjectId}/assets`,
   );
@@ -69,8 +78,8 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
     {
       title: name || 'Unnamed',
       subtitle: total
-        ? `${species ? `${species} · ` : ''}${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
-        : species ?? undefined,
+        ? `${shownSpecies ? `${shownSpecies} · ` : ''}${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
+        : shownSpecies ?? undefined,
       icon: is === 'PET' ? 'pet' : 'person',
       onBack,
       action: (
@@ -91,7 +100,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
         </View>
       ),
     },
-    [name, total, is, onBack],
+    [name, total, is, shownSpecies, onBack],
   );
 
   return (
@@ -125,6 +134,9 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
       <PhotoActions
         serverUrl={serverUrl}
         ids={selection.ids}
+        assignmentFaceIds={items
+          .filter((asset) => selection.ids.includes(asset.id))
+          .flatMap((asset) => asset.faces?.map((face) => face.id) ?? [])}
         allFavorite={
           selection.ids.length > 0 &&
           selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)

@@ -569,6 +569,7 @@ export function AssignSheet({
   open,
   serverUrl,
   assetIds,
+  faceIds = [],
   onDone,
   onError,
   onClose,
@@ -576,6 +577,7 @@ export function AssignSheet({
   open: boolean;
   serverUrl: string;
   assetIds: string[];
+  faceIds?: string[];
   onDone: () => void;
   onError: (message: string) => void;
   onClose: () => void;
@@ -604,6 +606,10 @@ export function AssignSheet({
   };
 
   const noun = kind === 'PET' ? 'pet' : 'person';
+  const assignTo = async (subjectId: string) => {
+    if (faceIds.length > 0) await actions.reassignSubject(serverUrl, subjectId, faceIds);
+    await actions.assignSubject(serverUrl, subjectId, assetIds);
+  };
 
   return (
     <Sheet
@@ -623,7 +629,7 @@ export function AssignSheet({
                 creating.trim() &&
                 run(async () => {
                   const subject = await actions.createSubject(serverUrl, creating.trim(), kind);
-                  await actions.assignSubject(serverUrl, subject.id, assetIds);
+                  await assignTo(subject.id);
                 })
               }
             />
@@ -636,7 +642,7 @@ export function AssignSheet({
             onPress={() =>
               run(async () => {
                 const subject = await actions.createSubject(serverUrl, creating.trim(), kind);
-                await actions.assignSubject(serverUrl, subject.id, assetIds);
+                await assignTo(subject.id);
               })
             }
           />
@@ -660,7 +666,7 @@ export function AssignSheet({
             disabled={busy}
             radius={radius.md}
             label={subject.name || 'Unnamed'}
-            onPress={() => run(() => actions.assignSubject(serverUrl, subject.id, assetIds))}
+            onPress={() => run(() => assignTo(subject.id))}
             style={{ width: 72 }}
           >
             <View style={{ alignItems: 'center', paddingVertical: 6 }}>

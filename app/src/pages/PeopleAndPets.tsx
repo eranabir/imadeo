@@ -124,8 +124,8 @@ export function PeopleAndPetsPage() {
    *
    * Detection decides which of the two something is, and it gets it wrong — a
    * dog photographed face-on lands among the people often enough that there had
-   * to be a way to say so. Nothing else changes; the faces, the name and the
-   * cover all go with it.
+   * to be a way to say so. The faces, name and cover move with it; a pet-only
+   * cat or dog label is cleared when the group becomes a person.
    */
   const reclassify = useMutation({
     mutationFn: async ({ id, kind: next }: { id: string; kind: 'PERSON' | 'PET' }) =>

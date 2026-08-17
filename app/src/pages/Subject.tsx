@@ -75,6 +75,10 @@ export function SubjectPage() {
   const actions = useLibraryActions({
     onShowDetails: setViewing,
     selectedIds: [...selected],
+    assignmentFaceIds: (assetIds) =>
+      assetsRef.current
+        .filter((asset) => assetIds.includes(asset.id))
+        .flatMap((asset) => asset.faces?.map((face) => face.id) ?? []),
     // Same correction as the selection bar, reachable straight from a photo
     // without having to select it first.
     extraAssetItems: (asset, ids) => [

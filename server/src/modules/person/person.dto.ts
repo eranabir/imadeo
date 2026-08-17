@@ -101,8 +101,8 @@ export class UpdateSubjectDto {
    *
    * Detection decides this and detection gets it wrong — a dog photographed
    * face-on is grouped with the people often enough to be worth a correction.
-   * Nothing else about the subject changes; the faces, the name and the cover
-   * all move with it.
+   * The faces, name and cover move with it. A pet-only species is cleared when
+   * the group becomes a person.
    */
   @ApiPropertyOptional({ enum: SubjectKind })
   @IsOptional()

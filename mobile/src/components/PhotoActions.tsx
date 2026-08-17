@@ -13,6 +13,8 @@ interface Props {
   ids: string[];
   /** Whether every selected photo is already a favourite, so the button flips. */
   allFavorite?: boolean;
+  /** Exact detections to move when this selection came from a subject page. */
+  assignmentFaceIds?: string[];
   onClear: () => void;
   /** Called after anything succeeds, so the screen can refetch. */
   onDone: () => void;
@@ -25,7 +27,14 @@ interface Props {
  * download — a zip landing in a phone's Files app is not what anyone selecting
  * photos here is after. `Dock` below is the panel they arrive on.
  */
-export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onDone }: Props) {
+export function PhotoActions({
+  serverUrl,
+  ids,
+  allFavorite = false,
+  assignmentFaceIds,
+  onClear,
+  onDone,
+}: Props) {
   const [moving, setMoving] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -111,6 +120,7 @@ export function PhotoActions({ serverUrl, ids, allFavorite = false, onClear, onD
         open={assigning}
         serverUrl={serverUrl}
         assetIds={ids}
+        faceIds={assignmentFaceIds}
         onClose={() => setAssigning(false)}
         onDone={onDone}
         onError={setError}

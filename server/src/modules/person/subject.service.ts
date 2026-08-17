@@ -144,6 +144,7 @@ export class SubjectService {
 
   async update(userId: string, personId: string, dto: UpdateSubjectDto) {
     await this.get(userId, personId);
+    const becomingPerson = dto.kind === SubjectKind.PERSON;
 
     return this.prisma.$transaction(async (tx) => {
       const subject = await tx.person.update({
@@ -155,15 +156,16 @@ export class SubjectService {
           isFavorite: dto.isFavorite,
           color: dto.color,
           kind: dto.kind,
-          // Species deliberately stays untouched when a pet is moved to People.
-          // The dog/cat badge is useful context even when the grouping kind was wrong.
+          // A species belongs only to Pets. Keeping "cat" or "dog" after a
+          // correction to People leaves a contradictory badge in every client.
+          species: becomingPerson ? null : undefined,
         },
       });
 
       if (dto.kind) {
         await tx.assetFace.updateMany({
           where: { personId },
-          data: { kind: dto.kind },
+          data: { kind: dto.kind, species: becomingPerson ? null : undefined },
         });
       }
 
@@ -343,12 +345,18 @@ export class SubjectService {
 
   /** Moves specific faces onto another person — the fix for a bad merge. */
   async reassignFaces(userId: string, faceIds: string[], personId: string) {
-    await this.get(userId, personId);
+    const subject = await this.get(userId, personId);
 
     const { count } = await this.prisma.assetFace.updateMany({
       where: { id: { in: faceIds }, asset: mainLibraryAssetWhere(userId) },
       // Pinned so automatic clustering respects the decision.
-      data: { personId, isPinned: true, sourceType: SourceType.MANUAL },
+      data: {
+        personId,
+        kind: subject.kind,
+        species: subject.kind === SubjectKind.PERSON ? null : subject.species,
+        isPinned: true,
+        sourceType: SourceType.MANUAL,
+      },
     });
 
     return { reassigned: count };

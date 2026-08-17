@@ -57,6 +57,8 @@ interface Options {
    * standard photo menu so the shared items keep the same order everywhere.
    */
   extraAssetItems?: (asset: Asset, ids: string[]) => MenuItem[];
+  /** Exact detections represented by selected media on a subject detail page. */
+  assignmentFaceIds?: (assetIds: string[]) => string[];
   onError?: (message: string) => void;
   onFolderConverted?: (album: Album) => void;
 }
@@ -73,6 +75,7 @@ export function useLibraryActions({
   trashed,
   selectedIds,
   extraAssetItems,
+  assignmentFaceIds,
   onError,
   onFolderConverted,
 }: Options = {}) {
@@ -580,6 +583,7 @@ export function useLibraryActions({
       <AssignSubjectDialog
         open={assigning !== null}
         assetIds={assigning ?? []}
+        faceIds={assigning ? assignmentFaceIds?.(assigning) : undefined}
         onClose={() => setAssigning(null)}
         onError={onError}
       />

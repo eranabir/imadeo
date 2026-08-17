@@ -18,6 +18,8 @@ interface Props {
   open: boolean;
   /** The photos being assigned. */
   assetIds: string[];
+  /** Exact detections to move when correcting a subject's existing media. */
+  faceIds?: string[];
   onClose: () => void;
   onError?: (message: string) => void;
 }
@@ -31,7 +33,7 @@ interface Props {
  * feature exactly when recognition has failed, which is the only time anyone
  * needs to state it themselves.
  */
-export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props) {
+export function AssignSubjectDialog({ open, assetIds, faceIds = [], onClose, onError }: Props) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<'PERSON' | 'PET'>('PERSON');
   const [filter, setFilter] = useState('');
@@ -56,12 +58,25 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
   });
 
   const matching = faces.filter((face) => face.kind === kind);
+  // A single detection is unambiguous even outside a subject page. With
+  // several people in one photo we only link the photo; choosing which face
+  // moved would require a face picker rather than guessing.
+  const movingFaceIds = faceIds.length > 0 ? faceIds : matching.length === 1 ? [matching[0].id] : [];
+
+  const assignTo = async (subjectId: string) => {
+    if (movingFaceIds.length > 0) {
+      await api.post('/people-and-pets/faces/reassign', {
+        faceIds: movingFaceIds,
+        personId: subjectId,
+      });
+    }
+    // Also covers selected photos where recognition found nothing. Assets that
+    // were just reassigned already belong to the target, so the server skips them.
+    return (await api.post(`/people-and-pets/${subjectId}/assets`, { assetIds })).data;
+  };
 
   const assign = useMutation({
-    mutationFn: async (subjectId: string) =>
-      // Photos, not detections: the server moves a detection when there is one
-      // and records a manual link when there is not.
-      (await api.post(`/people-and-pets/${subjectId}/assets`, { assetIds })).data,
+    mutationFn: assignTo,
     onSuccess: () => {
       void queryClient.invalidateQueries();
       onClose();
@@ -72,7 +87,7 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
   const createAndAssign = useMutation({
     mutationFn: async (name: string) => {
       const { data: subject } = await api.post<Subject>('/people-and-pets', { name, kind });
-      await api.post(`/people-and-pets/${subject.id}/assets`, { assetIds });
+      await assignTo(subject.id);
       return subject;
     },
     onSuccess: () => {
@@ -107,8 +122,10 @@ export function AssignSubjectDialog({ open, assetIds, onClose, onError }: Props)
             {/* Nothing detected is the case where saying so by hand matters
                 most, so it is a note rather than a dead end. */}
             <p className="text-xs text-content-muted">
-              {matching.length > 0
-                ? `${matching.length} ${matching.length === 1 ? 'detection' : 'detections'} will move.`
+              {movingFaceIds.length > 0
+                ? `${movingFaceIds.length} ${movingFaceIds.length === 1 ? 'detection' : 'detections'} will move.`
+                : matching.length > 0
+                  ? 'These photos will be linked to the selected subject.'
                 : kind === 'PET'
                   ? 'No cat or dog was detected here, so these photos will simply be marked as theirs.'
                   : 'No face was detected here, so these photos will simply be marked as theirs.'}
