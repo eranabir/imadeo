@@ -35,6 +35,7 @@ import type {
   UploadAssetDto,
 } from './asset.dto';
 import { AssetLifecycleService } from './asset-lifecycle.service';
+import { assetLocations } from './asset-location';
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.heic', '.heif', '.tif', '.tiff',
@@ -780,13 +781,58 @@ export class AssetService implements OnModuleInit {
           where: { deletedAt: null },
           include: { person: { select: { id: true, name: true, thumbnailPath: true } } },
         },
-        albums: { select: { albumId: true } },
+        albums: {
+          where: { album: { deletedAt: null } },
+          select: {
+            albumId: true,
+            album: {
+              select: {
+                name: true,
+                folderId: true,
+                folder: { select: { path: true } },
+              },
+            },
+          },
+        },
+        deviceAssets: { select: { device: { select: { name: true } } } },
       },
     });
 
     if (!asset || asset.deletedAt) throw new NotFoundException('Asset not found');
     await this.assertCanRead(auth, asset);
-    return asset;
+
+    const { deviceAssets, albums, ...rest } = asset;
+    if (asset.ownerId !== auth.user.id) {
+      return {
+        ...rest,
+        albums: albums.map(({ albumId }) => ({ albumId })),
+        locations: [{ kind: 'shared' as const, label: 'Shared with me' }],
+      };
+    }
+
+    const folderIds = new Set(
+      [asset.folder?.path, ...albums.map(({ album }) => album.folder?.path)]
+        .flatMap((path) => path?.split('/').filter(Boolean) ?? []),
+    );
+    const folders = await this.prisma.folder.findMany({
+      where: { id: { in: [...folderIds] }, ownerId: asset.ownerId, deletedAt: null },
+      select: { id: true, name: true, parentId: true },
+    });
+
+    return {
+      ...rest,
+      albums: albums.map(({ albumId }) => ({ albumId })),
+      locations: assetLocations(
+        {
+          folder: asset.folder,
+          albums,
+          deviceAssets,
+          isDeviceOnly: asset.isDeviceOnly,
+          visibility: asset.visibility,
+        },
+        folders,
+      ),
+    };
   }
 
   /**

@@ -67,6 +67,11 @@ export interface Asset {
   deletedAt: string | null;
   purgeAt?: string;
   exif?: AssetExif | null;
+  /** User-visible places where this exact asset record appears in Imadeo. */
+  locations?: {
+    kind: 'folder' | 'album' | 'device' | 'photos' | 'archive' | 'locked' | 'hidden' | 'shared';
+    label: string;
+  }[];
 }
 
 export interface Album {

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   ChevronRight,
@@ -36,6 +36,12 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const queryClient = useQueryClient();
   const isShared = asset.ownerId !== user?.id;
   const rotation = rotations[asset.id] ?? asset.rotation ?? 0;
+  const details = useQuery({
+    queryKey: ['assets', 'detail', asset.id],
+    queryFn: async () => (await api.get<Asset>(`/assets/${asset.id}`)).data,
+    enabled: showInfo,
+  });
+  const detailedAsset = details.data ?? asset;
 
   const index = assets.findIndex((a) => a.id === asset.id);
   const previous = index > 0 ? assets[index - 1] : null;
@@ -173,42 +179,46 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           <aside className="w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-black/60 p-5 text-sm text-white">
             <h2 className="mb-3 font-medium">Details</h2>
             <dl className="space-y-2 text-xs">
-              <Row label="File" value={asset.originalFileName} />
-              <Row label="Size" value={formatBytes(asset.fileSizeInByte)} />
+              <Row label="File" value={detailedAsset.originalFileName} />
+              <Row label="Size" value={formatBytes(detailedAsset.fileSizeInByte)} />
               <Row
                 label="Taken"
                 value={formatDateTime(asset.localDateTime, user?.preferences.locale)}
               />
-              {asset.exif?.exifImageWidth && (
+              {details.isLoading && <Row label="Saved in" value="Loading…" />}
+              {!details.isLoading && detailedAsset.locations?.length ? (
+                <LocationRow locations={detailedAsset.locations.map(({ label }) => label)} />
+              ) : null}
+              {detailedAsset.exif?.exifImageWidth && (
                 <Row
                   label="Dimensions"
-                  value={`${asset.exif.exifImageWidth} × ${asset.exif.exifImageHeight}`}
+                  value={`${detailedAsset.exif.exifImageWidth} × ${detailedAsset.exif.exifImageHeight}`}
                 />
               )}
-              {asset.exif?.make && (
-                <Row label="Camera" value={`${asset.exif.make} ${asset.exif.model ?? ''}`.trim()} />
+              {detailedAsset.exif?.make && (
+                <Row label="Camera" value={`${detailedAsset.exif.make} ${detailedAsset.exif.model ?? ''}`.trim()} />
               )}
-              {asset.exif?.lensModel && <Row label="Lens" value={asset.exif.lensModel} />}
-              {asset.exif?.fNumber && (
+              {detailedAsset.exif?.lensModel && <Row label="Lens" value={detailedAsset.exif.lensModel} />}
+              {detailedAsset.exif?.fNumber && (
                 <Row
                   label="Exposure"
                   value={[
-                    `f/${asset.exif.fNumber}`,
-                    asset.exif.exposureTime && `${asset.exif.exposureTime}s`,
-                    asset.exif.iso && `ISO ${asset.exif.iso}`,
-                    asset.exif.focalLength && `${asset.exif.focalLength}mm`,
+                    `f/${detailedAsset.exif.fNumber}`,
+                    detailedAsset.exif.exposureTime && `${detailedAsset.exif.exposureTime}s`,
+                    detailedAsset.exif.iso && `ISO ${detailedAsset.exif.iso}`,
+                    detailedAsset.exif.focalLength && `${detailedAsset.exif.focalLength}mm`,
                   ]
                     .filter(Boolean)
                     .join(' · ')}
                 />
               )}
-              {asset.exif?.latitude != null && (
+              {detailedAsset.exif?.latitude != null && (
                 <Row
                   label="Location"
-                  value={`${asset.exif.latitude.toFixed(5)}, ${asset.exif.longitude?.toFixed(5)}`}
+                  value={`${detailedAsset.exif.latitude.toFixed(5)}, ${detailedAsset.exif.longitude?.toFixed(5)}`}
                 />
               )}
-              {asset.exif?.timeZone && <Row label="Time zone" value={asset.exif.timeZone} />}
+              {detailedAsset.exif?.timeZone && <Row label="Time zone" value={detailedAsset.exif.timeZone} />}
             </dl>
           </aside>
         )}
@@ -401,6 +411,17 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex gap-3">
       <dt className="w-24 shrink-0 text-white/50">{label}</dt>
       <dd className="min-w-0 break-words">{value}</dd>
+    </div>
+  );
+}
+
+function LocationRow({ locations }: { locations: string[] }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-24 shrink-0 text-white/50">Saved in</dt>
+      <dd className="min-w-0 space-y-1 break-words">
+        {locations.map((location) => <div key={location}>{location}</div>)}
+      </dd>
     </div>
   );
 }
