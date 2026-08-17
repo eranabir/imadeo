@@ -1,6 +1,11 @@
 import clsx from 'clsx';
-import { useEffect, useState, type ImgHTMLAttributes } from 'react';
+import { useEffect, useRef, useState, type ImgHTMLAttributes } from 'react';
 import { useThumbnailReadiness } from './ThumbnailReadiness';
+
+// A valid image source keeps browsers from drawing their native broken-image
+// icon and visible alt text while the real derivative is still processing.
+const TRANSPARENT_PIXEL =
+  'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
 /**
  * Shows a generated derivative or a calm placeholder while the shared
@@ -11,6 +16,7 @@ export function RetryingImage({
   assetId,
   thumbnailReady,
   className,
+  alt,
   onLoad,
   onError,
   ...props
@@ -26,10 +32,16 @@ export function RetryingImage({
     readiness.isReady(assetId);
   const [loaded, setLoaded] = useState(() => Boolean(assetId && readiness.wasLoaded(assetId)));
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLoaded(Boolean(assetId && readiness.wasLoaded(assetId)));
     setFailed(false);
+    setAttempt(0);
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
   }, [assetId, derivativeReady, readiness.wasLoaded, src]);
 
   useEffect(() => {
@@ -37,15 +49,23 @@ export function RetryingImage({
     return readiness.watch(assetId);
   }, [assetId, readiness.active, readiness.watch, thumbnailReady]);
 
-  const effectiveSrc = derivativeReady && !failed ? src : undefined;
+  const derivativeSrc =
+    attempt === 0 ? src : `${src}${src.includes('?') ? '&' : '?'}thumbnail-retry=${attempt}`;
+  const showingDerivative = derivativeReady && !failed;
 
   return (
     <img
       {...props}
-      src={effectiveSrc || undefined}
+      src={showingDerivative ? derivativeSrc : TRANSPARENT_PIXEL}
+      alt={showingDerivative ? alt : ''}
+      aria-label={!showingDerivative && alt ? alt : undefined}
       aria-busy={!loaded}
+      data-thumbnail-state={loaded ? 'ready' : 'processing'}
       className={clsx(className, !loaded && 'thumbnail-placeholder')}
       onLoad={(event) => {
+        // The transparent pixel is only a canvas for the animated placeholder.
+        // It must not mark a server derivative as successfully loaded.
+        if (!showingDerivative) return;
         if (assetId) readiness.markLoaded(assetId);
         setLoaded(true);
         onLoad?.(event);
@@ -54,6 +74,12 @@ export function RetryingImage({
         setLoaded(false);
         setFailed(true);
         onError?.(event);
+        if (attempt >= 15 || retryTimer.current) return;
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          setAttempt((current) => current + 1);
+          setFailed(false);
+        }, 2_000);
       }}
     />
   );
