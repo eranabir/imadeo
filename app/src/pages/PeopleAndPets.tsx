@@ -27,6 +27,9 @@ interface FaceStatus {
   pendingAssets: number;
   /** Every media item a scan would look at, so the outstanding count means something. */
   totalAssets: number;
+  /** Current upload/rescan batch, rather than the lifetime library total. */
+  scanPendingAssets: number;
+  scanTotalAssets: number;
   /** At least one recognition job is active, queued, or waiting to retry. */
   scanning: boolean;
 }
@@ -76,7 +79,9 @@ export function PeopleAndPetsPage() {
     }
   }, [queryClient, status]);
 
-  const scanned = status ? status.totalAssets - status.pendingAssets : 0;
+  const scanTotal = status?.scanTotalAssets ?? status?.totalAssets ?? 0;
+  const scanPending = status?.scanPendingAssets ?? status?.pendingAssets ?? 0;
+  const scanned = scanTotal - scanPending;
   const mediaLabel = status?.videosEnabled ? 'photos and videos' : 'photos';
 
   const { data: subjects = [], isLoading } = useQuery({
@@ -333,12 +338,12 @@ export function PeopleAndPetsPage() {
       {status?.ready && status.pendingAssets > 0 && status.scanning && (
         <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
           <p className="text-sm text-primary">
-            Scanning — {scanned.toLocaleString()} of {status.totalAssets.toLocaleString()} {mediaLabel} done ·{' '}
-            {status.pendingAssets.toLocaleString()} remaining
+            Scanning — {scanned.toLocaleString()} of {scanTotal.toLocaleString()} {mediaLabel} done ·{' '}
+            {scanPending.toLocaleString()} remaining
           </p>
           <Progress
-            value={scanned / Math.max(1, status.totalAssets)}
-            label={`Scanning ${mediaLabel} for people and pets: ${scanned} of ${status.totalAssets} complete`}
+            value={scanned / Math.max(1, scanTotal)}
+            label={`Scanning ${mediaLabel} for people and pets: ${scanned} of ${scanTotal} complete`}
             className="mt-2.5"
           />
         </div>

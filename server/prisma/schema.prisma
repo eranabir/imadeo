@@ -133,6 +133,7 @@ model User {
   partnersReceived Partner[]  @relation("SharedWith")
   invitesSent      Invitation[] @relation("InvitesSent")
   emailChanges     EmailChange[]
+  recognitionBatches RecognitionBatch[]
 
   /// One local account per provider identity. Nullable columns mean password
   /// accounts do not collide here.
@@ -302,6 +303,8 @@ model Asset {
   /// Stable receipt supplied by the web client. If the response is lost after
   /// the file commits, a retry can confirm this asset without sending it again.
   uploadId          String?         @db.VarChar(100)
+  /// Browser upload batch used to report processing progress for the current upload.
+  uploadBatchId     String?         @db.VarChar(100)
 
   fileCreatedAt     DateTime
   fileModifiedAt    DateTime
@@ -363,6 +366,7 @@ model Asset {
   @@index([ownerId, checksum])
   @@unique([ownerId, deviceId, deviceAssetId])
   @@unique([ownerId, uploadId])
+  @@index([ownerId, uploadBatchId])
   @@index([ownerId, localDateTime(sort: Desc)])
   @@index([ownerId, visibility, deletedAt])
   @@index([ownerId, isFavorite])
@@ -456,6 +460,21 @@ model AssetJobStatus {
   duplicatesDetectedAt DateTime?
 
   @@map("asset_job_status")
+}
+
+/// A completed browser upload whose media is moving through recognition.
+/// Assets keep the batch id directly so progress remains accurate after a restart.
+model RecognitionBatch {
+  id          String    @db.VarChar(100)
+  ownerId     String    @db.Uuid
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@id([ownerId, id])
+  @@index([ownerId, completedAt, createdAt(sort: Desc)])
+  @@map("recognition_batches")
 }
 
 /// CLIP embedding, one row per asset. Queried with `<=>` (cosine distance).

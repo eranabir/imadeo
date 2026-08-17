@@ -13,4 +13,13 @@ describe('production upload proxy', () => {
     expect(uploadLocation).toContain('proxy_send_timeout 1h;');
     expect(uploadLocation).toContain('client_body_timeout 1h;');
   });
+
+  it('keeps every startup script compatible with the strict CSP', () => {
+    const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+    const scripts = [...html.matchAll(/<script(?<attributes>[^>]*)>/g)];
+
+    expect(scripts).not.toHaveLength(0);
+    expect(scripts.every((script) => /\bsrc=/.test(script.groups?.attributes ?? ''))).toBe(true);
+    expect(html).toContain('<script src="/theme-init.js"></script>');
+  });
 });

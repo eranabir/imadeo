@@ -11,20 +11,29 @@ function createController() {
     enqueueMany: vi.fn().mockResolvedValue(undefined),
     enqueue: vi.fn().mockResolvedValue(undefined),
   };
+  const recognitionBatch = {
+    findFirst: vi.fn().mockResolvedValue(null),
+    update: vi.fn().mockResolvedValue(undefined),
+  };
+  const ml = {
+    videoRecognitionEnabled: false,
+    faceRecognitionEnabled: true,
+    isFaceRecognitionReady: vi.fn().mockResolvedValue(true),
+    hasPets: vi.fn().mockResolvedValue(true),
+  };
   const controller = new PeopleAndPetsController(
     {} as never,
     {} as never,
-    {
-      videoRecognitionEnabled: false,
-      faceRecognitionEnabled: true,
-      isFaceRecognitionReady: vi.fn().mockResolvedValue(true),
-      hasPets: vi.fn().mockResolvedValue(true),
-    } as never,
+    ml as never,
     jobs as never,
-    { asset: { count, findMany }, assetJobStatus: { updateMany: vi.fn() } } as never,
+    {
+      asset: { count, findMany },
+      assetJobStatus: { updateMany: vi.fn() },
+      recognitionBatch,
+    } as never,
     {} as never,
   );
-  return { controller, count, findMany, jobs };
+  return { controller, count, findMany, jobs, ml, recognitionBatch };
 }
 
 const expectedScope = {
@@ -43,6 +52,26 @@ describe('PeopleAndPetsController discovery scope', () => {
     expect(count).toHaveBeenNthCalledWith(1, { where: expectedScope });
     expect(count).toHaveBeenNthCalledWith(2, {
       where: expect.objectContaining(expectedScope),
+    });
+  });
+
+  it('reports progress for the active upload instead of the lifetime library', async () => {
+    const { controller, count, jobs, ml, recognitionBatch } = createController();
+    ml.videoRecognitionEnabled = true;
+    jobs.getQueueStatistics.mockResolvedValue({ active: 1, waiting: 25, delayed: 0 });
+    recognitionBatch.findFirst.mockResolvedValue({ id: 'new-upload' });
+    count
+      .mockResolvedValueOnce(4_428)
+      .mockResolvedValueOnce(26)
+      .mockResolvedValueOnce(36)
+      .mockResolvedValueOnce(26);
+
+    await expect(controller.status('owner-id')).resolves.toMatchObject({
+      totalAssets: 4_428,
+      pendingAssets: 26,
+      scanTotalAssets: 36,
+      scanPendingAssets: 26,
+      scanning: true,
     });
   });
 

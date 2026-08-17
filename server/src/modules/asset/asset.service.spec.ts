@@ -275,9 +275,11 @@ describe('AssetService deferred upload processing', () => {
           findMany,
           create: vi.fn().mockResolvedValue({ id: assetId, originalFileName: 'photo.jpg' }),
           update: vi.fn().mockResolvedValue({ id: assetId }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           delete: vi.fn(),
         },
         user: { update: vi.fn().mockResolvedValue({}) },
+        recognitionBatch: { upsert: vi.fn().mockResolvedValue({}) },
       } as never,
       {
         buildOriginalPath: vi.fn().mockReturnValue('/data/photo.jpg'),
@@ -326,10 +328,15 @@ describe('AssetService deferred upload processing', () => {
       { id: 'asset-b', type: 'IMAGE', uploadId: 'upload-b', deletedAt: null, folder: null, jobStatus: null },
     ];
     const findMany = vi.fn().mockResolvedValue(assets);
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const upsertBatch = vi.fn().mockResolvedValue({});
     const releaseJobIds = vi.fn().mockResolvedValue(0);
     const enqueueMany = vi.fn().mockResolvedValue(undefined);
     const service = new AssetService(
-      { asset: { findMany } } as never,
+      {
+        asset: { findMany, updateMany },
+        recognitionBatch: { upsert: upsertBatch },
+      } as never,
       {} as never,
       { releaseJobIds, enqueueMany } as never,
       {} as never,
@@ -350,6 +357,15 @@ describe('AssetService deferred upload processing', () => {
     await expect(
       service.completeUploadBatch('owner-id', 'batch-id', ['asset-a', 'asset-b']),
     ).resolves.toEqual({ stored: 2, queued: 2 });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['asset-a', 'asset-b'] }, ownerId: 'owner-id' },
+      data: { uploadBatchId: 'batch-id' },
+    });
+    expect(upsertBatch).toHaveBeenCalledWith({
+      where: { ownerId_id: { ownerId: 'owner-id', id: 'batch-id' } },
+      create: { ownerId: 'owner-id', id: 'batch-id' },
+      update: { completedAt: null },
+    });
     expect(releaseJobIds).toHaveBeenCalledWith(
       'metadata',
       'extract-metadata',
@@ -366,7 +382,10 @@ describe('AssetService deferred upload processing', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const enqueueMany = vi.fn();
     const service = new AssetService(
-      { asset: { findMany } } as never,
+      {
+        asset: { findMany, updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        recognitionBatch: { upsert: vi.fn().mockResolvedValue({}) },
+      } as never,
       {} as never,
       { releaseJobIds: vi.fn(), enqueueMany } as never,
       {} as never,

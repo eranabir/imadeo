@@ -6,17 +6,7 @@
     <meta name="theme-color" content="#0b0b0f" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Imadeo</title>
-    <script>
-      // Apply the saved theme before first paint so there is no white flash on
-      // a dark-mode reload.
-      (() => {
-        const saved = localStorage.getItem('imadeo.theme') ?? 'system';
-        const dark =
-          saved === 'dark' ||
-          (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.classList.toggle('dark', dark);
-      })();
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>

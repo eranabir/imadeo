@@ -81,7 +81,7 @@ export class PeopleAndPetsController {
       previewPath: { not: null },
     };
 
-    const [ready, petsReady, total, queue] = await Promise.all([
+    const [ready, petsReady, total, queue, activeBatch] = await Promise.all([
       this.ml.isFaceRecognitionReady(),
       this.ml.hasPets(),
       // The denominator. A count of what is left says nothing on its own —
@@ -89,10 +89,40 @@ export class PeopleAndPetsController {
       // started in another.
       this.prisma.asset.count({ where: eligible }),
       this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION),
+      this.prisma.recognitionBatch.findFirst({
+        where: { ownerId: userId, completedAt: null },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      }),
     ]);
     const pending = await this.prisma.asset.count({
       where: { ...eligible, ...unrecognisedAssets(petsReady) },
     });
+
+    let scanTotalAssets = total;
+    let scanPendingAssets = pending;
+    if (activeBatch) {
+      const batchEligible = {
+        ...mainLibraryAssetWhere(userId),
+        uploadBatchId: activeBatch.id,
+        type: videosEnabled ? { in: [AssetType.IMAGE, AssetType.VIDEO] } : AssetType.IMAGE,
+      };
+      const [batchTotal, batchPending] = await Promise.all([
+        this.prisma.asset.count({ where: batchEligible }),
+        this.prisma.asset.count({
+          where: { ...batchEligible, ...unrecognisedAssets(petsReady) },
+        }),
+      ]);
+      if (batchTotal === 0 || batchPending === 0) {
+        await this.prisma.recognitionBatch.update({
+          where: { ownerId_id: { ownerId: userId, id: activeBatch.id } },
+          data: { completedAt: new Date() },
+        });
+      } else {
+        scanTotalAssets = batchTotal;
+        scanPendingAssets = batchPending;
+      }
+    }
 
     return {
       enabled: this.ml.faceRecognitionEnabled,
@@ -101,6 +131,8 @@ export class PeopleAndPetsController {
       petsReady,
       pendingAssets: pending,
       totalAssets: total,
+      scanPendingAssets,
+      scanTotalAssets,
       scanning: queue.active + queue.waiting + queue.delayed > 0,
     };
   }

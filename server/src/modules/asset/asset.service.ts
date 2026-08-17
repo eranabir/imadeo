@@ -311,6 +311,7 @@ export class AssetService implements OnModuleInit {
         // The receipt identifies this request, not its bytes. Keeping it for a
         // deliberate duplicate prevents a lost response from creating it twice.
         uploadId: dto.uploadId || null,
+        uploadBatchId: dto.uploadBatchId || null,
         fileCreatedAt,
         fileModifiedAt,
         // Refined once EXIF gives us the real capture time and timezone.
@@ -540,9 +541,11 @@ export class AssetService implements OnModuleInit {
       this.deferredUploadBatches.delete(key);
     }
 
-    const queued = await this.queueStoredAssetProcessing(userId, [
-      ...new Set([...(deferred?.assetIds ?? []), ...assetIds]),
-    ]);
+    const queued = await this.queueStoredAssetProcessing(
+      userId,
+      [...new Set([...(deferred?.assetIds ?? []), ...assetIds])],
+      batchId,
+    );
     return { stored: new Set(assetIds).size, queued };
   }
 
@@ -555,7 +558,7 @@ export class AssetService implements OnModuleInit {
     assetIds.add(assetId);
     const timer = setTimeout(() => {
       this.deferredUploadBatches.delete(key);
-      void this.queueStoredAssetProcessing(userId, [...assetIds]).catch((error: unknown) => {
+      void this.queueStoredAssetProcessing(userId, [...assetIds], batchId).catch((error: unknown) => {
         this.logger.warn(
           `Deferred upload batch ${batchId} could not start processing: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -569,9 +572,21 @@ export class AssetService implements OnModuleInit {
     return `${userId}:${batchId}`;
   }
 
-  private async queueStoredAssetProcessing(userId: string, assetIds: string[]) {
+  private async queueStoredAssetProcessing(userId: string, assetIds: string[], batchId?: string) {
     const ids = [...new Set(assetIds)];
     if (ids.length === 0) return 0;
+
+    if (batchId) {
+      await this.prisma.asset.updateMany({
+        where: { id: { in: ids }, ownerId: userId },
+        data: { uploadBatchId: batchId },
+      });
+      await this.prisma.recognitionBatch.upsert({
+        where: { ownerId_id: { ownerId: userId, id: batchId } },
+        create: { ownerId: userId, id: batchId },
+        update: { completedAt: null },
+      });
+    }
 
     const assets = await this.prisma.asset.findMany({
       where: {
@@ -722,19 +737,22 @@ export class AssetService implements OnModuleInit {
           },
           OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
         },
-        select: { id: true, ownerId: true },
+        select: { id: true, ownerId: true, uploadBatchId: true },
         take: AssetService.PROCESSING_QUEUE_BATCH_SIZE,
       });
-      const byOwner = new Map<string, typeof assets>();
+      const byOwnerAndBatch = new Map<string, typeof assets>();
       for (const asset of assets) {
-        const ownerAssets = byOwner.get(asset.ownerId) ?? [];
+        const key = `${asset.ownerId}:${asset.uploadBatchId ?? ''}`;
+        const ownerAssets = byOwnerAndBatch.get(key) ?? [];
         ownerAssets.push(asset);
-        byOwner.set(asset.ownerId, ownerAssets);
+        byOwnerAndBatch.set(key, ownerAssets);
       }
-      for (const [ownerId, ownerAssets] of byOwner) {
+      for (const ownerAssets of byOwnerAndBatch.values()) {
+        const { ownerId, uploadBatchId } = ownerAssets[0];
         await this.queueStoredAssetProcessing(
           ownerId,
           ownerAssets.map(({ id }) => id),
+          uploadBatchId ?? undefined,
         );
       }
     } finally {
