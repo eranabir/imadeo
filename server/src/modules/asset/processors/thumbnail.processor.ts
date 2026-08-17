@@ -36,6 +36,14 @@ export class ThumbnailProcessor extends WorkerHost {
     if (!asset) return { skipped: 'asset gone' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
 
+    // Jobs created by an older release may still be waiting on the image
+    // thumbnail queue. Move them without opening the video so an upgrade frees
+    // every image worker immediately instead of waiting for that backlog.
+    if (asset.type === AssetType.VIDEO && job.queueName === QUEUE.THUMBNAIL) {
+      await this.jobs.enqueue(QUEUE.VIDEO, JOB.GENERATE_THUMBNAILS, { assetId: asset.id });
+      return { queued: 'video worker' };
+    }
+
     // The file the image pipeline will actually read. For a video or a RAW this
     // is an intermediate JPEG rather than the original.
     let source = asset.originalPath;

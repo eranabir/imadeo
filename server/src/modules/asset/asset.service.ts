@@ -135,12 +135,12 @@ export class AssetService implements OnModuleInit {
       metadata.map(({ id }) => ({ assetId: id })),
     );
     await this.jobs.releaseJobIds(
-      QUEUE.THUMBNAIL,
+      QUEUE.VIDEO,
       JOB.GENERATE_THUMBNAILS,
       thumbnails.map(({ id }) => id),
     );
     await this.jobs.enqueueMany(
-      QUEUE.THUMBNAIL,
+      QUEUE.VIDEO,
       JOB.GENERATE_THUMBNAILS,
       thumbnails.map(({ id }) => ({ assetId: id })),
     );
@@ -580,9 +580,17 @@ export class AssetService implements OnModuleInit {
         deletedAt: null,
         OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
-    const pendingIds = assets.map(({ id }) => id);
+    // A batch can contain multi-gigabyte videos beside small photos. Queue the
+    // photos first so their metadata and previews become visible immediately;
+    // video posters then continue on their own worker.
+    const pendingIds = assets
+      .sort(
+        (left, right) =>
+          Number(left.type === AssetType.VIDEO) - Number(right.type === AssetType.VIDEO),
+      )
+      .map(({ id }) => id);
 
     for (let index = 0; index < pendingIds.length; index += AssetService.PROCESSING_QUEUE_BATCH_SIZE) {
       const batch = pendingIds.slice(index, index + AssetService.PROCESSING_QUEUE_BATCH_SIZE);
@@ -621,7 +629,12 @@ export class AssetService implements OnModuleInit {
     await this.enqueueMissingStage(
       QUEUE.THUMBNAIL,
       JOB.GENERATE_THUMBNAILS,
-      thumbnails.map(({ id }) => id),
+      thumbnails.filter(({ type }) => type !== AssetType.VIDEO).map(({ id }) => id),
+    );
+    await this.enqueueMissingStage(
+      QUEUE.VIDEO,
+      JOB.GENERATE_THUMBNAILS,
+      thumbnails.filter(({ type }) => type === AssetType.VIDEO).map(({ id }) => id),
     );
     await this.enqueueMissingStage(
       QUEUE.VIDEO,

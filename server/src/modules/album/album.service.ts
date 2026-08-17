@@ -314,6 +314,23 @@ export class AlbumService {
     return { ids: assets.map((asset) => asset.assetId) };
   }
 
+  /** A count-only poll used while the background queue creates album previews. */
+  async processingStatus(auth: AuthDto, albumId: string) {
+    await this.getAccess(auth, albumId);
+    const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
+    const assetWhere: Prisma.AssetWhereInput = {
+      ...ACTIVE_ALBUM_ASSET,
+      ...(restrictTo ? { id: { in: restrictTo } } : {}),
+    };
+    const [total, ready] = await Promise.all([
+      this.prisma.albumAsset.count({ where: { albumId, asset: assetWhere } }),
+      this.prisma.albumAsset.count({
+        where: { albumId, asset: { ...assetWhere, thumbnailPath: { not: null } } },
+      }),
+    ]);
+    return { total, ready, pending: Math.max(0, total - ready) };
+  }
+
   private orderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AlbumAssetOrderByWithRelationInput[] {
     switch (sortBy) {
       case 'name':

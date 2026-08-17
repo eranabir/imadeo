@@ -322,8 +322,8 @@ describe('AssetService deferred upload processing', () => {
 
   it('queues stored files only after the web batch completes', async () => {
     const assets = [
-      { id: 'asset-a', uploadId: 'upload-a', deletedAt: null, folder: null, jobStatus: null },
-      { id: 'asset-b', uploadId: 'upload-b', deletedAt: null, folder: null, jobStatus: null },
+      { id: 'asset-a', type: 'VIDEO', uploadId: 'upload-a', deletedAt: null, folder: null, jobStatus: null },
+      { id: 'asset-b', type: 'IMAGE', uploadId: 'upload-b', deletedAt: null, folder: null, jobStatus: null },
     ];
     const findMany = vi.fn().mockResolvedValue(assets);
     const releaseJobIds = vi.fn().mockResolvedValue(0);
@@ -353,12 +353,12 @@ describe('AssetService deferred upload processing', () => {
     expect(releaseJobIds).toHaveBeenCalledWith(
       'metadata',
       'extract-metadata',
-      ['asset-a', 'asset-b'],
+      ['asset-b', 'asset-a'],
     );
     expect(enqueueMany).toHaveBeenCalledWith(
       'metadata',
       'extract-metadata',
-      [{ assetId: 'asset-a' }, { assetId: 'asset-b' }],
+      [{ assetId: 'asset-b' }, { assetId: 'asset-a' }],
     );
   });
 
@@ -388,7 +388,7 @@ describe('AssetService deferred upload processing', () => {
         deletedAt: null,
         OR: [{ jobStatus: null }, { jobStatus: { metadataExtractedAt: null } }],
       },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     expect(enqueueMany).not.toHaveBeenCalled();
   });

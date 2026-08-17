@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { JustifiedGrid } from '../components/JustifiedGrid';
+import { MediaProcessingProgress } from '../components/MediaProcessingProgress';
 import { ShareDialog } from '../components/ShareDialog';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
@@ -227,6 +228,8 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           {error}
         </p>
       )}
+
+      {albumId && <MediaProcessingProgress kind="album" id={albumId} />}
 
       {album.assets.length === 0 ? (
         <EmptyState

@@ -52,8 +52,8 @@ describe('JobService', () => {
       queue as never,
     );
 
-    await expect(service.cancelAssetProcessing(['waiting-id', 'active-id'])).resolves.toBe(7);
-    expect(waitingRemove).toHaveBeenCalledTimes(7);
+    await expect(service.cancelAssetProcessing(['waiting-id', 'active-id'])).resolves.toBe(8);
+    expect(waitingRemove).toHaveBeenCalledTimes(8);
     expect(activeRemove).not.toHaveBeenCalled();
   });
 });

@@ -32,6 +32,30 @@ describe('AlbumService.getAssetIds', () => {
   });
 });
 
+describe('AlbumService.processingStatus', () => {
+  it('reports preview progress across the complete album', async () => {
+    const count = vi.fn().mockResolvedValueOnce(7).mockResolvedValueOnce(4);
+    const service = new AlbumService(
+      { albumAsset: { count } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await expect(
+      service.processingStatus({ user: { id: 'owner-id' } } as never, 'album-id'),
+    ).resolves.toEqual({ total: 7, ready: 4, pending: 3 });
+    expect(count).toHaveBeenNthCalledWith(2, {
+      where: {
+        albumId: 'album-id',
+        asset: expect.objectContaining({ thumbnailPath: { not: null } }),
+      },
+    });
+  });
+});
+
 describe('AlbumService Trash lifecycle', () => {
   it('moves the album and every live photo inside it to the same Trash batch', async () => {
     const updateAssets = vi.fn().mockResolvedValue({ count: 2 });

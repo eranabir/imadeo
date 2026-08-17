@@ -375,6 +375,25 @@ export class FolderService {
     };
   }
 
+  /** A cheap count-only poll while newly uploaded media receives its previews. */
+  async processingStatus(userId: string, folderId: string) {
+    const folder = await this.getById(userId, folderId);
+    const where: Prisma.AssetWhereInput = {
+      ownerId: folder.ownerId,
+      folderId,
+      deletedAt: null,
+      isDeviceOnly: false,
+      visibility: folder.isLocked
+        ? AssetVisibility.LOCKED
+        : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
+    };
+    const [total, ready] = await Promise.all([
+      this.prisma.asset.count({ where }),
+      this.prisma.asset.count({ where: { ...where, thumbnailPath: { not: null } } }),
+    ]);
+    return { total, ready, pending: Math.max(0, total - ready) };
+  }
+
   private assetOrderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AssetOrderByWithRelationInput[] {
     switch (sortBy) {
       case 'name':

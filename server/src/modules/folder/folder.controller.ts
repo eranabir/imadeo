@@ -110,6 +110,12 @@ export class FolderController {
     return this.folderService.getContents(userId, id, query);
   }
 
+  @Get(':id/processing-status')
+  @ApiOperation({ summary: 'Thumbnail processing progress for media directly inside a folder' })
+  processingStatus(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.folderService.processingStatus(userId, id);
+  }
+
   @Put(':id')
   update(
     @AuthedUserId() userId: string,

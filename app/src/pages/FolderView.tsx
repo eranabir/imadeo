@@ -23,6 +23,7 @@ import { AlbumCard, FolderCard } from '../components/LibraryCards';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { FolderShareDialog } from '../components/FolderShareDialog';
 import { FolderContentsList } from '../components/FolderContentsList';
+import { MediaProcessingProgress } from '../components/MediaProcessingProgress';
 import { BrowseIcon } from '../components/NavigationIcons';
 import { VirtualGrid } from '../components/VirtualGrid';
 import { SelectionBar } from '../components/SelectionBar';
@@ -404,6 +405,8 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           {error}
         </p>
       )}
+
+      {folderId && <MediaProcessingProgress kind="folder" id={folderId} />}
 
       <div className="px-5 pb-24 pt-4">
         {folderId && viewMode === 'list' && !isEmpty && (

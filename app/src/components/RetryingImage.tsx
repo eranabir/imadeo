@@ -24,13 +24,13 @@ export function RetryingImage({
     !assetId ||
     !readiness.active ||
     readiness.isReady(assetId);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => Boolean(assetId && readiness.wasLoaded(assetId)));
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setLoaded(false);
+    setLoaded(Boolean(assetId && readiness.wasLoaded(assetId)));
     setFailed(false);
-  }, [derivativeReady, src]);
+  }, [assetId, derivativeReady, readiness.wasLoaded, src]);
 
   useEffect(() => {
     if (!assetId || thumbnailReady !== false || !readiness.active) return;
@@ -46,10 +46,12 @@ export function RetryingImage({
       aria-busy={!loaded}
       className={clsx(className, !loaded && 'thumbnail-placeholder')}
       onLoad={(event) => {
+        if (assetId) readiness.markLoaded(assetId);
         setLoaded(true);
         onLoad?.(event);
       }}
       onError={(event) => {
+        setLoaded(false);
         setFailed(true);
         onError?.(event);
       }}

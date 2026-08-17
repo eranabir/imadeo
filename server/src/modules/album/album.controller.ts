@@ -54,6 +54,13 @@ export class AlbumController {
     return this.albumService.get(auth, id, query);
   }
 
+  @Auth({ sharedLink: true })
+  @Get(':id/processing-status')
+  @ApiOperation({ summary: 'Thumbnail processing progress for media inside an album' })
+  processingStatus(@Authed() auth: AuthDto, @Param('id') id: string) {
+    return this.albumService.processingStatus(auth, id);
+  }
+
   @Put(':id')
   update(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: UpdateAlbumDto) {
     return this.albumService.update(auth, id, dto);

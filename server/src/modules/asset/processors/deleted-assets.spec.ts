@@ -7,7 +7,8 @@ import { MetadataProcessor } from './metadata.processor';
 import { ThumbnailProcessor } from './thumbnail.processor';
 import { VideoProcessor } from './video.processor';
 
-const job = (name: string) => ({ name, data: { assetId: 'deleted-id' } }) as never;
+const job = (name: string, queueName?: string) =>
+  ({ name, queueName, data: { assetId: 'deleted-id' } }) as never;
 const deletedImage = { id: 'deleted-id', type: 'IMAGE', deletedAt: new Date() };
 
 describe('deleted asset processing', () => {
@@ -91,12 +92,57 @@ describe('deleted asset processing', () => {
       } as never,
       { probeVideo } as never,
       {} as never,
+      {} as never,
     );
 
     await expect(processor.process(job(JOB.TRANSCODE_VIDEO))).resolves.toEqual({
       skipped: 'asset deleted',
     });
     expect(probeVideo).not.toHaveBeenCalled();
+  });
+
+  it('runs video poster generation on the video worker', async () => {
+    const processThumbnail = vi.fn().mockResolvedValue({ thumbnailPath: '/preview.webp' });
+    const processor = new VideoProcessor(
+      {} as never,
+      {} as never,
+      {} as never,
+      { process: processThumbnail } as never,
+    );
+
+    await expect(processor.process(job(JOB.GENERATE_THUMBNAILS))).resolves.toEqual({
+      thumbnailPath: '/preview.webp',
+    });
+    expect(processThumbnail).toHaveBeenCalledOnce();
+  });
+
+  it('moves video poster jobs left by older releases off the image worker', async () => {
+    const enqueue = vi.fn().mockResolvedValue(undefined);
+    const extractPosterFrame = vi.fn();
+    const processor = new ThumbnailProcessor(
+      {
+        asset: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'deleted-id',
+            type: 'VIDEO',
+            deletedAt: null,
+          }),
+        },
+      } as never,
+      { extractPosterFrame } as never,
+      {} as never,
+      { enqueue } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      processor.process(job(JOB.GENERATE_THUMBNAILS, QUEUE.THUMBNAIL)),
+    ).resolves.toEqual({ queued: 'video worker' });
+    expect(enqueue).toHaveBeenCalledWith(QUEUE.VIDEO, JOB.GENERATE_THUMBNAILS, {
+      assetId: 'deleted-id',
+    });
+    expect(extractPosterFrame).not.toHaveBeenCalled();
   });
 });
 

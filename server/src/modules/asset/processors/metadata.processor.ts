@@ -169,7 +169,13 @@ export class MetadataProcessor extends WorkerHost {
       await this.recordLivePhotoIdentifier(asset.id, tags.livePhotoCID);
     }
 
-    await this.jobs.enqueue(QUEUE.THUMBNAIL, JOB.GENERATE_THUMBNAILS, { assetId: asset.id });
+    // Poster extraction can keep ffmpeg busy on a large video. Put it on the
+    // single video worker so image thumbnails retain all image-worker slots.
+    await this.jobs.enqueue(
+      asset.type === AssetType.VIDEO ? QUEUE.VIDEO : QUEUE.THUMBNAIL,
+      JOB.GENERATE_THUMBNAILS,
+      { assetId: asset.id },
+    );
 
     return { width, height, capturedAt: localDateTime.toISOString() };
   }

@@ -290,6 +290,37 @@ describe('FolderService.getAssetIds', () => {
   });
 });
 
+describe('FolderService.processingStatus', () => {
+  it('reports how many previews remain for the complete folder', async () => {
+    const count = vi.fn().mockResolvedValueOnce(5).mockResolvedValueOnce(2);
+    const prisma = {
+      folder: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'folder-id',
+          ownerId: 'owner-id',
+          path: '/folder-id/',
+          isLocked: false,
+        }),
+      },
+      asset: { count },
+    } as unknown as PrismaService;
+    const service = new FolderService(prisma, {} as never);
+
+    await expect(service.processingStatus('owner-id', 'folder-id')).resolves.toEqual({
+      total: 5,
+      ready: 2,
+      pending: 3,
+    });
+    expect(count).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        ownerId: 'owner-id',
+        folderId: 'folder-id',
+        thumbnailPath: { not: null },
+      }),
+    });
+  });
+});
+
 describe('FolderService.ensurePath', () => {
   it('uses a folder created concurrently by another upload', async () => {
     const concurrent = {
