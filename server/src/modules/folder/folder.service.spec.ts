@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { FolderService } from './folder.service';
@@ -167,7 +167,11 @@ describe('FolderService.create', () => {
     const folderUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
       folder: {
-        findFirst: vi.fn().mockResolvedValue(deletedFolder),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(deletedFolder)
+          .mockResolvedValueOnce(deletedFolder)
+          .mockResolvedValueOnce(null),
         findMany: vi.fn().mockResolvedValue([deletedFolder]),
         updateMany: folderUpdateMany,
         findUniqueOrThrow: vi.fn().mockResolvedValue({ ...deletedFolder, deletedAt: null }),
@@ -202,6 +206,39 @@ describe('FolderService.create', () => {
 });
 
 describe('FolderService Trash round-trip', () => {
+  it('refuses to restore a folder beside an active folder with the same name', async () => {
+    const deletedAt = new Date('2026-08-14T00:00:00Z');
+    const deletedFolder = {
+      id: 'deleted-folder',
+      ownerId: 'owner-id',
+      parentId: null,
+      path: '/deleted-folder/',
+      depth: 0,
+      name: 'Birthdays',
+      deletedAt,
+    };
+    const transaction = vi.fn();
+    const prisma = {
+      folder: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce(deletedFolder)
+          .mockResolvedValueOnce({ id: 'active-folder' }),
+        findMany: vi.fn().mockResolvedValue([deletedFolder]),
+      },
+      album: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: transaction,
+    } as unknown as PrismaService;
+    const service = new FolderService(prisma, {} as never);
+
+    const restoring = service.restore('owner-id', deletedFolder.id);
+    await expect(restoring).rejects.toBeInstanceOf(ConflictException);
+    await expect(restoring).rejects.toThrow(
+      'A folder named “Birthdays” already exists here',
+    );
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('keeps album and photo folder links so the complete tree can be restored', async () => {
     const albumUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
     const assetUpdateMany = vi.fn().mockResolvedValue({ count: 2 });

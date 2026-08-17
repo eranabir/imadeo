@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  classifyUploadCandidates,
   filesFromEntry,
   isMediaFile,
   MEDIA_EXTENSIONS,
@@ -85,6 +86,25 @@ describe('web upload selection', () => {
     expect(supported).toHaveLength(299);
     expect(files.length - supported.length).toBe(99);
     expect(supported.reduce((total, { file }) => total + file.size, 0)).toBe(2_990);
+  });
+
+  it('silently ignores operating-system metadata but reports real unsupported files', () => {
+    const candidates = [
+      { file: new File(['photo'], 'birthday.HEIC') },
+      { file: new File(['movie'], 'birthday.mov') },
+      { file: new File(['finder'], '.DS_Store') },
+      { file: new File(['resource fork'], '._birthday.HEIC') },
+      { file: new File(['windows'], 'Thumbs.db') },
+      { file: new File(['notes'], 'notes.txt') },
+    ];
+
+    const selection = classifyUploadCandidates(candidates);
+
+    expect(selection.media.map(({ file }) => file.name)).toEqual([
+      'birthday.HEIC',
+      'birthday.mov',
+    ]);
+    expect(selection.unsupported.map(({ file }) => file.name)).toEqual(['notes.txt']);
   });
 
   it('finds each visible root before a nested folder upload begins', () => {

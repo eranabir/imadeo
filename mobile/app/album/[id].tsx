@@ -12,7 +12,6 @@ export default function Route() {
       serverUrl={serverUrl}
       albumId={id}
       title={title ?? 'Album'}
-      slot={`album:${id}`}
       onBack={() => router.back()}
     />
   );

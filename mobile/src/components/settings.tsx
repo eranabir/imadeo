@@ -136,6 +136,7 @@ export function SwitchRow({
   on,
   onChange,
   disabled,
+  last = false,
 }: {
   icon: IconName;
   label: string;
@@ -143,6 +144,7 @@ export function SwitchRow({
   on: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
+  last?: boolean;
 }) {
   return (
     <View
@@ -151,7 +153,7 @@ export function SwitchRow({
         alignItems: 'center',
         gap: 12,
         paddingVertical: 14,
-        borderBottomWidth: 1,
+        borderBottomWidth: last ? 0 : 1,
         borderBottomColor: colors.border,
       }}
     >

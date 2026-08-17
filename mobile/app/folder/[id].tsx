@@ -18,7 +18,6 @@ export default function Route() {
       serverUrl={serverUrl}
       folderId={id}
       title={title}
-      slot={`folder:${id}`}
       onBack={() => router.back()}
     />
   );

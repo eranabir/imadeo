@@ -55,6 +55,27 @@ function createService(existing: Record<string, unknown>) {
   };
 }
 
+describe('AssetService library filters', () => {
+  it('finds media that belongs to neither a folder nor an album', () => {
+    const { service } = createService({ id: 'asset-id' });
+
+    const where = service.buildWhere('owner-id', {
+      notInFolder: true,
+      notInAlbum: true,
+    });
+
+    expect(where).toEqual({
+      AND: [
+        { ownerId: 'owner-id' },
+        expect.objectContaining({
+          folderId: null,
+          albums: { none: {} },
+        }),
+      ],
+    });
+  });
+});
+
 describe('AssetService duplicate upload destinations', () => {
   const upload = {
     path: '/tmp/re-upload.jpg',

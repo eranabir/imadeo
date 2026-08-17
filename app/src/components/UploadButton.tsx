@@ -20,8 +20,8 @@ import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { buildUploadForm } from '../lib/uploadForm';
 import {
+  classifyUploadCandidates,
   filesFromDrop,
-  isMediaFile,
   MEDIA_ACCEPT,
   uploadRootSegments,
 } from '../lib/uploadSelection';
@@ -196,8 +196,8 @@ export function UploadButton({
         uploadId: candidate.uploadId ?? createUploadHistoryId(),
       };
     });
-    const files = candidates.filter(({ file }) => isMediaFile(file));
-    const ignored = candidates.length - files.length;
+    const { media: files, unsupported } = classifyUploadCandidates(candidates);
+    const ignored = unsupported.length;
     if (files.length === 0) {
       const message = 'That selection does not contain supported photos or videos.';
       if (onError) onError(message);

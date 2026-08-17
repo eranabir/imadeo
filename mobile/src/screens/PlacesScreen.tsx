@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { Empty } from '../components/AssetGrid';
 import { Icon } from '../components/Icon';
 import { Loading } from '../components/Loading';
@@ -131,9 +132,10 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
-    >
+    <ScrollViewMarker style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
+      >
       <View
         style={[
           {
@@ -220,7 +222,8 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
           </Touchable>
         ))}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </ScrollViewMarker>
   );
 }
 

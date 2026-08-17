@@ -38,16 +38,26 @@ export function PhotosPage() {
   // after it finishes, and so the choice survives a refresh.
   const [params, setParams] = useSearchParams();
   const sortBy = (params.get('sort') ?? 'date') as 'date' | 'added' | 'name' | 'size';
+  const view = params.get('view') === 'unfiled' ? 'unfiled' : 'all';
   const setSortBy = (next: string) => {
     if (next === 'date') params.delete('sort');
     else params.set('sort', next);
     setParams(params, { replace: true });
   };
+  const setView = (next: string) => {
+    if (next === 'unfiled') params.set('view', 'unfiled');
+    else params.delete('view');
+    clear();
+    setParams(params, { replace: true });
+  };
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
-  const library = useInfiniteAssets(['assets', 'timeline', sortBy, order], {
+  const unfiled = view === 'unfiled';
+  const library = useInfiniteAssets(['assets', 'timeline', sortBy, order, view], {
     sortBy,
     order,
+    notInFolder: unfiled || undefined,
+    notInAlbum: unfiled || undefined,
   });
   const pages = library.data?.pages ?? [];
   const assets = pages.flatMap((page) => page.items);
@@ -61,9 +71,16 @@ export function PhotosPage() {
 
   const groups = sortBy === 'date' ? groupByDay(assets) : [{ day: '', items: assets }];
   const { data: timelineBuckets = [] } = useQuery({
-    queryKey: ['assets', 'timeline', 'buckets'],
+    queryKey: ['assets', 'timeline', 'buckets', view],
     queryFn: async () =>
-      (await api.get<{ timeBucket: string; count: number }[]>('/assets/timeline/buckets')).data,
+      (
+        await api.get<{ timeBucket: string; count: number }[]>('/assets/timeline/buckets', {
+          params: {
+            notInFolder: unfiled || undefined,
+            notInAlbum: unfiled || undefined,
+          },
+        })
+      ).data,
     enabled: sortBy === 'date',
   });
 
@@ -135,6 +152,20 @@ export function PhotosPage() {
         <div className="flex items-center gap-1.5">
           <Select
             size="sm"
+            prefix="View"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'all', label: 'All photos' },
+              {
+                value: 'unfiled',
+                label: 'Unfiled',
+                hint: 'Not in a folder or album',
+              },
+            ]}
+          />
+          <Select
+            size="sm"
             prefix="Sort by"
             value={sortBy}
             onChange={setSortBy}
@@ -176,8 +207,12 @@ export function PhotosPage() {
       {!isLoading && assets.length === 0 && (
         <EmptyState
           icon={Images}
-          title="No photos yet"
-          description="Upload photos and videos, or pick a whole folder to bring its structure across."
+          title={unfiled ? 'No unfiled photos' : 'No photos yet'}
+          description={
+            unfiled
+              ? 'Every photo is already inside a folder or album.'
+              : 'Upload photos and videos, or pick a whole folder to bring its structure across.'
+          }
         />
       )}
 

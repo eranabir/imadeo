@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { HeaderAction, useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, HeaderAction, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import { PhotoActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
 import { ShareSheet } from '../components/sheets';
 import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Asset } from '../lib/api';
@@ -21,8 +21,6 @@ interface AlbumDetail {
 }
 
 interface Props {
-  /** Where this screen publishes its bar. */
-  slot: string;
   serverUrl: string;
   albumId: string;
   title: string;
@@ -30,7 +28,7 @@ interface Props {
 }
 
 /** Everything inside one album. */
-export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) {
+export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/albums/${albumId}?sortBy=date&order=desc`,
@@ -53,19 +51,20 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
     .filter(Boolean)
     .join(' · ');
 
-  // Published rather than drawn: the shell owns the one bar, and a screen that
-  // brought its own would slide it in over the top of the one already there.
-  useHeaderSlot(
-    slot,
-    {
-      title: data?.name ?? title,
-      subtitle,
-      icon: 'album',
-      onBack,
-      action: <HeaderAction label="Share album" icon="shared" compact onPress={() => setSharing(true)} />,
-    },
-    [data?.name, title, subtitle, onBack],
-  );
+  const bar: HeaderConfig = {
+    title: data?.name ?? title,
+    subtitle,
+    icon: 'album',
+    onBack,
+    action: (
+      <HeaderAction
+        label="Share album"
+        icon="shared"
+        compact
+        onPress={() => setSharing(true)}
+      />
+    ),
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -114,6 +113,8 @@ export function AlbumScreen({ serverUrl, albumId, title, slot, onBack }: Props) 
           reload();
         }}
       />
+      <Header {...bar} />
+      <SelectionDock />
 
       <ShareSheet
         open={sharing}

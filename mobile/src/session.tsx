@@ -2,9 +2,15 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { AppState } from 'react-native';
 import { restore as restoreAutoBackup } from './lib/autobackup';
 import { onSessionExpired, signOut, storedToken } from './lib/auth';
-import { beginServerCheck, libraryChanged } from './lib/api';
+import { beginServerCheck, libraryChanged, request } from './lib/api';
 import { restorePreferences } from './lib/preferences';
-import { forget, load, type ServerInfo } from './lib/server';
+import {
+  forget,
+  load,
+  save,
+  verifyWorkspaceAddress,
+  type ServerInfo,
+} from './lib/server';
 
 interface Session {
   /** The server this app is pointed at, or null before one has been chosen. */
@@ -14,6 +20,9 @@ interface Session {
   restoring: boolean;
   connect: (server: ServerInfo) => void;
   signedInNow: () => void;
+  addServerAddress: (address: string) => Promise<void>;
+  removeServerAddress: (address: string) => Promise<void>;
+  activateServerAddress: (address: string) => Promise<void>;
   /** Forgets both the address and the session, since one implies the other. */
   changeServer: () => Promise<void>;
   leave: () => Promise<void>;
@@ -62,29 +71,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
          * indefinitely. A rejection would have been caught below; a promise
          * that never settles would not, so restoring gets a deadline.
          */
-        const [url, token] = await Promise.race([
+        const [savedServer, token] = await Promise.race([
           Promise.all([load(), storedToken()]),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('storage timed out')), 4000),
           ),
         ]);
-        if (url) {
+        if (savedServer) {
           beginServerCheck();
-          setServer({ url, version: 'unknown' });
+          setServer(savedServer);
         }
-        if (url && token) setSignedIn(true);
+        if (savedServer && token) setSignedIn(true);
       } catch {
         // Nothing restored; start from the beginning.
       } finally {
+        // Mount native navigation only after UIKit has its final appearance.
+        // Changing the interface style after UITabBarController mounts can
+        // restore its transient scroll-edge/minimized appearance on relaunch.
+        try {
+          await restorePreferences();
+        } catch {
+          // Unreadable preferences leave the safe defaults in place.
+        }
         setRestoring(false);
         // The background schedule can be lost to an app update or a restore
         // while the setting that asked for it survives. Put it back to match.
         void restoreAutoBackup();
-        // The palette and the video setting, both stored the same way.
-        void restorePreferences();
       }
     })();
   }, []);
+
+  const activateServerAddress = async (address: string) => {
+    if (!server || !server.addresses.includes(address) || server.url === address) return;
+    const next = {
+      ...server,
+      url: address,
+      addresses: [address, ...server.addresses.filter((value) => value !== address)],
+    };
+    beginServerCheck();
+    await save(next);
+    setServer(next);
+  };
 
   const value: Session = {
     server,
@@ -98,6 +125,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       beginServerCheck();
       setSignedIn(true);
     },
+    addServerAddress: async (address) => {
+      if (!server) throw new Error('Connect to a server first.');
+      const me = await request<{ id: string }>(server.url, '/users/me');
+      const token = await storedToken();
+      if (!token) throw new Error('Sign in before adding another address.');
+      const candidate = await verifyWorkspaceAddress(address, token, me.id);
+      if (server.addresses.includes(candidate.url)) return;
+      const next = {
+        ...server,
+        addresses: [...server.addresses, candidate.url],
+      };
+      await save(next);
+      setServer(next);
+    },
+    removeServerAddress: async (address) => {
+      if (!server || address === server.url || server.addresses.length <= 1) return;
+      const next = {
+        ...server,
+        addresses: server.addresses.filter((value) => value !== address),
+      };
+      await save(next);
+      setServer(next);
+    },
+    activateServerAddress,
     // A token from one server means nothing to another.
     changeServer: async () => {
       await Promise.all([forget(), signOut()]);

@@ -1,14 +1,12 @@
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, useHeaderClearance } from '../components/Header';
 import { PhotoActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
 import { usePagedResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
 interface Props {
-  /** Where this screen publishes its bar. */
-  slot: string;
   serverUrl: string;
   city: string;
   title: string;
@@ -16,7 +14,7 @@ interface Props {
 }
 
 /** Everything taken in one town or city. */
-export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
+export function PlaceScreen({ serverUrl, city, title, onBack }: Props) {
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/assets?city=${encodeURIComponent(city)}&sortBy=date&order=desc`,
@@ -25,19 +23,6 @@ export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
   const selection = useSelection();
 
   const total = pagination?.total ?? 0;
-
-  useHeaderSlot(
-    slot,
-    {
-      title,
-      icon: 'pin',
-      subtitle: total
-        ? `${total.toLocaleString()} ${total === 1 ? 'photo' : 'photos'}`
-        : undefined,
-      onBack,
-    },
-    [title, total, onBack],
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -78,6 +63,13 @@ export function PlaceScreen({ serverUrl, city, title, slot, onBack }: Props) {
           reload();
         }}
       />
+      <Header
+        title={title}
+        icon="pin"
+        subtitle={total ? `${total.toLocaleString()} ${total === 1 ? 'photo' : 'photos'}` : undefined}
+        onBack={onBack}
+      />
+      <SelectionDock />
     </View>
   );
 }

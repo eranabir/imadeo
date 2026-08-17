@@ -68,6 +68,9 @@ export const errorMessage = (error: unknown): string => {
   return error instanceof Error ? error.message : 'Something went wrong';
 };
 
+export const errorStatus = (error: unknown) =>
+  error instanceof AxiosError ? error.response?.status : undefined;
+
 /**
  * Media URLs go into `<img>` and `<video>` tags, which cannot send an
  * Authorization header. They authenticate with the httpOnly cookie the login

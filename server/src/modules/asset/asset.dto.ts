@@ -342,6 +342,12 @@ export class AssetQueryDto {
   @IsBoolean()
   notInAlbum?: boolean;
 
+  @ApiPropertyOptional({ description: 'Only photos that are not inside a folder' })
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  notInFolder?: boolean;
+
   @ApiPropertyOptional({ description: 'Substring match on the file name' })
   @IsOptional()
   @IsString()

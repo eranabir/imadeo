@@ -268,8 +268,8 @@ function useRevision(): number {
   return value;
 }
 
-/** Reloads a mounted screen whenever navigation brings it back into view. */
-function useReloadOnFocus(reload: () => Promise<void>) {
+/** Revalidates a mounted screen whenever navigation brings it back into view. */
+function useReloadOnFocus(reload: (silent?: boolean) => Promise<void>) {
   const reloadRef = useRef(reload);
   const hasFocused = useRef(false);
   useEffect(() => {
@@ -280,7 +280,7 @@ function useReloadOnFocus(reload: () => Promise<void>) {
     useCallback(() => {
       // The regular resource effect owns the initial request. Subsequent focus
       // events cover changes made by the web app or another phone.
-      if (hasFocused.current) void reloadRef.current();
+      if (hasFocused.current) void reloadRef.current(true);
       else hasFocused.current = true;
     }, []),
   );
@@ -316,7 +316,7 @@ export function useResource<T>(
   // moment anything says the library has moved on.
   const seen = useRevision();
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (silent = false) => {
     if (path === null) {
       setData(null);
       setLoadedPath(null);
@@ -325,7 +325,7 @@ export function useResource<T>(
     }
 
     const mine = ++generation.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [body, auth] = await Promise.all([
@@ -391,10 +391,14 @@ export function usePagedResource<T>(
   const seen = useRevision();
 
   const load = useCallback(
-    async (nextPage: number, replace: boolean) => {
+    async (nextPage: number, replace: boolean, silent = false) => {
       if (path === null) return;
       const mine = ++generation.current;
-      replace ? setLoading(true) : setLoadingMore(true);
+      if (replace) {
+        if (!silent) setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
       try {
         const separator = path.includes('?') ? '&' : '?';
@@ -433,14 +437,14 @@ export function usePagedResource<T>(
     [itemsKey, path, serverUrl, size],
   );
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (silent = false) => {
     if (path === null) {
       setItems([]);
       setPagination(null);
       setLoading(false);
       return;
     }
-    await load(1, true);
+    await load(1, true, silent);
   }, [path, load]);
 
   useEffect(() => {

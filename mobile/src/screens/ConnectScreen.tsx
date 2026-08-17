@@ -33,7 +33,7 @@ export function ConnectScreen({ onConnected }: Props) {
     setError(null);
     try {
       const server = await probe(address);
-      await save(server.url);
+      await save(server);
       onConnected(server);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not connect.');

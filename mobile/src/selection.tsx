@@ -16,10 +16,9 @@ import {
  * it, so a panel rendered inside the screen always comes out underneath, and
  * the two collide at the bottom edge.
  *
- * So the screen says what should be in the panel and the shell draws it, one
- * level up from the tabs — the same arrangement the header already uses. This
- * is the channel for saying so; threading a node through every screen's props
- * to reach the root would touch far more code than it is worth.
+ * The native bar is hidden while selection is active and the active route
+ * draws the replacement panel. This context carries that shared state without
+ * placing a stateful visual wrapper above the native tab controller.
  */
 const SelectionContext = createContext<{
   active: boolean;
@@ -42,7 +41,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
 
 export const useSelectionBar = () => useContext(SelectionContext);
 
-/** What the shell should draw over the tab bar while this screen has a selection. */
+/** What the active route should draw while its native tab bar is hidden. */
 export function useSelectionDock(dock: ReactNode, deps: unknown[]) {
   const { publish } = useSelectionBar();
 

@@ -1,18 +1,21 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Stack, usePathname, useSegments } from 'expo-router';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider,
+} from 'expo-router';
+import { StyleSheet, View, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Account } from '../src/components/Account';
-import { Header } from '../src/components/Header';
-import { HeaderSlots, useHeaderSlots } from '../src/header';
 import { Opening } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { ConnectionErrorScreen } from '../src/screens/ConnectionErrorScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
 import { beginServerCheck, ping, request, useServerReachability } from '../src/lib/api';
-import { SelectionProvider, useSelectionBar } from '../src/selection';
+import { findReachable } from '../src/lib/server';
+import { SelectionProvider } from '../src/selection';
 import { SessionProvider, useSession } from '../src/session';
 import { colors } from '../src/theme';
 
@@ -39,16 +42,33 @@ export default function RootLayout() {
    * photograph; it also reset which tab was showing, so changing the setting
    * threw you out of Settings.
    */
-  useAppearance();
+  const appearance = useAppearance();
+  const systemAppearance = useColorScheme();
+  const dark = appearance === 'system' ? systemAppearance !== 'light' : appearance === 'dark';
+  const baseTheme = dark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseTheme,
+    colors: {
+      ...baseTheme.colors,
+      primary: colors.primary,
+      background: colors.bg,
+      card: colors.chrome,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.danger,
+    },
+  };
 
   return (
     <SafeAreaProvider>
-      <SessionProvider>
-        <SelectionProvider>
-          <Gate />
-        </SelectionProvider>
-      </SessionProvider>
-      <StatusBar style={resolvedDark() ? 'light' : 'dark'} />
+      <ThemeProvider value={navigationTheme}>
+        <SessionProvider>
+          <SelectionProvider>
+            <Gate />
+          </SelectionProvider>
+        </SessionProvider>
+        <StatusBar style={resolvedDark() ? 'light' : 'dark'} />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
@@ -62,7 +82,15 @@ export default function RootLayout() {
  * back.
  */
 function Gate() {
-  const { server, signedIn, restoring, connect, signedInNow, changeServer } = useSession();
+  const {
+    server,
+    signedIn,
+    restoring,
+    connect,
+    signedInNow,
+    changeServer,
+    activateServerAddress,
+  } = useSession();
   const reachability = useServerReachability();
   const [verifiedServer, setVerifiedServer] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
@@ -78,13 +106,29 @@ function Gate() {
     }
 
     let active = true;
-    setVerifiedServer(null);
+    // An alternate address is another route to the workspace we have already
+    // authenticated, not a different workspace. Keep the mounted native tabs
+    // while that route is checked; tearing the entire navigator down here made
+    // a harmless address update flash the opening screen and reset the tab.
+    if (!signedIn) setVerifiedServer(null);
     setVerificationFailed(false);
     beginServerCheck();
 
-    const check = () => {
+    const check = async () => {
+      const address = await findReachable(server);
+      if (!active) return;
+      if (!address) {
+        await ping(server.url);
+        if (active && signedIn) setVerificationFailed(true);
+        return;
+      }
+      if (address !== server.url) {
+        await activateServerAddress(address);
+        return;
+      }
+
       if (signedIn) {
-        return request(server.url, '/users/me')
+        await request(server.url, '/users/me')
           .then(() => {
             if (active) {
               setVerificationFailed(false);
@@ -94,8 +138,9 @@ function Gate() {
           .catch(() => {
             if (active) setVerificationFailed(true);
           });
+        return;
       }
-      return ping(server.url);
+      await ping(server.url);
     };
 
     void check();
@@ -112,6 +157,18 @@ function Gate() {
     if (!server) return;
     setRetrying(true);
     setVerificationFailed(false);
+    const address = await findReachable(server);
+    if (!address) {
+      await ping(server.url);
+      if (signedIn) setVerificationFailed(true);
+      setRetrying(false);
+      return;
+    }
+    if (address !== server.url) {
+      await activateServerAddress(address);
+      setRetrying(false);
+      return;
+    }
     if (signedIn) {
       try {
         await request(server.url, '/users/me');
@@ -137,7 +194,7 @@ function Gate() {
 
   if (!server) return <ConnectScreen onConnected={connect} />;
 
-  if (reachability === 'checking') {
+  if (reachability === 'checking' && !verifiedServer) {
     return (
       <View style={[styles.fill, styles.centre]}>
         <Opening />
@@ -166,7 +223,7 @@ function Gate() {
     );
   }
 
-  if (verifiedServer !== server.url) {
+  if (!verifiedServer) {
     return (
       <View style={[styles.fill, styles.centre]}>
         <Opening />
@@ -175,144 +232,20 @@ function Gate() {
   }
 
   /*
-   * A native stack around the tabs, with its own header switched off — for now.
-   *
-   * The tab bar is native from this commit; the top bar is not yet. It cannot
-   * be: a native header holds a title and a couple of buttons, and ours carries
-   * a segmented control on Browse and People and a search field on Search.
-   * Those have to move down into the scrolling content before the platform's
-   * header can take over, which is the next piece of work.
-   *
-   * Until then the shell keeps drawing the one persistent bar it already had,
-   * above the stack, and the stack supplies the push animation, the back
-   * gesture and the routing.
+   * The stack owns routing and gestures; each route owns its own top chrome.
+   * Keeping stateful chrome providers out of this level is important: native
+   * tabs eagerly mount their routes, and publication updates here can disturb
+   * UIKit's tab-controller appearance during startup.
    */
   return (
-    <HeaderSlots>
-      <View style={styles.fill}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        />
-        <Bar />
-        <Dock />
-      </View>
-    </HeaderSlots>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bg },
+      }}
+    />
   );
 }
-
-/**
- * The selection toolbar, over everything including the tab bar.
- *
- * Drawn here rather than by the screen that owns the selection, because the tab
- * bar is a sibling of that screen and composited above it — a panel rendered
- * down there comes out underneath the tabs however it is stacked. Up here it is
- * outside the tabs altogether.
- *
- * It slides in from the bottom edge as the tab bar slides out, so the two read
- * as one bar being exchanged for another rather than a panel appearing on top
- * of a gap. `shown` lags the published node so there is still something on
- * screen to animate away once the selection has gone.
- */
-function Dock() {
-  const { dock } = useSelectionBar();
-  const [shown, setShown] = useState<ReactNode>(dock);
-  const enter = useRef(new Animated.Value(dock ? 1 : 0)).current;
-
-  useEffect(() => {
-    if (dock) setShown(dock);
-
-    const animation = Animated.timing(enter, {
-      toValue: dock ? 1 : 0,
-      // Out faster than in: the toolbar leaving is the end of something the tap
-      // already confirmed, and waiting on it just delays the tabs coming back.
-      duration: dock ? 260 : 180,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    });
-
-    animation.start(({ finished }) => {
-      if (finished && !dock) setShown(null);
-    });
-
-    return () => animation.stop();
-  }, [dock, enter]);
-
-  if (!shown) return null;
-
-  return (
-    <Animated.View
-      pointerEvents="box-none"
-      style={[
-        StyleSheet.absoluteFill,
-        {
-          opacity: enter,
-          transform: [
-            { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [DOCK_TRAVEL, 0] }) },
-          ],
-        },
-      ]}
-    >
-      {shown}
-    </Animated.View>
-  );
-}
-
-/**
- * How far the toolbar starts below the bottom edge.
- *
- * Deliberately more than the bar is tall. It only has to be off screen at the
- * start, and the bar's height depends on the safe area, which differs by phone.
- */
-const DOCK_TRAVEL = 160;
-
-/**
- * The one bar, over whatever the stack is showing.
- *
- * Reads the slot belonging to the route in front: a pushed screen publishes
- * under its own key and owns the bar while it is up, and the tab underneath
- * takes it back when that screen goes.
- */
-function Bar() {
-  const slots = useHeaderSlots();
-  const segments = useSegments();
-  const pathname = usePathname();
-
-  // A pushed route is anything that is not one of the five tabs.
-  const pushed = !segments.includes('(tabs)');
-  const key = pushed
-    ? Object.keys(slots).find((id) => id.includes(pathname.split('/').pop() ?? ''))
-    : TAB_SLOTS[pathname] ?? 'library';
-
-  const bar = key ? slots[key] : undefined;
-  if (!bar) return null;
-
-  /*
-   * Not on a pushed screen, and not on Settings.
-   *
-   * A pushed screen's bar is about the thing it pushed to and carries a back
-   * chevron already; and the button leads to Settings, so putting it on Settings
-   * is a control that does nothing.
-   */
-  const account = !pushed && pathname !== '/settings' ? <Account /> : undefined;
-
-  return (
-    <Header {...bar} account={account}>
-      {bar.below}
-    </Header>
-  );
-}
-
-/** Which slot each tab publishes under, by its route. */
-const TAB_SLOTS: Record<string, string> = {
-  '/': 'library',
-  '/browse': 'browse',
-  '/search': 'search',
-  '/people-and-pets': 'people-and-pets',
-  '/settings': 'settings',
-};
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.bg },

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { FlatList, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
+import { Account } from '../components/Account';
 import { Empty } from '../components/AssetGrid';
 import { Loading } from '../components/Loading';
 import { SubjectCard } from '../components/Cards';
-import { useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import { Segmented } from '../components/Segmented';
 import { useResource, type Subject } from '../lib/api';
 import { useRouter } from 'expo-router';
@@ -61,27 +62,22 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
 
   const clearance = useHeaderClearance(54);
 
-  // The bar itself belongs to the shell; this only says what goes in it.
-  useHeaderSlot(
-    'people-and-pets',
-    {
-      title: 'People & Pets',
-      icon: 'people-and-pets',
-      below: (
-        <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-          <Segmented
-            segments={[
-              { id: 'PERSON', label: 'People', icon: 'person' },
-              { id: 'PET', label: 'Pets', icon: 'pet' },
-            ]}
-            active={kind}
-            onChange={setKind}
-          />
-        </View>
-      ),
-    },
-    [kind],
-  );
+  const bar: HeaderConfig = {
+    title: 'People & Pets',
+    icon: 'people-and-pets',
+    below: (
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+        <Segmented
+          segments={[
+            { id: 'PERSON', label: 'People', icon: 'person' },
+            { id: 'PET', label: 'Pets', icon: 'pet' },
+          ]}
+          active={kind}
+          onChange={setKind}
+        />
+      </View>
+    ),
+  };
 
   // Four across, with the gutters taken out before the split rather than after,
   // so the last column ends the same distance from the edge as the first begins.
@@ -94,58 +90,63 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
   const noun = kind === 'PET' ? 'pets' : 'people';
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
-        data={subjects}
-        keyExtractor={(subject) => subject.id}
-        numColumns={COLUMNS}
-        columnWrapperStyle={{ gap: GUTTER, paddingHorizontal: GUTTER }}
-        contentContainerStyle={{
-          paddingTop: clearance + 8,
-          paddingBottom: TAB_BAR_CLEARANCE,
-          gap: 18,
-        }}
-        onRefresh={reload}
-        refreshing={loading && subjects.length > 0}
-        progressViewOffset={clearance}
-        ListHeaderComponent={
-          <Notice status={status.data} error={error ?? status.error} noun={noun} />
-        }
-        renderItem={({ item }) => (
-          <SubjectCard
-            serverUrl={serverUrl}
-            subject={item}
-            token={token}
-            size={avatar}
-            onPress={() =>
-              router.push({
-                pathname: '/subject/[id]',
-                params: {
-                  id: item.id,
-                  kind: item.kind,
-                  species: item.species ?? '',
-                  title: item.name || 'Unnamed',
-                },
-              })
-            }
-          />
-        )}
-        ListEmptyComponent={
-          loading ? (
-            <Loading label={`Finding ${noun}…`} />
-          ) : (
-            <Empty
-              icon={kind === 'PET' ? 'pet' : 'people-and-pets'}
-              title={`No ${noun} yet`}
-              body={
-                status.data && !status.data.enabled
-                  ? 'This server has People & Pets recognition switched off, so nothing is being grouped.'
-                  : `Once your photos have been scanned, the ${noun} in them are grouped here.`
+    <View collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollViewMarker style={{ flex: 1 }}>
+        <FlatList
+          data={subjects}
+          keyExtractor={(subject) => subject.id}
+          numColumns={COLUMNS}
+          columnWrapperStyle={{ gap: GUTTER, paddingHorizontal: GUTTER }}
+          contentContainerStyle={{
+            paddingTop: clearance + 8,
+            paddingBottom: TAB_BAR_CLEARANCE,
+            gap: 18,
+          }}
+          onRefresh={reload}
+          refreshing={loading && subjects.length > 0}
+          progressViewOffset={clearance}
+          ListHeaderComponent={
+            <Notice status={status.data} error={error ?? status.error} noun={noun} />
+          }
+          renderItem={({ item }) => (
+            <SubjectCard
+              serverUrl={serverUrl}
+              subject={item}
+              token={token}
+              size={avatar}
+              onPress={() =>
+                router.push({
+                  pathname: '/subject/[id]',
+                  params: {
+                    id: item.id,
+                    kind: item.kind,
+                    species: item.species ?? '',
+                    title: item.name || 'Unnamed',
+                  },
+                })
               }
             />
-          )
-        }
-      />
+          )}
+          ListEmptyComponent={
+            loading ? (
+              <Loading label={`Finding ${noun}…`} />
+            ) : (
+              <Empty
+                icon={kind === 'PET' ? 'pet' : 'people-and-pets'}
+                title={`No ${noun} yet`}
+                body={
+                  status.data && !status.data.enabled
+                    ? 'This server has People & Pets recognition switched off, so nothing is being grouped.'
+                    : `Once your photos have been scanned, the ${noun} in them are grouped here.`
+                }
+              />
+            )
+          }
+        />
+      </ScrollViewMarker>
+      <Header {...bar} account={<Account />}>
+        {bar.below}
+      </Header>
     </View>
   );
 }

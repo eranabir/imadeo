@@ -3,13 +3,13 @@ import { FolderOpen, LayoutGrid, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { useLibraryActions } from '../components/useLibraryActions';
-import { api, errorMessage } from '../lib/api';
+import { api, errorMessage, errorStatus } from '../lib/api';
 import { useSelection } from '../lib/useSelection';
 import { formatDate } from '../lib/format';
 import { runBatchedOperation, runOperation } from '../lib/operationProgress';
 import { useAuth } from '../store/auth';
 import type { Album, Asset } from '../types';
-import { Button, ConfirmDialog, EmptyState, IconButton } from '../ui';
+import { Button, ConfirmDialog, Dialog, EmptyState, IconButton } from '../ui';
 
 interface TrashedFolder {
   id: string;
@@ -35,6 +35,7 @@ export function TrashPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'selected' | 'all' | null>(null);
   const [structureConfirm, setStructureConfirm] = useState<TrashedStructure | null>(null);
+  const [restoreWarning, setRestoreWarning] = useState<string | null>(null);
 
   const actions = useLibraryActions({ trashed: true, selectedIds: [...selected] });
 
@@ -56,6 +57,10 @@ export function TrashPage() {
     return queryClient.invalidateQueries();
   };
   const onError = (e: unknown) => setError(errorMessage(e));
+  const onRestoreError = (e: unknown) => {
+    if (errorStatus(e) === 409) setRestoreWarning(errorMessage(e));
+    else onError(e);
+  };
 
   const restore = useMutation({
     mutationFn: async (ids: string[]) =>
@@ -65,7 +70,7 @@ export function TrashPage() {
         async (batch) => (await api.post('/assets/trash/restore', { ids: batch })).data,
       ),
     onSuccess: afterChange,
-    onError,
+    onError: onRestoreError,
   });
 
   const restoreAll = useMutation({
@@ -80,7 +85,7 @@ export function TrashPage() {
         return (await api.post('/assets/trash/restore-all')).data;
       }),
     onSuccess: afterChange,
-    onError,
+    onError: onRestoreError,
   });
 
   const restoreFolder = useMutation({
@@ -89,7 +94,7 @@ export function TrashPage() {
         (await api.post(`/folders/${id}/restore`)).data,
       ),
     onSuccess: afterChange,
-    onError,
+    onError: onRestoreError,
   });
 
   const restoreAlbum = useMutation({
@@ -316,6 +321,14 @@ export function TrashPage() {
       ) : null}
 
       {actions.overlays}
+
+      <Dialog
+        open={restoreWarning !== null}
+        title="Folder name already in use"
+        description={restoreWarning ?? undefined}
+        onClose={() => setRestoreWarning(null)}
+        footer={<Button onClick={() => setRestoreWarning(null)}>Close</Button>}
+      />
 
       <ConfirmDialog
         open={confirm === 'selected'}

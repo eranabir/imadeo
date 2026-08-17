@@ -9,6 +9,18 @@ interface Options {
   onEnter?: () => void;
 }
 
+export function handleInternalDrop(
+  event: React.DragEvent,
+  onDrop: (payload: DragPayload) => void,
+) {
+  if (!isDragging(event)) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  const payload = readDrag(event);
+  if (payload) onDrop(payload);
+  return true;
+}
+
 /**
  * Makes a whole element a drop target, children included.
  *
@@ -50,12 +62,11 @@ export function useDropTarget({ effect = 'move', onDrop, onEnter }: Options) {
         }
       },
       onDrop: (event: React.DragEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
+        // Finder/Explorer drops belong to the app-wide upload handler. Do not
+        // swallow them when the pointer happens to be over a folder or album.
+        if (!handleInternalDrop(event, onDrop)) return;
         depth.current = 0;
         setIsOver(false);
-        const payload = readDrag(event);
-        if (payload) onDrop(payload);
       },
     },
   };

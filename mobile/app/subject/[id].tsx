@@ -19,7 +19,6 @@ export default function SubjectRoute() {
       title={title ?? 'Unnamed'}
       kind={kind === 'PET' ? 'PET' : 'PERSON'}
       species={species || null}
-      slot={`subject:${id}`}
       onBack={() => router.back()}
     />
   );

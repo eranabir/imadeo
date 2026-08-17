@@ -5,6 +5,12 @@ const KEY = 'imadeo.server';
 export interface ServerInfo {
   url: string;
   version: string;
+  /** Every route to this one workspace, with the currently working one first. */
+  addresses: string[];
+}
+
+function uniqueAddresses(values: string[]): string[] {
+  return [...new Set(values.map(normalize).filter(Boolean))];
 }
 
 function hostOf(value: string): string {
@@ -67,10 +73,7 @@ export async function probe(input: string): Promise<ServerInfo> {
 
   let response: Response;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    response = await fetch(`${url}/api`, { signal: controller.signal });
-    clearTimeout(timer);
+    response = await fetchApiRoot(url, 8000);
   } catch {
     const help = isLocalAddress(url)
       ? 'Check the address and that your phone is on the same network.'
@@ -87,15 +90,115 @@ export async function probe(input: string): Promise<ServerInfo> {
     throw new Error(`Something is running at ${url}, but it is not Imadeo.`);
   }
 
-  return { url, version: typeof body.version === 'string' ? body.version : 'unknown' };
+  return {
+    url,
+    version: typeof body.version === 'string' ? body.version : 'unknown',
+    addresses: [url],
+  };
 }
 
-export async function save(url: string) {
-  await setItem(KEY, url);
+async function fetchApiRoot(url: string, timeout: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(`${url}/api`, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-export async function load(): Promise<string | null> {
-  return getItem(KEY);
+async function isImadeo(url: string, timeout: number): Promise<boolean> {
+  try {
+    const response = await fetchApiRoot(url, timeout);
+    if (!response.ok) return false;
+    const body = await response.json().catch(() => null);
+    return typeof body?.message === 'string' && body.message.includes('Imadeo');
+  } catch {
+    return false;
+  }
+}
+
+/** Finds the first route that currently reaches this workspace. */
+export async function findReachable(server: ServerInfo): Promise<string | null> {
+  const addresses = uniqueAddresses([server.url, ...server.addresses]);
+  if (addresses.length === 0) return null;
+
+  return new Promise((resolve) => {
+    let remaining = addresses.length;
+    let settled = false;
+    for (const address of addresses) {
+      void isImadeo(address, 4000).then((reachable) => {
+        if (settled) return;
+        if (reachable) {
+          settled = true;
+          resolve(address);
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0) resolve(null);
+      });
+    }
+  });
+}
+
+/** Proves that an added address reaches the signed-in user's same workspace. */
+export async function verifyWorkspaceAddress(
+  input: string,
+  accessToken: string,
+  expectedUserId: string,
+): Promise<ServerInfo> {
+  const candidate = await probe(input);
+  let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    response = await fetch(`${candidate.url}/api/users/me`, {
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'x-imadeo-client': 'native',
+      },
+    });
+  } catch {
+    throw new Error(`Could not verify ${candidate.url}.`);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok || body?.id !== expectedUserId) {
+    throw new Error('That address does not belong to this signed-in workspace.');
+  }
+  return candidate;
+}
+
+export async function save(server: ServerInfo) {
+  const addresses = uniqueAddresses([server.url, ...server.addresses]);
+  await setItem(KEY, JSON.stringify({ ...server, url: addresses[0], addresses }));
+}
+
+export async function load(): Promise<ServerInfo | null> {
+  const raw = await getItem(KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<ServerInfo>;
+    if (typeof parsed.url !== 'string') throw new Error('invalid server');
+    const addresses = uniqueAddresses([
+      parsed.url,
+      ...(Array.isArray(parsed.addresses) ? parsed.addresses : []),
+    ]);
+    if (addresses.length === 0) return null;
+    return {
+      url: addresses[0],
+      version: typeof parsed.version === 'string' ? parsed.version : 'unknown',
+      addresses,
+    };
+  } catch {
+    // Before workspaces supported alternate routes, this value was one URL.
+    const url = normalize(raw);
+    return url ? { url, version: 'unknown', addresses: [url] } : null;
+  }
 }
 
 export async function forget() {

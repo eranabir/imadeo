@@ -38,8 +38,8 @@ const initialsOf = (name: string) =>
  * it is — and sending someone looking for their account into a list of
  * switches is answering neither.
  *
- * Fetched here rather than passed down, because the shell draws one bar for
- * every tab, so this asks once for all of them.
+ * Fetched here rather than threaded through every screen, so the button remains
+ * a self-contained part of each route's header.
  */
 export function Account() {
   const router = useRouter();

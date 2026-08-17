@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
@@ -720,6 +726,22 @@ export class FolderService {
       if (!parent) {
         throw new BadRequestException('Restore the parent folder first');
       }
+    }
+
+    const nameClash = await this.prisma.folder.findFirst({
+      where: {
+        ownerId: userId,
+        parentId: root.parentId,
+        name: root.name,
+        deletedAt: null,
+        id: { not: root.id },
+      },
+      select: { id: true },
+    });
+    if (nameClash) {
+      throw new ConflictException(
+        `A folder named “${root.name}” already exists here. Rename the existing folder before restoring this one.`,
+      );
     }
 
     const assetRows = await this.prisma.asset.findMany({

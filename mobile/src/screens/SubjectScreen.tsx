@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
-import { HeaderAction, useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, HeaderAction, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
 import { request, usePagedResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
 
 interface Props {
-  /** Where this screen publishes its bar. */
-  slot: string;
   serverUrl: string;
   subjectId: string;
   title: string;
@@ -27,7 +25,7 @@ interface SubjectAsset extends Asset {
 }
 
 /** Every photo one person or pet appears in. */
-export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot, onBack }: Props) {
+export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBack }: Props) {
   const [name, setName] = useState(title === 'Unnamed' ? '' : title);
   const [naming, setNaming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -71,37 +69,31 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
 
   const total = pagination?.total ?? 0;
 
-  // Published rather than drawn: the shell owns the one bar, and a screen that
-  // brought its own would slide it in over the top of the one already there.
-  useHeaderSlot(
-    slot,
-    {
-      title: name || 'Unnamed',
-      subtitle: total
-        ? `${shownSpecies ? `${shownSpecies} · ` : ''}${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
-        : shownSpecies ?? undefined,
-      icon: is === 'PET' ? 'pet' : 'person',
-      onBack,
-      action: (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <HeaderAction
-            label={is === 'PET' ? 'This is a person' : 'This is a pet'}
-            icon={is === 'PET' ? 'person' : 'pet'}
-            compact
-            // No confirmation: it is one tap to undo, and the label already
-            // says which way it goes.
-            onPress={() => void swapKind()}
-          />
-          <HeaderAction
-            label={name ? 'Rename' : 'Add name'}
-            icon="edit"
-            onPress={() => setNaming(true)}
-          />
-        </View>
-      ),
-    },
-    [name, total, is, shownSpecies, onBack],
-  );
+  const bar: HeaderConfig = {
+    title: name || 'Unnamed',
+    subtitle: total
+      ? `${shownSpecies ? `${shownSpecies} · ` : ''}${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}`
+      : shownSpecies ?? undefined,
+    icon: is === 'PET' ? 'pet' : 'person',
+    onBack,
+    action: (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <HeaderAction
+          label={is === 'PET' ? 'This is a person' : 'This is a pet'}
+          icon={is === 'PET' ? 'person' : 'pet'}
+          compact
+          // No confirmation: it is one tap to undo, and the label already
+          // says which way it goes.
+          onPress={() => void swapKind()}
+        />
+        <HeaderAction
+          label={name ? 'Rename' : 'Add name'}
+          icon="edit"
+          onPress={() => setNaming(true)}
+        />
+      </View>
+    ),
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -147,6 +139,8 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, slot
           reload();
         }}
       />
+      <Header {...bar} />
+      <SelectionDock />
 
       {naming && (
         <NameSheet

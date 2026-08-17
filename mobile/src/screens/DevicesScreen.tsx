@@ -2,9 +2,9 @@ import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { FolderCard, Section } from '../components/Cards';
-import { useHeaderClearance } from '../components/Header';
+import { Header, useHeaderClearance } from '../components/Header';
 import { PhotoActions } from '../components/PhotoActions';
-import { useHeaderSlot } from '../header';
+import { SelectionDock } from '../components/SelectionDock';
 import { usePagedResource, useResource, type Asset, type Device } from '../lib/api';
 import { colors } from '../theme';
 
@@ -20,51 +20,47 @@ export function DevicesScreen({ serverUrl, onBack }: ListProps) {
   const clearance = useHeaderClearance();
   const devices = data ?? [];
 
-  useHeaderSlot(
-    'devices',
-    {
-      title: 'Devices',
-      subtitle: `${devices.length} device ${devices.length === 1 ? 'library' : 'libraries'}`,
-      icon: 'phone',
-      onBack,
-    },
-    [devices.length, onBack],
-  );
-
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ paddingTop: clearance + 16, paddingBottom: 32 }}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={colors.primary} />}
-    >
-      {error && <Text style={{ color: colors.danger, paddingHorizontal: 16 }}>{error}</Text>}
-      {!loading && devices.length === 0 ? (
-        <View style={{ paddingHorizontal: 24, paddingTop: 56, alignItems: 'center' }}>
-          <Text style={{ color: colors.text, fontSize: 19, fontWeight: '700' }}>No devices yet</Text>
-          <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 8 }}>
-            A device library appears here after its first mobile backup.
-          </Text>
-        </View>
-      ) : (
-        <Section title="Libraries" trailing={`${devices.length}`}>
-          <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            {devices.map((device) => (
-              <FolderCard
-                key={device.id}
-                folder={{ name: device.libraryName, cardIcon: 'phone', assetCount: device.assetCount }}
-                detail={`${device.assetCount.toLocaleString()} ${device.assetCount === 1 ? 'item' : 'items'}`}
-                onPress={() =>
-                  router.push({
-                    pathname: '/device/[id]',
-                    params: { id: device.id, title: device.libraryName },
-                  })
-                }
-              />
-            ))}
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: clearance + 16, paddingBottom: 32 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={colors.primary} />}
+      >
+        {error && <Text style={{ color: colors.danger, paddingHorizontal: 16 }}>{error}</Text>}
+        {!loading && devices.length === 0 ? (
+          <View style={{ paddingHorizontal: 24, paddingTop: 56, alignItems: 'center' }}>
+            <Text style={{ color: colors.text, fontSize: 19, fontWeight: '700' }}>No devices yet</Text>
+            <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 8 }}>
+              A device library appears here after its first mobile backup.
+            </Text>
           </View>
-        </Section>
-      )}
-    </ScrollView>
+        ) : (
+          <Section title="Libraries" trailing={`${devices.length}`}>
+            <View style={{ paddingHorizontal: 16, gap: 8 }}>
+              {devices.map((device) => (
+                <FolderCard
+                  key={device.id}
+                  folder={{ name: device.libraryName, cardIcon: 'phone', assetCount: device.assetCount }}
+                  detail={`${device.assetCount.toLocaleString()} ${device.assetCount === 1 ? 'item' : 'items'}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/device/[id]',
+                      params: { id: device.id, title: device.libraryName },
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </Section>
+        )}
+      </ScrollView>
+      <Header
+        title="Devices"
+        subtitle={`${devices.length} device ${devices.length === 1 ? 'library' : 'libraries'}`}
+        icon="phone"
+        onBack={onBack}
+      />
+    </View>
   );
 }
 
@@ -81,19 +77,6 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
   const assets = usePagedResource<Asset>(serverUrl, `/assets?deviceId=${encodeURIComponent(deviceId)}`);
   const clearance = useHeaderClearance();
   const selection = useSelection();
-
-  useHeaderSlot(
-    `device:${deviceId}`,
-    {
-      title: device.data?.libraryName ?? title,
-      subtitle: device.data
-        ? `${device.data.assetCount.toLocaleString()} ${device.data.assetCount === 1 ? 'item' : 'items'}`
-        : 'Loading…',
-      icon: 'phone',
-      onBack,
-    },
-    [deviceId, device.data?.libraryName, device.data?.assetCount, title, onBack],
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -132,6 +115,17 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
           device.reload();
         }}
       />
+      <Header
+        title={device.data?.libraryName ?? title}
+        subtitle={
+          device.data
+            ? `${device.data.assetCount.toLocaleString()} ${device.data.assetCount === 1 ? 'item' : 'items'}`
+            : 'Loading…'
+        }
+        icon="phone"
+        onBack={onBack}
+      />
+      <SelectionDock />
     </View>
   );
 }

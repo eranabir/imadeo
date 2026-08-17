@@ -1,12 +1,13 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { runBackup } from './backup';
-import { load as loadServer } from './server';
+import { findReachable, load as loadServer, save as saveServer } from './server';
 import { getItem, removeItem, setItem } from './storage';
 
 const TASK = 'imadeo.autobackup';
 const ENABLED = 'imadeo.autobackup.enabled';
 const LAST_RUN = 'imadeo.autobackup.lastRun';
+const foregroundListeners = new Set<() => void>();
 
 /**
  * How often to ask the system to consider running. Not how often it will.
@@ -47,7 +48,12 @@ TaskManager.defineTask(TASK, async () => {
      * window closes, and it simply suspends the app when it does — anything
      * already uploaded is recorded, and the rest is picked up next time.
      */
-    const progress = await runBackup(server, () => {}, () => false);
+    const address = await findReachable(server);
+    if (!address) return BackgroundTask.BackgroundTaskResult.Failed;
+    if (address !== server.url) {
+      await saveServer({ ...server, url: address, addresses: [address, ...server.addresses] });
+    }
+    const progress = await runBackup(address, () => {}, () => false);
     await setItem(LAST_RUN, JSON.stringify({ at: Date.now(), sent: progress.done, failed: progress.failed }));
 
     return BackgroundTask.BackgroundTaskResult.Success;
@@ -100,6 +106,7 @@ export async function setEnabled(on: boolean): Promise<void> {
     // schedule is the platform's to refuse, and refusing it must not also throw
     // away the half that does not need it.
     await setItem(ENABLED, 'yes');
+    for (const listener of foregroundListeners) listener();
     try {
       await BackgroundTask.registerTaskAsync(TASK, { minimumInterval: EVERY_MINUTES });
     } catch {
@@ -112,6 +119,14 @@ export async function setEnabled(on: boolean): Promise<void> {
   if (await TaskManager.isTaskRegisteredAsync(TASK)) {
     await BackgroundTask.unregisterTaskAsync(TASK);
   }
+}
+
+/** Starts the visible foreground run as soon as the setting is enabled. */
+export function onForegroundBackupRequested(listener: () => void) {
+  foregroundListeners.add(listener);
+  return () => {
+    foregroundListeners.delete(listener);
+  };
 }
 
 /**

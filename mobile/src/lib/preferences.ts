@@ -181,7 +181,6 @@ export function useAutoplayVideos(): boolean {
 
   useEffect(() => {
     listeners.add(setOn);
-    void restorePreferences();
     return () => {
       listeners.delete(setOn);
     };

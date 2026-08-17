@@ -1,6 +1,5 @@
 import { ScrollView, Text, View } from 'react-native';
-import { useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, useHeaderClearance } from '../components/Header';
 import { Action, Group, Row, StorageRow } from '../components/settings';
 import { useResource } from '../lib/api';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
@@ -57,8 +56,6 @@ export function AccountScreen({
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
 
   const clearance = useHeaderClearance();
-
-  useHeaderSlot('account', { title: 'Account', icon: 'person', onBack }, []);
 
   /*
    * The same measure Settings uses: a quota if the account has one, otherwise
@@ -140,6 +137,7 @@ export function AccountScreen({
 
         <Action label="Sign out" onPress={onSignOut} danger />
       </ScrollView>
+      <Header title="Account" icon="person" onBack={onBack} />
     </View>
   );
 }

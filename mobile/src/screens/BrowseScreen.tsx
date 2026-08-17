@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
+import { Account } from '../components/Account';
 import { AlbumCard, FolderCard, Section } from '../components/Cards';
-import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
+import { Header, HeaderAction, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import type { IconName } from '../components/Icon';
-import { useHeaderSlot } from '../header';
 import { PhotoActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
 import { Segmented } from '../components/Segmented';
 import { PlacesBody } from './PlacesScreen';
 import { SharingShelf } from './SharingScreen';
@@ -17,8 +18,6 @@ import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 
 interface Props {
-  /** Where this screen publishes its bar; unset when it is the Browse tab. */
-  slot?: string;
   serverUrl: string;
   /** Null browses the top level, which is also the Imadeo tab itself. */
   folderId: string | null;
@@ -43,7 +42,7 @@ type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boo
  * already the bottom half of the screen, and a shelf that showed the entire
  * library from within one folder would be lying about where you are.
  */
-export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props) {
+export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
   const router = useRouter();
   const atRoot = folderId === null;
 
@@ -151,13 +150,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
 
   const clearance = useHeaderClearance(atRoot ? 54 : 0);
 
-  /**
-   * What belongs in the bar, wherever the bar happens to be.
-   *
-   * As a tab it is handed to the shell, which owns the one persistent bar; as a
-   * pushed folder this screen covers the shell entirely and draws it itself.
-   */
-  const bar = {
+  const bar: HeaderConfig = {
     title: title ?? 'Browse',
     subtitle,
     icon: (onBack
@@ -197,14 +190,6 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
     ) : undefined,
   };
 
-  // One slot or the other: `browse` as a tab, the stack's own key as a folder.
-  // Either way the shell draws it, and this screen never carries a bar of its
-  // own across the top of the one already there.
-  useHeaderSlot(
-    slot ?? 'browse',
-    { ...bar, onBack },
-    [title, subtitle, showing, shelf, atRoot, onBack],
-  );
   const deviceShelf = atRoot && showing === 'folders';
   const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0 && !deviceShelf;
 
@@ -292,7 +277,7 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
       {/*
         Places replaces the grid rather than sitting above it.
 
@@ -369,6 +354,11 @@ export function BrowseScreen({ serverUrl, folderId, title, slot, onBack }: Props
           reload();
         }}
       />
+
+      <Header {...bar} onBack={onBack} account={atRoot ? <Account /> : undefined}>
+        {bar.below}
+      </Header>
+      <SelectionDock />
 
       {/* -- folder and album actions ------------------------------------- */}
 

@@ -8,7 +8,7 @@ import { Touchable } from './ui';
 /** The bar's own height, above whatever the status bar takes. */
 export const HEADER_HEIGHT = 60;
 
-interface Props {
+export interface HeaderConfig {
   title: string;
   subtitle?: string;
   /**
@@ -22,6 +22,11 @@ interface Props {
   onBack?: () => void;
   /** A single control on the right — a New button, a Rename, a filter. */
   action?: ReactNode;
+  /** Anything that hangs under the title — a segmented control, a search field. */
+  below?: ReactNode;
+}
+
+interface Props extends HeaderConfig {
   /**
    * The account button, in the far corner.
    *
@@ -50,7 +55,15 @@ interface Props {
  * It still floats above the content, so every list below it has to open with
  * `headerClearance` worth of padding, or its first row starts life hidden.
  */
-export function Header({ title, subtitle, icon, onBack, action, account, children }: Props) {
+export function Header({
+  title,
+  subtitle,
+  icon,
+  onBack,
+  action,
+  account,
+  children,
+}: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -68,7 +81,6 @@ export function Header({ title, subtitle, icon, onBack, action, account, childre
         top: 0,
         left: 0,
         right: 0,
-        zIndex: 10,
         backgroundColor: colors.surface,
         borderBottomLeftRadius: radius.xl,
         borderBottomRightRadius: radius.xl,

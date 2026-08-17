@@ -12,7 +12,6 @@ export default function Route() {
       serverUrl={serverUrl}
       city={city}
       title={title ?? city}
-      slot={`place:${city}`}
       onBack={() => router.back()}
     />
   );

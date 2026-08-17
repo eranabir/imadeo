@@ -18,6 +18,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
 import { intoDays } from '../lib/day';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
@@ -362,7 +363,8 @@ export function AssetGrid({
   if (groupByDay) {
     return (
       <>
-        <SectionList
+        <ScrollViewMarker style={{ flex: 1 }}>
+          <SectionList
           sections={days}
           keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
           // The heading would otherwise sit under the bar it scrolls beneath.
@@ -402,8 +404,9 @@ export function AssetGrid({
                 ))}
             </View>
           )}
-          {...shared}
-        />
+            {...shared}
+          />
+        </ScrollViewMarker>
 
         {/* Under the bar rather than in the grid, and only where the grid is
             cut into days — a folder or a set of results is not a timeline and
@@ -452,42 +455,44 @@ export function AssetGrid({
 
   return (
     <>
-    <FlatList
-      data={assets}
-      keyExtractor={(item) => item.id}
-      numColumns={columns}
-      // Remounts the rows rather than reflowing them: FlatList cannot change
-      // numColumns on a live list.
-      key={columns}
-      contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
-      ListHeaderComponent={header}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-            progressBackgroundColor={colors.surface}
-            // Otherwise the spinner appears underneath the glass header.
-            progressViewOffset={topInset}
-          />
-        ) : undefined
-      }
-      renderItem={({ item, index }) => renderTile(item, index)}
-      onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
-      onEndReachedThreshold={1.5}
-      ListEmptyComponent={
-        !showEmptyState ? null : loading ? (
-          // The shape of the grid that is arriving, not a spinner over a void.
-          <GridSkeleton columns={columns} />
-        ) : (
-          <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
-            {emptyExtra}
-          </Empty>
-        )
-      }
-    />
+      <ScrollViewMarker style={{ flex: 1 }}>
+        <FlatList
+          data={assets}
+          keyExtractor={(item) => item.id}
+          numColumns={columns}
+          // Remounts the rows rather than reflowing them: FlatList cannot change
+          // numColumns on a live list.
+          key={columns}
+          contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
+          ListHeaderComponent={header}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={loading}
+                onRefresh={onRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+                progressBackgroundColor={colors.surface}
+                // Otherwise the spinner appears underneath the glass header.
+                progressViewOffset={topInset}
+              />
+            ) : undefined
+          }
+          renderItem={({ item, index }) => renderTile(item, index)}
+          onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
+          onEndReachedThreshold={1.5}
+          ListEmptyComponent={
+            !showEmptyState ? null : loading ? (
+              // The shape of the grid that is arriving, not a spinner over a void.
+              <GridSkeleton columns={columns} />
+            ) : (
+              <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
+                {emptyExtra}
+              </Empty>
+            )
+          }
+        />
+      </ScrollViewMarker>
 
     <AssetViewer
       serverUrl={serverUrl}

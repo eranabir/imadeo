@@ -999,6 +999,7 @@ export class AssetService implements OnModuleInit {
       // "Loose" photos: everything that never made it into an album, which is
       // the usual way of finding what still needs filing.
       ...(query.notInAlbum ? { albums: { none: {} } } : {}),
+      ...(query.notInFolder ? { folderId: null } : {}),
       ...(query.withPeople ? { faces: { some: { personId: { not: null }, deletedAt: null } } } : {}),
         },
       ],

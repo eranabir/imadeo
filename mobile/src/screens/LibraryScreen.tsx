@@ -29,19 +29,21 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { DayHeader, Empty } from '../components/AssetGrid';
 import { VideoPage } from '../components/AssetViewer';
 import { useGrowFrom, type Rect } from '../components/grow';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
+import { Account } from '../components/Account';
 import { BackupProgressScreen } from './BackupProgressScreen';
-import { HeaderAction, useHeaderClearance } from '../components/Header';
-import { useHeaderSlot } from '../header';
+import { Header, HeaderAction, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import { intoDays } from '../lib/day';
 import { Icon, type IconName } from '../components/Icon';
 import { DeviceActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
 import { ConfirmSheet } from '../components/sheets';
 import { Button, Sheet, Touchable } from '../components/ui';
-import { isEnabled } from '../lib/autobackup';
+import { isEnabled, onForegroundBackupRequested } from '../lib/autobackup';
 import { backupInFlight, pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
@@ -247,6 +249,9 @@ export function LibraryScreen({ serverUrl }: Props) {
      * not automatic backup is switched on.
      */
     void catchUp();
+    const stopListening = onForegroundBackupRequested(() => {
+      void loadRef.current().then(catchUp);
+    });
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       void loadRef.current().then(catchUp);
@@ -254,6 +259,7 @@ export function LibraryScreen({ serverUrl }: Props) {
 
     return () => {
       alive = false;
+      stopListening();
       subscription.remove();
     };
   }, [allowed]);
@@ -293,72 +299,65 @@ export function LibraryScreen({ serverUrl }: Props) {
 
   const sections = byDay(assets);
 
-  // The bar is the shell's; this only says what goes in it, so a swipe between
-  // tabs never moves it.
-  useHeaderSlot(
-    'library',
-    {
-      title: picked.length > 0 ? `${picked.length} selected` : 'Library',
-      icon: 'phone',
-      subtitle:
-        running && progress
-          ? `${progress.done} of ${progress.total} sent to ${host}`
-          : picked.length > 0
-            ? pickedPending === 0
-              ? 'Already backed up · tap to change'
-              : `${pickedPending.toLocaleString()} to send to ${host}`
-            : total === null
-              ? 'Reading this phone…'
-              : backedUp
-                ? `${total.toLocaleString()} on this phone · all backed up`
-                : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`,
-      /*
-       * Nothing to send means no button. Re-reading the phone is what pulling
-       * the grid down already does, so a control that only did that was
-       * offering a second way to do nothing in particular. A selection has its
-       * verbs in the bar at the bottom instead, near the thumb.
-       */
-      action: running ? (
-        <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
-      ) : picked.length > 0 || backedUp ? undefined : (
-        <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
-      ),
-      below:
-        running && progress && progress.total > 0 ? (
-          /*
-            Inset from the bar's edges rather than run to them.
+  const bar: HeaderConfig = {
+    title: picked.length > 0 ? `${picked.length} selected` : 'Library',
+    icon: 'phone',
+    subtitle:
+      running && progress
+        ? `${progress.done} of ${progress.total} sent to ${host}`
+        : picked.length > 0
+          ? pickedPending === 0
+            ? 'Already backed up · tap to change'
+            : `${pickedPending.toLocaleString()} to send to ${host}`
+          : total === null
+            ? 'Reading this phone…'
+            : backedUp
+              ? `${total.toLocaleString()} on this phone · all backed up`
+              : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`,
+    /*
+     * Nothing to send means no button. Re-reading the phone is what pulling
+     * the grid down already does, so a control that only did that was
+     * offering a second way to do nothing in particular. A selection has its
+     * verbs in the bar at the bottom instead, near the thumb.
+     */
+    action: running ? (
+      <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
+    ) : picked.length > 0 || backedUp ? undefined : (
+      <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
+    ),
+    below:
+      running && progress && progress.total > 0 ? (
+        /*
+          Inset from the bar's edges rather than run to them.
 
-            It used to sit flush along the bottom, which is exactly where the
-            bar's rounded corners are — so the last few percent at each end was
-            clipped away and the track looked broken before it had started.
-          */
-          <Touchable
-            onPress={() => setShowProgress(true)}
-            label="See what is being backed up"
-            radius={radius.pill}
+          It used to sit flush along the bottom, which is exactly where the
+          bar's rounded corners are — so the last few percent at each end was
+          clipped away and the track looked broken before it had started.
+        */
+        <Touchable
+          onPress={() => setShowProgress(true)}
+          label="See what is being backed up"
+          radius={radius.pill}
+          style={{
+            height: 4,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            borderRadius: radius.pill,
+            backgroundColor: colors.border,
+            overflow: 'hidden',
+          }}
+        >
+          <View
             style={{
-              height: 4,
-              marginHorizontal: 16,
-              marginBottom: 12,
+              height: '100%',
+              width: `${Math.round((progress.done / progress.total) * 100)}%`,
               borderRadius: radius.pill,
-              backgroundColor: colors.border,
-              overflow: 'hidden',
+              backgroundColor: colors.primary,
             }}
-          >
-            <View
-              style={{
-                height: '100%',
-                width: `${Math.round((progress.done / progress.total) * 100)}%`,
-                borderRadius: radius.pill,
-                backgroundColor: colors.primary,
-              }}
-            />
-          </Touchable>
-        ) : undefined,
-    },
-    [picked.length, pickedPending, running, progress, total, pending, backedUp, host],
-  );
-
+          />
+        </Touchable>
+      ) : undefined,
+  };
   /* The rail and the label, exactly as the server-side grid drives them. */
   const scrollY = useRef(new Animated.Value(0)).current;
   const list = useRef<SectionList<MediaLibrary.Asset[]>>(null);
@@ -379,8 +378,8 @@ export function LibraryScreen({ serverUrl }: Props) {
   /*
    * The gate stands here, below every hook.
    *
-   * It used to come first, which meant `useHeaderSlot` ran only once access had
-   * been granted — a hook called on some renders and not others, which React
+   * It used to come first, which meant later hooks ran only once access had
+   * been granted — hooks called on some renders and not others, which React
    * ends the render over. Nothing above this line does any work worth skipping.
    */
   if (!allowed) {
@@ -417,14 +416,15 @@ export function LibraryScreen({ serverUrl }: Props) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
       {/*
         Backing up is the one thing this screen is for, so it lives in the bar
         rather than in a card the grid scrolls away. A card meant the button
         left the screen exactly when a run was worth watching, and it cost a
         third of the first screenful before a single photo was visible.
       */}
-      <SectionList
+      <ScrollViewMarker style={{ flex: 1 }}>
+        <SectionList
         sections={sections}
         keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
         stickySectionHeadersEnabled={false}
@@ -546,7 +546,13 @@ export function LibraryScreen({ serverUrl }: Props) {
             />
           )
         }
-      />
+        />
+      </ScrollViewMarker>
+
+      <Header {...bar} account={<Account />}>
+        {bar.below}
+      </Header>
+      <SelectionDock />
 
       {/* The day at the top of the screen, in place of a heading above every
           one of them. Hidden while selecting, when the headings come back. */}

@@ -29,6 +29,26 @@ export const isMediaFile = (file: File) =>
   file.type.startsWith('video/') ||
   MEDIA_EXTENSIONS.has(file.name.slice(file.name.lastIndexOf('.')).toLowerCase());
 
+/** Finder/Explorer bookkeeping is not user media and should stay invisible. */
+export const isSystemMetadataFile = (file: File) => {
+  const name = file.name.toLowerCase();
+  return (
+    name === '.ds_store' ||
+    name === 'thumbs.db' ||
+    name === 'desktop.ini' ||
+    name.startsWith('._')
+  );
+};
+
+export function classifyUploadCandidates(candidates: UploadCandidate[]) {
+  return {
+    media: candidates.filter(({ file }) => !isSystemMetadataFile(file) && isMediaFile(file)),
+    unsupported: candidates.filter(
+      ({ file }) => !isMediaFile(file) && !isSystemMetadataFile(file),
+    ),
+  };
+}
+
 /** Top-level directories that must appear as soon as a folder upload starts. */
 export const uploadRootSegments = (candidates: UploadCandidate[]) => [
   ...new Set(
