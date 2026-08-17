@@ -1,5 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
   ChevronRight,
   CheckCheck,
   Folder,
@@ -36,10 +38,13 @@ import {
   EmptyState,
   IconButton,
   PromptDialog,
+  Select,
   Tooltip,
   Input,
   Loading,
 } from '../ui';
+
+type FolderSort = 'date' | 'added' | 'name' | 'type' | 'size';
 
 export function BrowsePage() {
   return <LibraryPage rootMode="browse" />;
@@ -59,6 +64,8 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const [dialog, setDialog] = useState<'folder' | 'album' | 'rename' | 'delete' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<FolderSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     localStorage.getItem('imadeo-folder-view') === 'list' ? 'list' : 'grid',
   );
@@ -104,11 +111,6 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
     onError: (e) => setError(errorMessage(e)),
   });
 
-  /**
-   * This page browses structure, not pictures: folders and the albums inside
-   * them. Photos are reached by opening one of those, so the grid, its
-   * selection tools and the sorting that only applied to it are gone.
-   */
   const {
     data: contentsPages,
     isLoading,
@@ -116,11 +118,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ['folders', folderId ?? 'root', 'contents'],
+    queryKey: ['folders', folderId ?? 'root', 'contents', sortBy, order],
     queryFn: async ({ pageParam }) =>
       (
         await api.get<FolderContents>(
-          `${folderId ? `/folders/${folderId}/contents` : '/folders/root'}?page=${pageParam}&size=250`,
+          `${folderId ? `/folders/${folderId}/contents` : '/folders/root'}?page=${pageParam}&size=250&sortBy=${sortBy}&order=${order}`,
         )
       ).data,
     initialPageParam: 1,
@@ -183,6 +185,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
     localStorage.setItem('imadeo-folder-view', mode);
   };
 
+  const changeSort = (next: FolderSort) => {
+    setSortBy(next);
+    setOrder(next === 'name' || next === 'type' ? 'asc' : 'desc');
+  };
+
   if (isLoading) return <Loading label="Loading folder…" />;
   if (!data) return null;
 
@@ -206,6 +213,14 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const rootTitle = rootMode === 'browse' ? 'Browse' : 'Folders';
   const folderBasePath = rootMode === 'browse' ? '/browse/folders' : '/folders';
   const albumBasePath = rootMode === 'browse' ? '/browse/albums' : '/albums';
+  const orderLabel =
+    sortBy === 'type'
+      ? order === 'asc' ? 'Photos first' : 'Videos first'
+      : sortBy === 'name'
+        ? order === 'asc' ? 'A to Z' : 'Z to A'
+        : sortBy === 'size'
+          ? order === 'asc' ? 'Smallest first' : 'Largest first'
+          : order === 'asc' ? 'Oldest first' : 'Newest first';
 
   return (
     <div className="min-h-full">
@@ -255,6 +270,39 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
                 ) : undefined
               }
             />
+
+            {folderId && (
+              <>
+                <Select
+                  size="sm"
+                  prefix="Sort by"
+                  value={sortBy}
+                  onChange={changeSort}
+                  options={[
+                    { value: 'date', label: 'Date taken' },
+                    { value: 'added', label: 'Recently added' },
+                    { value: 'name', label: 'File name' },
+                    { value: 'type', label: 'Type', hint: 'Group photos and videos' },
+                    { value: 'size', label: 'File size' },
+                  ]}
+                />
+                <Tooltip label={orderLabel}>
+                  <IconButton
+                    label={orderLabel}
+                    variant="secondary"
+                    size="sm"
+                    round={false}
+                    onClick={() => setOrder((current) => (current === 'asc' ? 'desc' : 'asc'))}
+                  >
+                    {order === 'asc' ? (
+                      <ArrowUpNarrowWide size={15} />
+                    ) : (
+                      <ArrowDownWideNarrow size={15} />
+                    )}
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
 
             {folderId && (
               <div

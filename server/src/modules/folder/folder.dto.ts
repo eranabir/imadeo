@@ -94,10 +94,10 @@ export class FolderContentsQueryDto {
   @IsBoolean()
   recursive?: boolean;
 
-  @ApiPropertyOptional({ enum: ['date', 'name', 'size', 'added'] })
+  @ApiPropertyOptional({ enum: ['date', 'name', 'type', 'size', 'added'] })
   @IsOptional()
   @IsString()
-  sortBy?: 'date' | 'name' | 'size' | 'added';
+  sortBy?: 'date' | 'name' | 'type' | 'size' | 'added';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'] })
   @IsOptional()

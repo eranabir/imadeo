@@ -379,6 +379,8 @@ export class FolderService {
     switch (sortBy) {
       case 'name':
         return [{ originalFileName: order }];
+      case 'type':
+        return [{ type: order }, { originalFileName: 'asc' }, { id: 'asc' }];
       case 'size':
         return [{ fileSizeInByte: order }];
       case 'added':
