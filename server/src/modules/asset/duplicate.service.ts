@@ -262,6 +262,7 @@ export class DuplicateService {
           localDateTime: true,
           createdAt: true,
           type: true,
+          thumbnailPath: true,
           checksum: true,
           perceptualHash: true,
           isDeviceOnly: true,

@@ -162,9 +162,11 @@ export class MetadataProcessor extends WorkerHost {
       }),
     ]);
 
-    // Pair up an iOS live photo with its motion half.
+    // Preserve the shared identifier, but keep both source files visible. The
+    // application is a backup: processing must never turn two stored files into
+    // one visible item without an explicit grouping UI.
     if (tags.livePhotoCID) {
-      await this.linkLivePhoto(asset.id, asset.ownerId, tags.livePhotoCID, asset.type);
+      await this.recordLivePhotoIdentifier(asset.id, tags.livePhotoCID);
     }
 
     await this.jobs.enqueue(QUEUE.THUMBNAIL, JOB.GENERATE_THUMBNAILS, { assetId: asset.id });
@@ -241,41 +243,11 @@ export class MetadataProcessor extends WorkerHost {
     return `${h}:${m}:${s}.${ms}`;
   }
 
-  /**
-   * iOS uploads the still and the motion clip as two files sharing a
-   * ContentIdentifier. Join them so the pair shows as one live photo.
-   */
-  private async linkLivePhoto(assetId: string, ownerId: string, cid: string, type: AssetType) {
-    const counterpart = await this.prisma.asset.findFirst({
-      where: {
-        ownerId,
-        id: { not: assetId },
-        type: type === AssetType.IMAGE ? AssetType.VIDEO : AssetType.IMAGE,
-        exif: { autoStackId: cid },
-      },
-      select: { id: true },
-    });
-
-    await this.prisma.assetExif.update({
+  /** Retains Live Photo metadata without hiding or coupling either source file. */
+  private recordLivePhotoIdentifier(assetId: string, cid: string) {
+    return this.prisma.assetExif.update({
       where: { assetId },
       data: { autoStackId: cid },
     });
-
-    if (!counterpart) return;
-
-    const stillId = type === AssetType.IMAGE ? assetId : counterpart.id;
-    const videoId = type === AssetType.IMAGE ? counterpart.id : assetId;
-
-    await this.prisma.$transaction([
-      this.prisma.asset.update({
-        where: { id: stillId },
-        data: { livePhotoVideoId: videoId },
-      }),
-      // The motion half should never appear on its own in the timeline.
-      this.prisma.asset.update({
-        where: { id: videoId },
-        data: { visibility: 'HIDDEN' },
-      }),
-    ]);
   }
 }

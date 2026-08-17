@@ -5,6 +5,7 @@ import {
   filesFromEntry,
   isMediaFile,
   MEDIA_EXTENSIONS,
+  uploadRootSegments,
   type DroppedEntry,
 } from './uploadSelection';
 
@@ -84,5 +85,16 @@ describe('web upload selection', () => {
     expect(supported).toHaveLength(299);
     expect(files.length - supported.length).toBe(99);
     expect(supported.reduce((total, { file }) => total + file.size, 0)).toBe(2_990);
+  });
+
+  it('finds each visible root before a nested folder upload begins', () => {
+    const candidates = [
+      { file: new File(['a'], 'one.jpg'), relativePath: 'Holiday/one.jpg' },
+      { file: new File(['b'], 'two.jpg'), relativePath: 'Holiday/Day 2/two.jpg' },
+      { file: new File(['c'], 'three.jpg'), relativePath: 'Family/three.jpg' },
+      { file: new File(['d'], 'loose.jpg') },
+    ];
+
+    expect(uploadRootSegments(candidates)).toEqual(['Holiday', 'Family']);
   });
 });

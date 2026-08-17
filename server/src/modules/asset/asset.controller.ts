@@ -109,6 +109,13 @@ export class AssetController {
     return this.assetService.completeUploadBatch(userId, dto.batchId, dto.assetIds);
   }
 
+  @Post('thumbnail-status')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Check thumbnail readiness for a visible batch of media' })
+  thumbnailStatus(@AuthedUserId() userId: string, @Body() dto: BulkAssetIdsDto) {
+    return this.assetService.thumbnailStatus(userId, dto.ids);
+  }
+
   @Post('check-duplicates')
   @HttpCode(200)
   @ApiOperation({ summary: 'Ask which checksums the server already has, before uploading' })

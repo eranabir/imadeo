@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { JOB } from '../../../infra/job/job.constants';
+import { JOB, QUEUE } from '../../../infra/job/job.constants';
 import { FaceDetectionProcessor } from '../../person/face.processor';
 import { ClipProcessor } from './clip.processor';
 import { DuplicateProcessor } from './duplicate.processor';
@@ -97,5 +97,78 @@ describe('deleted asset processing', () => {
       skipped: 'asset deleted',
     });
     expect(probeVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe('Live Photo metadata', () => {
+  it('keeps both source files visible while recording their shared identifier', async () => {
+    const assetUpdate = vi.fn();
+    const exifUpdate = vi.fn();
+    const capturedAt = new Date('2026-08-17T00:00:00.000Z');
+    const prisma = {
+      asset: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'live-photo-video',
+          type: 'IMAGE',
+          originalPath: '/media/live-photo.heic',
+          fileCreatedAt: capturedAt,
+          duration: null,
+          deletedAt: null,
+        }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'live-photo-video' }),
+        update: assetUpdate,
+      },
+      assetExif: { upsert: vi.fn(), update: exifUpdate },
+      assetJobStatus: { upsert: vi.fn() },
+      $transaction: vi.fn().mockResolvedValue([]),
+    };
+    const tags = {
+      make: null,
+      model: null,
+      lensModel: null,
+      width: 100,
+      height: 100,
+      orientation: null,
+      dateTimeOriginal: capturedAt,
+      modifyDate: null,
+      timeZone: null,
+      fNumber: null,
+      focalLength: null,
+      iso: null,
+      exposureTime: null,
+      latitude: null,
+      longitude: null,
+      description: '',
+      rating: null,
+      fps: null,
+      bitsPerSample: null,
+      colorspace: null,
+      profileDescription: null,
+      projectionType: null,
+      durationSeconds: null,
+      livePhotoCID: 'shared-live-photo-id',
+    };
+    const enqueue = vi.fn();
+    const processor = new MetadataProcessor(
+      prisma as never,
+      { extract: vi.fn().mockResolvedValue(tags) } as never,
+      {} as never,
+      { enqueue } as never,
+      { lookup: vi.fn() } as never,
+      {} as never,
+    );
+
+    await processor.process(job(JOB.EXTRACT_METADATA));
+
+    expect(exifUpdate).toHaveBeenCalledWith({
+      where: { assetId: 'live-photo-video' },
+      data: { autoStackId: 'shared-live-photo-id' },
+    });
+    expect(assetUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ visibility: expect.anything() }) }),
+    );
+    expect(enqueue).toHaveBeenCalledWith(QUEUE.THUMBNAIL, JOB.GENERATE_THUMBNAILS, {
+      assetId: 'live-photo-video',
+    });
   });
 });

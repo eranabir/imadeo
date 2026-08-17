@@ -347,6 +347,8 @@ export function SubjectPage() {
             >
               <RetryingImage
                 src={mediaUrl(asset.id, 'thumbnail')}
+                assetId={asset.id}
+                thumbnailReady={Boolean(asset.thumbnailPath)}
                 alt={asset.originalFileName}
                 loading="lazy"
                 className="h-full w-full object-cover"

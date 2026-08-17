@@ -29,6 +29,16 @@ export const isMediaFile = (file: File) =>
   file.type.startsWith('video/') ||
   MEDIA_EXTENSIONS.has(file.name.slice(file.name.lastIndexOf('.')).toLowerCase());
 
+/** Top-level directories that must appear as soon as a folder upload starts. */
+export const uploadRootSegments = (candidates: UploadCandidate[]) => [
+  ...new Set(
+    candidates.flatMap(({ relativePath }) => {
+      const segments = relativePath?.split(/[/\\]/).filter(Boolean) ?? [];
+      return segments.length > 1 ? [segments[0]] : [];
+    }),
+  ),
+];
+
 export async function filesFromEntry(
   entry: DroppedEntry,
   parent = '',

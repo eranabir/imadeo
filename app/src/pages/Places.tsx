@@ -112,6 +112,8 @@ function AllPlaces() {
                 >
                   <RetryingImage
                     src={`/api/assets/${place.coverAssetId}/thumbnail`}
+                    assetId={place.coverAssetId}
+                    thumbnailReady={false}
                     alt=""
                     loading="lazy"
                     draggable={false}

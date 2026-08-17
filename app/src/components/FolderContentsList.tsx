@@ -286,6 +286,8 @@ function AssetListRow({
           <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-control bg-surface-sunken">
             <RetryingImage
               src={mediaUrl(asset.id, 'thumbnail')}
+              assetId={asset.id}
+              thumbnailReady={Boolean(asset.thumbnailPath)}
               alt=""
               loading="lazy"
               draggable={false}

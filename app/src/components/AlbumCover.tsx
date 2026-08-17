@@ -32,6 +32,8 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
     return (
       <RetryingImage
         src={src(ids[0])}
+        assetId={ids[0]}
+        thumbnailReady={false}
         alt=""
         loading="lazy"
         draggable={false}
@@ -45,6 +47,8 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
       <span className={clsx('flex h-full w-full gap-px', className)}>
         <RetryingImage
           src={src(ids[0])}
+          assetId={ids[0]}
+          thumbnailReady={false}
           alt=""
           loading="lazy"
           draggable={false}
@@ -55,6 +59,8 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
             <RetryingImage
               key={id}
               src={src(id)}
+              assetId={id}
+              thumbnailReady={false}
               alt=""
               loading="lazy"
               draggable={false}
@@ -72,6 +78,8 @@ export function AlbumCover({ album, className }: { album: Album; className?: str
         <RetryingImage
           key={id}
           src={src(id)}
+          assetId={id}
+          thumbnailReady={false}
           alt=""
           loading="lazy"
           draggable={false}

@@ -157,6 +157,8 @@ export function MoveDialog({
         {album.coverAssetId ? (
           <RetryingImage
             src={`/api/assets/${album.coverAssetId}/thumbnail`}
+            assetId={album.coverAssetId}
+            thumbnailReady={false}
             alt=""
             className="h-[18px] w-[18px] shrink-0 rounded object-cover"
           />

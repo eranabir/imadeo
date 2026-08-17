@@ -1,37 +1,57 @@
-import { useEffect, useRef, useState, type ImgHTMLAttributes } from 'react';
+import clsx from 'clsx';
+import { useEffect, useState, type ImgHTMLAttributes } from 'react';
+import { useThumbnailReadiness } from './ThumbnailReadiness';
 
 /**
- * Retries derivatives that are still being generated after an upload.
- *
- * A video can appear in the library before ffmpeg has written its poster. The
- * first image request therefore fails; changing the query string retries the
- * same stable endpoint without reloading the page or reusing a cached failure.
+ * Shows a generated derivative or a calm placeholder while the shared
+ * readiness poll waits for the server to finish it.
  */
-export function RetryingImage({ src = '', onError, ...props }: ImgHTMLAttributes<HTMLImageElement>) {
-  const [attempt, setAttempt] = useState(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+export function RetryingImage({
+  src = '',
+  assetId,
+  thumbnailReady,
+  className,
+  onLoad,
+  onError,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement> & {
+  assetId?: string;
+  thumbnailReady?: boolean;
+}) {
+  const readiness = useThumbnailReadiness();
+  const derivativeReady =
+    thumbnailReady !== false ||
+    !assetId ||
+    !readiness.active ||
+    readiness.isReady(assetId);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setAttempt(0);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [src]);
+    setLoaded(false);
+    setFailed(false);
+  }, [derivativeReady, src]);
 
-  const retrySrc =
-    attempt === 0 ? src : `${src}${src.includes('?') ? '&' : '?'}thumbnail-retry=${attempt}`;
+  useEffect(() => {
+    if (!assetId || thumbnailReady !== false || !readiness.active) return;
+    return readiness.watch(assetId);
+  }, [assetId, readiness.active, readiness.watch, thumbnailReady]);
+
+  const effectiveSrc = derivativeReady && !failed ? src : undefined;
 
   return (
     <img
       {...props}
-      src={retrySrc}
+      src={effectiveSrc || undefined}
+      aria-busy={!loaded}
+      className={clsx(className, !loaded && 'thumbnail-placeholder')}
+      onLoad={(event) => {
+        setLoaded(true);
+        onLoad?.(event);
+      }}
       onError={(event) => {
+        setFailed(true);
         onError?.(event);
-        if (attempt >= 15 || timer.current) return;
-        timer.current = setTimeout(() => {
-          timer.current = null;
-          setAttempt((current) => current + 1);
-        }, 2000);
       }}
     />
   );

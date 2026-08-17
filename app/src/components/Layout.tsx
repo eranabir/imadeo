@@ -29,6 +29,7 @@ import {
 } from './NavigationIcons';
 import { TopBar } from './TopBar';
 import { OperationProgressPanel } from './OperationProgress';
+import { ThumbnailReadinessProvider } from './ThumbnailReadiness';
 import { useLibraryActions } from './useLibraryActions';
 
 /** Each entry gets its own tint so the rail reads as a photo app, not a console. */
@@ -159,6 +160,7 @@ export function Layout() {
     capacity !== null && capacity > 0 ? Math.min(100, (used / capacity) * 100) : null;
 
   return (
+    <ThumbnailReadinessProvider>
     <div className="flex h-full flex-col">
       <TopBar stats={stats} navigation={NAV} />
 
@@ -355,5 +357,6 @@ export function Layout() {
         onClose={() => setNewAlbumOpen(false)}
       />
     </div>
+    </ThumbnailReadinessProvider>
   );
 }

@@ -395,7 +395,7 @@ describe('AssetService deferred upload processing', () => {
 });
 
 describe('AssetService Live Photo recovery', () => {
-  it('reveals and resumes processing orphaned motion clips on startup', async () => {
+  it('reveals every formerly hidden motion file and removes obsolete pairing', async () => {
     const findMany = vi.fn().mockResolvedValue([
       {
         id: 'video-id',
@@ -427,7 +427,6 @@ describe('AssetService Live Photo recovery', () => {
         type: 'VIDEO',
         visibility: 'HIDDEN',
         deletedAt: null,
-        livePhotoStill: { none: {} },
       },
       select: {
         id: true,
@@ -436,7 +435,11 @@ describe('AssetService Live Photo recovery', () => {
         jobStatus: { select: { metadataExtractedAt: true, thumbnailAt: true } },
       },
     });
-    expect(updateMany).toHaveBeenCalledWith({
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { livePhotoVideoId: { in: ['video-id'] } },
+      data: { livePhotoVideoId: null },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
       where: { id: { in: ['video-id'] }, visibility: 'HIDDEN' },
       data: { visibility: 'TIMELINE' },
     });
@@ -451,6 +454,39 @@ describe('AssetService Live Photo recovery', () => {
       [{ assetId: 'video-id' }],
       20,
     );
+  });
+});
+
+describe('AssetService thumbnail readiness', () => {
+  it('returns all ready ids in one query without requesting thumbnail files', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 'ready-id', thumbnailPath: '/data/thumb.jpg' },
+      { id: 'pending-id', thumbnailPath: null },
+    ]);
+    const service = new AssetService(
+      { asset: { findMany } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.thumbnailStatus('owner-id', ['ready-id', 'pending-id', 'ready-id']),
+    ).resolves.toEqual({ readyIds: ['ready-id'] });
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['ready-id', 'pending-id'] },
+        ownerId: 'owner-id',
+        deletedAt: null,
+      },
+      select: { id: true, thumbnailPath: true },
+    });
   });
 });
 

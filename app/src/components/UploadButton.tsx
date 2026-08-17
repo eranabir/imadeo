@@ -19,7 +19,12 @@ import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { buildUploadForm } from '../lib/uploadForm';
-import { filesFromDrop, isMediaFile, MEDIA_ACCEPT } from '../lib/uploadSelection';
+import {
+  filesFromDrop,
+  isMediaFile,
+  MEDIA_ACCEPT,
+  uploadRootSegments,
+} from '../lib/uploadSelection';
 import { runUploadQueue } from '../lib/uploadQueue';
 import {
   beginUploadHistory,
@@ -382,6 +387,28 @@ export function UploadButton({
     const confirmedReceipts = new Map<string, string>();
     let confirmationError: string | null = null;
     publishProgress();
+
+    // Create the selected directory's visible root before sending its files.
+    // The upload requests still ensure every nested path, but Browse no longer
+    // looks unchanged until the last byte of a large folder has arrived.
+    const roots = uploadRootSegments(files);
+    if (roots.length > 0) {
+      try {
+        await Promise.all(
+          roots.map((segment) =>
+            api.post('/folders/ensure-path', {
+              segments: [segment],
+              rootId: destination.folderId ?? null,
+            }),
+          ),
+        );
+        await queryClient.invalidateQueries({ queryKey: ['folders'] });
+      } catch {
+        // Each upload request still ensures its full path. A brief failure of
+        // this eager UI step must not strand the entire selection as queued.
+      }
+    }
+
     if (confirmBeforeRetry) {
       try {
         const receipts = await checkUploadReceipts(
@@ -440,11 +467,15 @@ export function UploadButton({
     if (user && historyId) finishUploadHistory(user.id, historyId, historyItems());
 
     setFailedFiles(retryable);
-    await queryClient.invalidateQueries();
-    for (const delay of [3_000, 15_000]) {
-      window.setTimeout(() => void queryClient.invalidateQueries(), delay);
-    }
-
+    // Refresh each affected collection once. Thumbnail completion is handled
+    // separately by one batched readiness poll, not two global invalidations
+    // that make every visible image request itself again.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['folders'] }),
+      queryClient.invalidateQueries({ queryKey: ['albums'] }),
+      queryClient.invalidateQueries({ queryKey: ['assets'] }),
+      queryClient.invalidateQueries({ queryKey: ['users', 'statistics'] }),
+    ]);
   };
 
   useEffect(() => {

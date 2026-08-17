@@ -30,6 +30,7 @@ interface DuplicateAsset {
   localDateTime: string;
   createdAt: string;
   type: 'IMAGE' | 'VIDEO';
+  thumbnailPath: string | null;
   exif: { exifImageWidth: number | null; exifImageHeight: number | null } | null;
   locations: {
     kind: 'folder' | 'album' | 'device' | 'photos' | 'archive' | 'locked' | 'hidden';
@@ -245,6 +246,8 @@ export function DuplicatesPage() {
                         >
                           <RetryingImage
                             src={mediaUrl(asset.id, 'thumbnail')}
+                            assetId={asset.id}
+                            thumbnailReady={Boolean(asset.thumbnailPath)}
                             alt={asset.originalFileName}
                             loading="lazy"
                             className="h-full w-full object-cover"

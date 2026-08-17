@@ -34,7 +34,7 @@ enum AssetType {
 
 /// TIMELINE  - shows up everywhere
 /// ARCHIVE   - hidden from the main timeline, still searchable
-/// HIDDEN    - motion part of a live photo, never shown on its own
+/// HIDDEN    - legacy internal state; startup restores old hidden Live Photo files
 /// LOCKED    - inside the vault; excluded from timeline, search and sharing
 enum AssetVisibility {
   TIMELINE

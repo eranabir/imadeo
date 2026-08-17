@@ -82,18 +82,16 @@ export class AssetService implements OnModuleInit {
   ) {}
 
   /**
-   * A Live Photo's motion clip is hidden while its still exists. Older builds
-   * did not include that clip when the still was permanently deleted, leaving
-   * a valid MOV on disk that no library page or processing queue could see.
-   * Recover those clips as ordinary videos and resume their interrupted stage.
+   * Older builds hid the MOV half of every Live Photo, which made a successful
+   * 299-file upload shrink after metadata processing. Restore every historical
+   * motion file as an independent video and remove the obsolete pairing.
    */
   async onModuleInit() {
-    const orphans = await this.prisma.asset.findMany({
+    const hiddenMotion = await this.prisma.asset.findMany({
       where: {
         type: AssetType.VIDEO,
         visibility: AssetVisibility.HIDDEN,
         deletedAt: null,
-        livePhotoStill: { none: {} },
       },
       select: {
         id: true,
@@ -102,19 +100,23 @@ export class AssetService implements OnModuleInit {
         jobStatus: { select: { metadataExtractedAt: true, thumbnailAt: true } },
       },
     });
-    if (orphans.length === 0) return;
+    if (hiddenMotion.length === 0) return;
 
-    const ids = orphans.map(({ id }) => id);
+    const ids = hiddenMotion.map(({ id }) => id);
+    await this.prisma.asset.updateMany({
+      where: { livePhotoVideoId: { in: ids } },
+      data: { livePhotoVideoId: null },
+    });
     await this.prisma.asset.updateMany({
       where: { id: { in: ids }, visibility: AssetVisibility.HIDDEN },
       data: { visibility: AssetVisibility.TIMELINE },
     });
 
-    const metadata = orphans.filter(({ jobStatus }) => !jobStatus?.metadataExtractedAt);
-    const thumbnails = orphans.filter(
+    const metadata = hiddenMotion.filter(({ jobStatus }) => !jobStatus?.metadataExtractedAt);
+    const thumbnails = hiddenMotion.filter(
       ({ jobStatus }) => jobStatus?.metadataExtractedAt && !jobStatus.thumbnailAt,
     );
-    const recognition = orphans.filter(
+    const recognition = hiddenMotion.filter(
       ({ isDeviceOnly, previewPath, jobStatus }) =>
         !isDeviceOnly &&
         Boolean(previewPath) &&
@@ -154,7 +156,7 @@ export class AssetService implements OnModuleInit {
       );
     }
 
-    this.logger.log(`Recovered ${orphans.length} orphaned Live Photo video(s)`);
+    this.logger.log(`Restored ${hiddenMotion.length} hidden Live Photo video file(s)`);
   }
 
   // -- upload ---------------------------------------------------------------
@@ -469,6 +471,21 @@ export class AssetService implements OnModuleInit {
       const hex = fromBytes(this.parseChecksum(checksum)).toString('hex');
       return { checksum, assetId: byHex.get(hex) ?? null, exists: byHex.has(hex) };
     });
+  }
+
+  /** One lightweight query replaces a thumbnail request loop for every tile. */
+  async thumbnailStatus(userId: string, ids: string[]) {
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        id: { in: [...new Set(ids)] },
+        ownerId: userId,
+        deletedAt: null,
+      },
+      select: { id: true, thumbnailPath: true },
+    });
+    return {
+      readyIds: assets.filter((asset) => Boolean(asset.thumbnailPath)).map((asset) => asset.id),
+    };
   }
 
   /** Confirms committed web uploads after a client lost the success response. */

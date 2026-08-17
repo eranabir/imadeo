@@ -277,6 +277,8 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
     return (
       <RetryingImage
         src={`/api/assets/${ids[0]}/thumbnail`}
+        assetId={ids[0]}
+        thumbnailReady={false}
         alt=""
         loading="lazy"
         draggable={false}
@@ -291,6 +293,8 @@ function AlbumThumb({ album }: { album: TreeAlbum }) {
         <RetryingImage
           key={id}
           src={`/api/assets/${id}/thumbnail`}
+          assetId={id}
+          thumbnailReady={false}
           alt=""
           loading="lazy"
           draggable={false}

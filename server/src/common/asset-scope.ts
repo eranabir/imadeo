@@ -3,9 +3,8 @@ import { AssetVisibility, Prisma } from '../db';
 /**
  * Media that belongs to the user's browsable library.
  *
- * Device backups stay inside Devices until they are explicitly promoted, and
- * HIDDEN is reserved for companion files such as the motion half of Live
- * Photos. Every global discovery surface must use this same scope.
+ * Device backups stay inside Devices until they are explicitly promoted.
+ * Every global discovery surface must use this same scope.
  */
 export const MAIN_LIBRARY_VISIBILITIES = [
   AssetVisibility.TIMELINE,

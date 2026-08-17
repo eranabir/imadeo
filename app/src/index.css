@@ -150,6 +150,27 @@ body {
   50% { opacity: 0.85; }
 }
 
+/* Pending thumbnails share one calm moving highlight. It uses the surface and
+   brand tokens, so it remains legible in both themes without competing with
+   the photographs that replace it. */
+@keyframes imadeo-thumbnail-placeholder {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+
+.thumbnail-placeholder {
+  background-image: linear-gradient(
+    110deg,
+    var(--color-surface-sunken) 28%,
+    var(--color-surface-raised) 43%,
+    var(--color-primary-soft) 50%,
+    var(--color-surface-raised) 57%,
+    var(--color-surface-sunken) 72%
+  );
+  background-size: 240% 100%;
+  animation: imadeo-thumbnail-placeholder 2.2s ease-in-out infinite;
+}
+
 /* The indeterminate progress bar: a band crossing the track and back, for work
    whose length nobody knows. */
 @keyframes imadeo-sweep {
@@ -211,6 +232,7 @@ body {
   [style*='imadeo-drift'],
   [style*='imadeo-shimmer'],
   [style*='imadeo-pulse'],
+  .thumbnail-placeholder,
   .imadeo-opening-piece,
   .imadeo-opening-breathe,
   .imadeo-opening-turn,
