@@ -335,6 +335,12 @@ export class AlbumService {
     switch (sortBy) {
       case 'name':
         return [{ asset: { originalFileName: order } }];
+      case 'type':
+        return [
+          { asset: { type: order } },
+          { asset: { originalFileName: 'asc' } },
+          { assetId: 'asc' },
+        ];
       case 'size':
         return [{ asset: { fileSizeInByte: order } }];
       case 'added':

@@ -148,6 +148,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const shownFolders = (data?.folders ?? []).filter((f) => matches(f.name));
   const shownAlbums = (data?.albums ?? []).filter((a) => matches(a.name));
   const showAlbums = Boolean(folderId) || rootMode === 'browse';
+  const canChangeView = Boolean(folderId) || rootMode === 'browse';
   const visibleAlbums = showAlbums ? shownAlbums : [];
   const invalidate = () => queryClient.invalidateQueries();
   const onError = (e: unknown) => setError(errorMessage(e));
@@ -305,11 +306,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
               </>
             )}
 
-            {folderId && (
+            {canChangeView && (
               <div
                 className="flex rounded-control border border-border-subtle bg-surface-raised p-0.5"
                 role="group"
-                aria-label="Folder view"
+                aria-label={folderId ? 'Folder view' : 'Browse view'}
               >
                 <IconButton
                   label="Grid view"
@@ -409,7 +410,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
       {folderId && <MediaProcessingProgress kind="folder" id={folderId} />}
 
       <div className="px-5 pb-24 pt-4">
-        {folderId && viewMode === 'list' && !isEmpty && (
+        {canChangeView && viewMode === 'list' && !isEmpty && (
           <>
             <FolderContentsList
               folders={shownFolders}
@@ -436,7 +437,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           </>
         )}
 
-        {(!folderId || viewMode === 'grid') && shownFolders.length > 0 && (
+        {(!canChangeView || viewMode === 'grid') && shownFolders.length > 0 && (
           <Section title="Folders">
             <VirtualGrid
               items={shownFolders}
@@ -456,7 +457,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           </Section>
         )}
 
-        {(!folderId || viewMode === 'grid') && visibleAlbums.length > 0 && (
+        {(!canChangeView || viewMode === 'grid') && visibleAlbums.length > 0 && (
           <Section
             title="Albums"
             note={

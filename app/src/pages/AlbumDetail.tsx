@@ -1,8 +1,20 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, ChevronRight, ImagePlus, LayoutGrid, Pencil, Share2, Trash2 } from 'lucide-react';
+import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  CheckCheck,
+  ChevronRight,
+  ImagePlus,
+  LayoutGrid,
+  List,
+  Pencil,
+  Share2,
+  Trash2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
+import { AssetContentsList } from '../components/FolderContentsList';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { MediaProcessingProgress } from '../components/MediaProcessingProgress';
@@ -19,9 +31,12 @@ import {
   EmptyState,
   IconButton,
   PromptDialog,
+  Select,
   Tooltip,
   Loading,
 } from '../ui';
+
+type AlbumAssetSort = 'date' | 'added' | 'name' | 'type' | 'size';
 
 interface AlbumDetailResponse extends Album {
   assets: Asset[];
@@ -48,6 +63,11 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   const { selected, toggle, selectRange, setAnchor, clear, setSelected } = useSelection<Asset>();
   const [dialog, setDialog] = useState<'rename' | 'delete' | 'share' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
+    localStorage.getItem('imadeo-album-content-view') === 'list' ? 'list' : 'grid',
+  );
+  const [sortBy, setSortBy] = useState<AlbumAssetSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
   const actions = useLibraryActions({ onShowDetails: setViewing, selectedIds: [...selected] });
 
@@ -58,11 +78,11 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ['albums', albumId],
+    queryKey: ['albums', albumId, sortBy, order],
     queryFn: async ({ pageParam }) =>
       (
         await api.get<AlbumDetailResponse>(
-          `/albums/${albumId}?page=${pageParam}&size=250`,
+          `/albums/${albumId}?page=${pageParam}&size=250&sortBy=${sortBy}&order=${order}`,
         )
       ).data,
     enabled: Boolean(albumId),
@@ -121,6 +141,30 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   if (!album) return null;
 
   const allSelected = album.assetCount > 0 && selected.size === album.assetCount;
+  const changeView = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('imadeo-album-content-view', mode);
+  };
+  const changeSort = (next: AlbumAssetSort) => {
+    setSortBy(next);
+    setOrder(next === 'name' || next === 'type' ? 'asc' : 'desc');
+  };
+  const orderLabel =
+    sortBy === 'type'
+      ? order === 'asc'
+        ? 'Photos first'
+        : 'Videos first'
+      : sortBy === 'name'
+        ? order === 'asc'
+          ? 'A to Z'
+          : 'Z to A'
+        : sortBy === 'size'
+          ? order === 'asc'
+            ? 'Smallest first'
+            : 'Largest first'
+          : order === 'asc'
+            ? 'Oldest first'
+            : 'Newest first';
 
   return (
     <div className="min-h-full">
@@ -156,6 +200,68 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {album.assetCount > 0 && (
+              <>
+                <Select
+                  size="sm"
+                  prefix="Sort by"
+                  value={sortBy}
+                  onChange={changeSort}
+                  options={[
+                    { value: 'date', label: 'Date taken' },
+                    { value: 'added', label: 'Recently added' },
+                    { value: 'name', label: 'File name' },
+                    { value: 'type', label: 'Type', hint: 'Group photos and videos' },
+                    { value: 'size', label: 'File size' },
+                  ]}
+                />
+                <Tooltip label={orderLabel}>
+                  <IconButton
+                    label={orderLabel}
+                    variant="secondary"
+                    size="sm"
+                    round={false}
+                    onClick={() => setOrder((current) => (current === 'asc' ? 'desc' : 'asc'))}
+                  >
+                    {order === 'asc' ? (
+                      <ArrowUpNarrowWide size={15} />
+                    ) : (
+                      <ArrowDownWideNarrow size={15} />
+                    )}
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+
+            {album.assetCount > 0 && (
+              <div
+                className="flex rounded-control border border-border-subtle bg-surface-raised p-0.5"
+                role="group"
+                aria-label="Album contents view"
+              >
+                <IconButton
+                  label="Grid view"
+                  variant={viewMode === 'grid' ? 'primary' : 'ghost'}
+                  size="sm"
+                  round={false}
+                  aria-pressed={viewMode === 'grid'}
+                  onClick={() => changeView('grid')}
+                >
+                  <LayoutGrid size={14} />
+                </IconButton>
+                <IconButton
+                  label="List view"
+                  variant={viewMode === 'list' ? 'primary' : 'ghost'}
+                  size="sm"
+                  round={false}
+                  aria-pressed={viewMode === 'list'}
+                  onClick={() => changeView('list')}
+                >
+                  <List size={14} />
+                </IconButton>
+              </div>
+            )}
+
             {album.assetCount > 0 && (
               <Button
                 size="sm"
@@ -243,17 +349,29 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           }
         />
       ) : (
-        <div className="px-2 pb-24 pt-3">
-          <JustifiedGrid
-            assets={album.assets}
-            selected={selected}
-            targetRowHeight={user?.preferences.tileSize ?? 220}
-            onOpen={setViewing}
-            onToggleSelect={toggle}
-            onSelectRange={(a) => selectRange(a, album.assets)}
-            onAnchor={setAnchor}
-            onContextMenu={actions.onAssetContextMenu}
-          />
+        <div className={viewMode === 'list' ? 'px-5 pb-24 pt-4' : 'px-2 pb-24 pt-3'}>
+          {viewMode === 'grid' ? (
+            <JustifiedGrid
+              assets={album.assets}
+              selected={selected}
+              targetRowHeight={user?.preferences.tileSize ?? 220}
+              onOpen={setViewing}
+              onToggleSelect={toggle}
+              onSelectRange={(a) => selectRange(a, album.assets)}
+              onAnchor={setAnchor}
+              onContextMenu={actions.onAssetContextMenu}
+            />
+          ) : (
+            <AssetContentsList
+              assets={album.assets}
+              selected={selected}
+              onOpenAsset={setViewing}
+              onToggleAsset={toggle}
+              onSelectRange={(asset) => selectRange(asset, album.assets)}
+              onAnchorAsset={setAnchor}
+              onAssetContextMenu={actions.onAssetContextMenu}
+            />
+          )}
           <InfiniteScrollSentinel
             enabled={hasNextPage}
             loading={isFetchingNextPage}

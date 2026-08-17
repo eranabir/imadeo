@@ -1,6 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AlbumService } from './album.service';
 
+describe('AlbumService asset sorting', () => {
+  it('groups album media by type with deterministic ordering', () => {
+    const service = new AlbumService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const orderBy = (
+      service as unknown as {
+        orderBy: (sortBy: string, order: 'asc' | 'desc') => unknown;
+      }
+    ).orderBy('type', 'asc');
+
+    expect(orderBy).toEqual([
+      { asset: { type: 'asc' } },
+      { asset: { originalFileName: 'asc' } },
+      { assetId: 'asc' },
+    ]);
+  });
+});
+
 describe('AlbumService.getAssetIds', () => {
   it('returns the complete album selection without the grid page limit', async () => {
     const rows = Array.from({ length: 359 }, (_, index) => ({ assetId: `asset-${index}` }));

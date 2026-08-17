@@ -140,8 +140,8 @@ export class AlbumAssetsQueryDto {
   size?: number;
 
   @IsOptional()
-  @IsIn(['date', 'name', 'size', 'added'])
-  sortBy?: 'date' | 'name' | 'size' | 'added';
+  @IsIn(['date', 'name', 'type', 'size', 'added'])
+  sortBy?: 'date' | 'name' | 'type' | 'size' | 'added';
 
   @IsOptional()
   @IsIn(['asc', 'desc'])

@@ -118,6 +118,46 @@ export function FolderContentsList({
   );
 }
 
+/** The same virtualized media rows without folder or album entries. */
+export function AssetContentsList({
+  assets,
+  selected,
+  onOpenAsset,
+  onToggleAsset,
+  onSelectRange,
+  onAnchorAsset,
+  onAssetContextMenu,
+}: Pick<
+  Props,
+  | 'assets'
+  | 'selected'
+  | 'onOpenAsset'
+  | 'onToggleAsset'
+  | 'onSelectRange'
+  | 'onAnchorAsset'
+  | 'onAssetContextMenu'
+>) {
+  return (
+    <FolderContentsList
+      folders={[]}
+      albums={[]}
+      assets={assets}
+      folderBasePath=""
+      albumBasePath=""
+      selected={selected}
+      onOpenAsset={onOpenAsset}
+      onToggleAsset={onToggleAsset}
+      onSelectRange={onSelectRange}
+      onAnchorAsset={onAnchorAsset}
+      onDropFolder={() => undefined}
+      onDropAlbum={() => undefined}
+      onFolderContextMenu={() => undefined}
+      onAlbumContextMenu={() => undefined}
+      onAssetContextMenu={onAssetContextMenu}
+    />
+  );
+}
+
 function FolderListRow({
   folder,
   basePath,
