@@ -16,7 +16,7 @@ describe('RetryingImage', () => {
       </ThumbnailReadinessProvider>,
     );
 
-    expect(markup).toContain('src="data:image/gif;base64,');
+    expect(markup).toContain('src="data:image/svg+xml,');
     expect(markup).toContain('alt=""');
     expect(markup).toContain('data-thumbnail-state="processing"');
     expect(markup).toContain('thumbnail-placeholder');

@@ -5,7 +5,7 @@ import { useThumbnailReadiness } from './ThumbnailReadiness';
 // A valid image source keeps browsers from drawing their native broken-image
 // icon and visible alt text while the real derivative is still processing.
 const TRANSPARENT_PIXEL =
-  'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221%22%20height%3D%221%22%2F%3E';
 
 /**
  * Shows a generated derivative or a calm placeholder while the shared
