@@ -25,7 +25,12 @@ import {
   MEDIA_ACCEPT,
   uploadRootSegments,
 } from '../lib/uploadSelection';
-import { runUploadQueue } from '../lib/uploadQueue';
+import {
+  combineUploadProgress,
+  type UploadProgress,
+  type UploadProgressItem,
+} from '../lib/uploadProgress';
+import { createUploadLimiter, runUploadQueue } from '../lib/uploadQueue';
 import {
   beginUploadHistory,
   createUploadHistoryId,
@@ -42,32 +47,14 @@ import {
 import { useAuth } from '../store/auth';
 import { Button, Tooltip } from '../ui';
 
-interface Progress {
-  total: number;
-  ignored: number;
-  done: number;
-  created: number;
-  confirmed: number;
-  duplicates: number;
-  failed: number;
-  bytesSent: number;
-  bytesConfirmed: number;
-  bytesTotal: number;
-  items: UploadProgressItem[];
-}
-
-interface UploadProgressItem {
-  id: string;
-  name: string;
-  size: number;
-  status: UploadStatus;
-  /** 0-1 for the file in flight, from real upload bytes. */
-  fraction: number;
-  error?: string;
-}
-
 /** Keeps uploads fast without saturating a typical self-hosted NAS or browser. */
 const WEB_UPLOAD_CONCURRENCY = 4;
+
+interface FailedUploadBatch {
+  files: UploadCandidate[];
+  destination: UploadDestination;
+  source: UploadSource;
+}
 
 interface UploadReceiptStatus {
   uploadId: string;
@@ -142,18 +129,18 @@ export function UploadButton({
   const folderId =
     matchPath('/folders/:folderId', location.pathname)?.params.folderId ??
     matchPath('/browse/folders/:folderId', location.pathname)?.params.folderId;
-  const [progress, setProgress] = useState<Progress | null>(null);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const progressRuns = useRef(new Map<string, UploadProgress>());
   const [externalDrag, setExternalDrag] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const externalDragDepth = useRef(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  /** Failed candidates are retained so Retry sends only the files that need it. */
-  const [failedFiles, setFailedFiles] = useState<UploadCandidate[]>([]);
-  const [retryDestination, setRetryDestination] = useState<UploadDestination | null>(null);
-  const [retrySource, setRetrySource] = useState<UploadSource>('files');
+  /** Failed batches retain their own destination so a combined retry stays correctly filed. */
+  const [failedBatches, setFailedBatches] = useState<FailedUploadBatch[]>([]);
   const [minimized, setMinimized] = useState(false);
-  const cancelled = useRef(false);
+  const runControls = useRef(new Map<string, { cancelled: boolean }>());
   const controllers = useRef(new Set<AbortController>());
+  const limitUpload = useRef(createUploadLimiter(WEB_UPLOAD_CONCURRENCY)).current;
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -170,6 +157,19 @@ export function UploadButton({
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [progress]);
+
+  const publishCombinedProgress = () => {
+    // New drops appear first in the list, while every earlier running batch
+    // remains visible and continues contributing to the totals.
+    setProgress(combineUploadProgress([...progressRuns.current.values()].reverse()));
+  };
+
+  const closeProgress = () => {
+    progressRuns.current.clear();
+    setProgress(null);
+    setFailedBatches([]);
+    setMinimized(false);
+  };
 
   const uploadAll = async (
     fileList: FileList | File[] | UploadCandidate[] | null,
@@ -225,16 +225,21 @@ export function UploadButton({
             : 'Photos',
         path: location.pathname,
       } satisfies UploadDestination);
+    const hasRunningUpload = [...progressRuns.current.values()].some(
+      (run) => run.done < run.total,
+    );
+    if (!hasRunningUpload) {
+      progressRuns.current.clear();
+      setFailedBatches([]);
+    }
+    const runControl = { cancelled: false };
+    runControls.current.set(uploadBatchId, runControl);
     const historyItems = () =>
       uploadItems.map(({ fraction: _fraction, ...item }): UploadHistoryItem => item);
     const historyId = user
       ? beginUploadHistory(user.id, source, destination, historyItems())
       : null;
     if (historyId) rememberUploadFiles(historyId, historyItems(), files);
-    cancelled.current = false;
-    setFailedFiles([]);
-    setRetryDestination(destination);
-    setRetrySource(source);
     setMinimized(false);
 
     let created = 0;
@@ -248,8 +253,8 @@ export function UploadButton({
 
     const retryable: UploadCandidate[] = [];
 
-    const publishProgress = () =>
-      setProgress({
+    const publishProgress = () => {
+      progressRuns.current.set(uploadBatchId, {
         total: files.length,
         ignored,
         done,
@@ -262,6 +267,8 @@ export function UploadButton({
         bytesTotal,
         items: [...uploadItems],
       });
+      publishCombinedProgress();
+    };
 
     const uploadOne = async (index: number) => {
       const candidate = files[index];
@@ -336,7 +343,7 @@ export function UploadButton({
           uploadedBytes[index] = file.size;
         }
       } catch (error) {
-        if (cancelled.current) {
+        if (runControl.cancelled) {
           uploadItems[index] = { ...uploadItems[index], status: 'cancelled' };
         } else {
           let committedAssetId: string | null = null;
@@ -427,8 +434,12 @@ export function UploadButton({
     await runUploadQueue(
       files,
       WEB_UPLOAD_CONCURRENCY,
-      (_candidate, index) => uploadOne(index),
-      () => cancelled.current,
+      (_candidate, index) =>
+        limitUpload(async () => {
+          if (runControl.cancelled) return;
+          await uploadOne(index);
+        }),
+      () => runControl.cancelled,
     );
 
     // Only now do metadata, thumbnails, video conversion, search, and
@@ -441,7 +452,7 @@ export function UploadButton({
       })
       .catch(() => undefined);
 
-    if (cancelled.current) {
+    if (runControl.cancelled) {
       for (const [index, item] of uploadItems.entries()) {
         if (item.status === 'queued') {
           uploadItems[index] = { ...item, status: 'cancelled' };
@@ -450,7 +461,7 @@ export function UploadButton({
       }
     }
 
-    setProgress({
+    progressRuns.current.set(uploadBatchId, {
       total: files.length,
       ignored,
       done: files.length,
@@ -463,10 +474,14 @@ export function UploadButton({
       bytesTotal,
       items: [...uploadItems],
     });
+    publishCombinedProgress();
+    runControls.current.delete(uploadBatchId);
 
     if (user && historyId) finishUploadHistory(user.id, historyId, historyItems());
 
-    setFailedFiles(retryable);
+    if (retryable.length > 0) {
+      setFailedBatches((batches) => [...batches, { files: retryable, destination, source }]);
+    }
     // Refresh each affected collection once. Thumbnail completion is handled
     // separately by one batched readiness poll, not two global invalidations
     // that make every visible image request itself again.
@@ -579,14 +594,14 @@ export function UploadButton({
 
   const stopOrClose = () => {
     if (running) {
-      cancelled.current = true;
+      for (const control of runControls.current.values()) control.cancelled = true;
       for (const controller of controllers.current) controller.abort();
       return;
     }
-    setProgress(null);
-    setFailedFiles([]);
-    setMinimized(false);
+    closeProgress();
   };
+
+  const failedFileCount = failedBatches.reduce((total, batch) => total + batch.files.length, 0);
 
   return (
     <>
@@ -828,34 +843,36 @@ export function UploadButton({
 
                   <Link
                     to="/settings?section=upload-history"
-                    onClick={() => setProgress(null)}
+                    onClick={closeProgress}
                     className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
                   >
                     View upload history →
                   </Link>
 
-                  {(failedFiles.length > 0 || progress.created > 0) && (
+                  {(failedFileCount > 0 || progress.created > 0) && (
                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                      {failedFiles.length > 0 && (
+                      {failedFileCount > 0 && (
                         <Button
                           variant="primary"
                           size="sm"
                           icon={<RotateCcw size={14} />}
                           onClick={() => {
-                            const retry = failedFiles;
-                            setFailedFiles([]);
-                            void uploadAll(
-                              retry,
-                              retryDestination ?? undefined,
-                              retrySource,
-                              true,
-                            );
+                            const retryBatches = failedBatches;
+                            setFailedBatches([]);
+                            for (const batch of retryBatches) {
+                              void uploadAll(
+                                batch.files,
+                                batch.destination,
+                                batch.source,
+                                true,
+                              );
+                            }
                           }}
                         >
                           Retry{' '}
-                          {failedFiles.length === 1
+                          {failedFileCount === 1
                             ? 'failed file'
-                            : `${failedFiles.length} failed files`}
+                            : `${failedFileCount} failed files`}
                         </Button>
                       )}
 
@@ -864,7 +881,7 @@ export function UploadButton({
                       {progress.created > 0 && (
                         <Link
                           to="/?sort=added"
-                          onClick={() => setProgress(null)}
+                          onClick={closeProgress}
                           className="text-xs font-medium text-primary hover:underline"
                         >
                           See what was just added →

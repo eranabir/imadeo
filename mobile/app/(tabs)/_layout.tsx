@@ -25,6 +25,7 @@ export default function TabsLayout() {
     >
       <NativeTabs.Trigger
         name="index"
+        disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="library-tab"
       >
@@ -34,6 +35,7 @@ export default function TabsLayout() {
 
       <NativeTabs.Trigger
         name="browse"
+        disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="browse-tab"
       >
@@ -43,6 +45,7 @@ export default function TabsLayout() {
 
       <NativeTabs.Trigger
         name="search"
+        disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="search-tab"
       >
@@ -52,6 +55,7 @@ export default function TabsLayout() {
 
       <NativeTabs.Trigger
         name="people-and-pets"
+        disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="people-and-pets-tab"
       >
@@ -64,6 +68,7 @@ export default function TabsLayout() {
 
       <NativeTabs.Trigger
         name="settings"
+        disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="settings-tab"
       >

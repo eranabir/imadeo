@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runUploadQueue } from './uploadQueue';
+import { createUploadLimiter, runUploadQueue } from './uploadQueue';
 
 describe('web upload queue', () => {
   it('processes hundreds of files exactly once with bounded concurrency', async () => {
@@ -35,5 +35,25 @@ describe('web upload queue', () => {
 
     expect(completed).toHaveLength(45);
     expect(failed).toEqual([0, 11, 22, 33, 44]);
+  });
+
+  it('keeps the concurrency ceiling shared across batches added together', async () => {
+    const limit = createUploadLimiter(4);
+    let active = 0;
+    let maximumActive = 0;
+    const upload = () =>
+      limit(async () => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        active -= 1;
+      });
+
+    await Promise.all([
+      runUploadQueue(Array.from({ length: 20 }), 4, upload),
+      runUploadQueue(Array.from({ length: 20 }), 4, upload),
+    ]);
+
+    expect(maximumActive).toBe(4);
   });
 });

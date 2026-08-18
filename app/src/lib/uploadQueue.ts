@@ -18,3 +18,34 @@ export async function runUploadQueue<T>(
     Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker()),
   );
 }
+
+/** Shares one concurrency ceiling between upload batches added at different times. */
+export function createUploadLimiter(concurrency: number) {
+  const limit = Math.max(1, concurrency);
+  const waiting: Array<() => void> = [];
+  let active = 0;
+
+  const acquire = () =>
+    new Promise<void>((resolve) => {
+      const enter = () => {
+        active += 1;
+        resolve();
+      };
+      if (active < limit) enter();
+      else waiting.push(enter);
+    });
+
+  const release = () => {
+    active -= 1;
+    waiting.shift()?.();
+  };
+
+  return async function limitUpload<T>(upload: () => Promise<T>) {
+    await acquire();
+    try {
+      return await upload();
+    } finally {
+      release();
+    }
+  };
+}
