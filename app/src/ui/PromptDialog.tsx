@@ -8,6 +8,7 @@ interface Props {
   title: string;
   description?: string;
   label?: string;
+  hint?: string;
   placeholder?: string;
   initialValue?: string;
   confirmLabel?: string;
@@ -27,6 +28,7 @@ export function PromptDialog({
   title,
   description,
   label = 'Name',
+  hint,
   placeholder,
   initialValue = '',
   confirmLabel = 'Create',
@@ -63,6 +65,7 @@ export function PromptDialog({
     >
       <Input
         label={label}
+        hint={hint}
         placeholder={placeholder}
         value={value}
         autoFocus

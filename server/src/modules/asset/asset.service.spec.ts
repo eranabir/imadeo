@@ -76,6 +76,30 @@ describe('AssetService library filters', () => {
   });
 });
 
+describe('AssetService media rename', () => {
+  it('keeps the original extension when a client requests another one', async () => {
+    const test = createService({ id: 'asset-id', originalFileName: 'IMG_0303.HEIC' });
+
+    await test.service.update('owner-id', 'asset-id', { originalFileName: 'Summer photo.jpg' });
+
+    expect(test.assetUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'asset-id' },
+      data: expect.objectContaining({ originalFileName: 'Summer photo.HEIC' }),
+    }));
+  });
+
+  it('allows dots in the base name when the unchanged extension is supplied', async () => {
+    const test = createService({ id: 'asset-id', originalFileName: 'clip.MOV' });
+
+    await test.service.update('owner-id', 'asset-id', { originalFileName: 'Trip.final.MOV' });
+
+    expect(test.assetUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'asset-id' },
+      data: expect.objectContaining({ originalFileName: 'Trip.final.MOV' }),
+    }));
+  });
+});
+
 describe('AssetService duplicate upload destinations', () => {
   const upload = {
     path: '/tmp/re-upload.jpg',

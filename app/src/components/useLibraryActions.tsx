@@ -63,6 +63,13 @@ interface Options {
   onFolderConverted?: (album: Album) => void;
 }
 
+/** Split the final extension from a display name without treating `.hidden` as an extension. */
+export function splitFileName(name: string) {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot === name.length - 1) return { base: name, extension: '' };
+  return { base: name.slice(0, dot), extension: name.slice(dot) };
+}
+
 /**
  * Every context menu, move dialog and drop handler in the library.
  *
@@ -578,6 +585,9 @@ export function useLibraryActions({
           ? item.folder.name
           : item.album.name;
 
+  const renamedFile =
+    renaming?.kind === 'assets' ? splitFileName(renaming.asset.originalFileName) : null;
+
   const overlays = (
     <>
       <AssignSubjectDialog
@@ -649,17 +659,18 @@ export function useLibraryActions({
             ? 'Rename folder'
             : renaming?.kind === 'album'
               ? 'Rename album'
-              : 'Rename photo'
+              : 'Rename file'
         }
-        label="Name"
-        initialValue={labelOf(renaming)}
+        label={renamedFile ? 'File name' : 'Name'}
+        hint={renamedFile?.extension ? `The ${renamedFile.extension} extension stays unchanged.` : undefined}
+        initialValue={renamedFile?.base ?? labelOf(renaming)}
         confirmLabel="Rename"
         onSubmit={(name) => {
           if (renaming?.kind === 'folder') renameFolder.mutate({ id: renaming.folder.id, name });
           else if (renaming?.kind === 'album')
             renameAlbum.mutate({ id: renaming.album.id, albumName: name });
           else if (renaming?.kind === 'assets')
-            renameAsset.mutate({ id: renaming.asset.id, name });
+            renameAsset.mutate({ id: renaming.asset.id, name: name + (renamedFile?.extension ?? '') });
         }}
         onClose={() => setRenaming(null)}
       />

@@ -145,7 +145,7 @@ export class CompleteUploadBatchDto {
 export class UpdateAssetDto {
   @ApiPropertyOptional({
     description:
-      'The name shown in the app. The file on disk keeps its own name, which the storage template owns.',
+      'The name shown in the app. Its original extension is preserved, and the file on disk keeps the name owned by the storage template.',
   })
   @IsOptional()
   @IsString()

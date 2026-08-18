@@ -1476,7 +1476,9 @@ export class AssetService implements OnModuleInit {
       data: {
         // Display name only. Renaming the file on disk would break the stored
         // path for no gain — the layout there is the storage template's job.
-        originalFileName: dto.originalFileName?.trim() || undefined,
+        originalFileName: dto.originalFileName
+          ? this.renamePreservingExtension(asset.originalFileName, dto.originalFileName)
+          : undefined,
         isFavorite: dto.isFavorite,
         rotation: dto.rotation,
         visibility: dto.visibility,
@@ -1508,6 +1510,17 @@ export class AssetService implements OnModuleInit {
       },
       include: { exif: true },
     });
+  }
+
+  /** The media format is immutable metadata, not part of its editable display name. */
+  private renamePreservingExtension(currentName: string, requestedName: string) {
+    const originalExtension = extname(currentName);
+    const trimmed = requestedName.trim();
+    if (!originalExtension) return trimmed;
+
+    const requestedExtension = extname(trimmed);
+    const base = requestedExtension ? trimmed.slice(0, -requestedExtension.length) : trimmed;
+    return `${base}${originalExtension}`;
   }
 
   async bulkUpdate(userId: string, dto: BulkUpdateAssetsDto) {
