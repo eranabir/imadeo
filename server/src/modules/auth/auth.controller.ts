@@ -74,7 +74,7 @@ export class AuthController {
     res.cookie(AUTH_COOKIE.ACCESS, accessToken, { ...base, maxAge: accessMaxAge });
     res.cookie(AUTH_COOKIE.REFRESH, refreshToken, {
       ...base,
-      maxAge: persistent ? 400 * 86_400_000 : this.ttlMilliseconds('auth.refreshTtl', 60 * 86_400_000),
+      maxAge: persistent ? 400 * 86_400_000 : this.ttlMilliseconds('auth.refreshTtl', 180 * 86_400_000),
     });
   }
 

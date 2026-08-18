@@ -26,10 +26,12 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const request = error.config as (typeof error.config & { _retried?: boolean }) | undefined;
 
-    // `restore()` deliberately asks this endpoint before anyone has signed in.
-    // A 401 there means "anonymous", not "send the browser to /login" — doing
-    // that also bounced the first-admin setup screen back to Login.
-    const isAuthRequest = request?.url?.startsWith('/auth/') || request?.url === '/users/me';
+    // Auth endpoints must report their own 401s. `/users/me`, however, is the
+    // startup session probe: it should try the refresh cookie before deciding
+    // the browser is anonymous, but a failed refresh must not bypass first-run
+    // setup by forcing a redirect to Login.
+    const isAuthRequest = request?.url?.startsWith('/auth/');
+    const isSessionProbe = request?.url === '/users/me';
     if (error.response?.status !== 401 || !request || request._retried || isAuthRequest) {
       throw error;
     }
@@ -44,7 +46,7 @@ api.interceptors.response.use(
       .then(() => undefined)
       .catch((refreshError) => {
         clearLegacyTokens();
-        window.location.href = '/login';
+        if (!isSessionProbe) window.location.href = '/login';
         throw refreshError;
       })
       .finally(() => {

@@ -396,7 +396,7 @@ export class AuthService {
   /** Accepts `30d`, `12h`, `90m`. Everything is normalised to fractional days. */
   private parseTtlDays(ttl: string): number {
     const match = /^(\d+)([smhd])$/.exec(ttl.trim());
-    if (!match) return 60;
+    if (!match) return 180;
     const value = Number(match[1]);
     switch (match[2]) {
       case 's':

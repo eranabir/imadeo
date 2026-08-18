@@ -42,7 +42,7 @@ export const configuration = () => {
     auth: {
       jwtSecret: process.env.JWT_SECRET ?? 'insecure-development-secret',
       accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
-      refreshTtl: process.env.JWT_REFRESH_TTL ?? '60d',
+      refreshTtl: process.env.JWT_REFRESH_TTL ?? '180d',
       publicRegistration: bool(process.env.PUBLIC_REGISTRATION, false),
       // Local-only installations can use HTTP between devices on the same LAN
       // or a VPN. Never enable this when the API port is forwarded to the
