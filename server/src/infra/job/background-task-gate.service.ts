@@ -3,11 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../../config/configuration';
 
 /**
- * Lets uploads and thumbnail generation take priority over background inference.
+ * Lets uploads take priority over thumbnail generation and background inference.
  *
  * A short grace period keeps the gate closed between consecutive file requests,
  * so a browser sending four files at a time does not restart ML in every gap.
- * Thumbnail and ML operations also share a strict, thumbnail-first CPU lane.
+ * Once uploads are idle, thumbnail and ML operations share a strict,
+ * thumbnail-first CPU lane.
  */
 @Injectable()
 export class BackgroundTaskGate implements OnModuleDestroy {
@@ -52,14 +53,14 @@ export class BackgroundTaskGate implements OnModuleDestroy {
   }
 
   /**
-   * Gives thumbnails priority over inference while ensuring the two CPU-heavy
-   * pipelines never overlap. Existing inference finishes at its next yield
-   * point, then every waiting thumbnail runs before ML can resume.
+   * Starts thumbnails only when uploads are idle, then gives them priority over
+   * inference. Existing work is allowed to finish; queued work waits without
+   * repeatedly starting between consecutive upload requests.
    */
   async runThumbnail<T>(operation: () => Promise<T>): Promise<T> {
     this.waitingThumbnails += 1;
     try {
-      while (this.activeMachineLearning > 0) await this.waitForStateChange();
+      while (!this.canStartThumbnail()) await this.waitForStateChange();
       this.activeThumbnails += 1;
     } finally {
       this.waitingThumbnails = Math.max(0, this.waitingThumbnails - 1);
@@ -104,6 +105,10 @@ export class BackgroundTaskGate implements OnModuleDestroy {
       this.waitingThumbnails === 0 &&
       this.activeMachineLearning === 0
     );
+  }
+
+  private canStartThumbnail() {
+    return this.activeUploads === 0 && !this.idleTimer && this.activeMachineLearning === 0;
   }
 
   private finishUploadIdlePeriod() {

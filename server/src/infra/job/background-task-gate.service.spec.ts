@@ -46,6 +46,26 @@ describe('BackgroundTaskGate', () => {
     expect(resumed).toBe(true);
   });
 
+  it('does not start thumbnail processing while an upload is active', async () => {
+    const gate = createGate(1_000);
+    const finishUpload = gate.beginUpload();
+    let started = false;
+    const thumbnail = gate.runThumbnail(async () => {
+      started = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(started).toBe(false);
+
+    finishUpload();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(started).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await thumbnail;
+    expect(started).toBe(true);
+  });
+
   it('finishes active ML, runs waiting thumbnails first, and never overlaps them', async () => {
     const gate = createGate(0);
     const events: string[] = [];
