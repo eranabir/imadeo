@@ -4,7 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
 import { extname } from 'node:path';
 import type { AppConfig } from '../../../config/configuration';
-import { AssetType } from '../../../db';
+import { AssetType, type Asset } from '../../../db';
+import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
 import { JobService } from '../../../infra/job/job.service';
 import { MediaService } from '../../../infra/media/media.service';
@@ -27,6 +28,7 @@ export class ThumbnailProcessor extends WorkerHost {
     private readonly jobs: JobService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly ml: MachineLearningService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -44,6 +46,10 @@ export class ThumbnailProcessor extends WorkerHost {
       return { queued: 'video worker' };
     }
 
+    return this.backgroundTasks.runThumbnail(() => this.generateThumbnail(asset));
+  }
+
+  private async generateThumbnail(asset: Asset) {
     // The file the image pipeline will actually read. For a video or a RAW this
     // is an intermediate JPEG rather than the original.
     let source = asset.originalPath;

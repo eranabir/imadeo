@@ -4,7 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
 import type { AppConfig } from '../../config/configuration';
 import { AssetType, SourceType, SubjectKind } from '../../db';
-import { JOB, QUEUE, type AssetJobData } from '../../infra/job/job.constants';
+import { BackgroundTaskGate } from '../../infra/job/background-task-gate.service';
+import {
+  JOB,
+  ML_JOB_CONCURRENCY,
+  QUEUE,
+  type AssetJobData,
+} from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { MediaService } from '../../infra/media/media.service';
 import type { DetectedFace, DetectedPet } from '../../infra/ml/ml.service';
@@ -168,7 +174,7 @@ export function redundantVideoDetectionIds(
  * Concurrency is low on purpose: the model is CPU-bound and the ML service runs
  * a single worker, so queuing more requests than it can serve only adds latency.
  */
-@Processor(QUEUE.FACE_DETECTION, { concurrency: 2 })
+@Processor(QUEUE.FACE_DETECTION, { concurrency: ML_JOB_CONCURRENCY })
 export class FaceDetectionProcessor extends WorkerHost {
   private readonly logger = new Logger(FaceDetectionProcessor.name);
   private readonly assetLocks = new Map<string, Promise<void>>();
@@ -179,6 +185,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     private readonly clustering: FaceClusteringService,
     private readonly subjects: SubjectService,
     private readonly jobs: JobService,
+    private readonly backgroundTasks: BackgroundTaskGate,
     private readonly media: MediaService,
     private readonly storage: StorageService,
     private readonly config: ConfigService<AppConfig, true>,
@@ -253,7 +260,9 @@ export class FaceDetectionProcessor extends WorkerHost {
       );
     }
 
-    const subjects = await this.clustering.assignFacesForAsset(asset.id, asset.ownerId);
+    const subjects = await this.backgroundTasks.runMachineLearning(() =>
+      this.clustering.assignFacesForAsset(asset.id, asset.ownerId),
+    );
     if (asset.type === AssetType.VIDEO) {
       await this.removeRedundantVideoDetections(asset.id, frames.length > 1 ? 2 : 1);
     }
@@ -267,7 +276,9 @@ export class FaceDetectionProcessor extends WorkerHost {
         select: { thumbnailPath: true, thumbnailIsCustom: true },
       });
       if (!subject?.thumbnailIsCustom) {
-        await this.subjects.refreshThumbnail(subjectId);
+        await this.backgroundTasks.runMachineLearning(() =>
+          this.subjects.refreshThumbnail(subjectId),
+        );
       }
     }
 
@@ -327,7 +338,9 @@ export class FaceDetectionProcessor extends WorkerHost {
     }
 
     const source = asset.encodedVideoPath ?? asset.originalPath;
-    const probe = await this.media.probeVideo(source);
+    const probe = await this.backgroundTasks.runMachineLearning(() =>
+      this.media.probeVideo(source),
+    );
     const timestamps = videoRecognitionTimestamps(
       probe.durationSeconds,
       Math.max(1, this.config.get('machineLearning.videoSampleIntervalSeconds', { infer: true })),
@@ -342,7 +355,9 @@ export class FaceDetectionProcessor extends WorkerHost {
       );
       try {
         await this.storage.remove(path);
-        await this.media.extractPosterFrame(source, path, seconds);
+        await this.backgroundTasks.runMachineLearning(() =>
+          this.media.extractPosterFrame(source, path, seconds),
+        );
         frames.push({ path, timecodeMs: Math.round(seconds * 1000), temporary: true });
       } catch (error) {
         await this.storage.remove(path);
@@ -358,8 +373,12 @@ export class FaceDetectionProcessor extends WorkerHost {
     // Run the pet detector first. Face detectors can mistake the front of a
     // dog or cat for a human face; a face centred inside a confirmed pet box
     // belongs to the pet, not the People tab.
-    const petResult = await this.ml.detectPets(frame.path);
-    const result = await this.ml.detectFaces(frame.path);
+    const petResult = await this.backgroundTasks.runMachineLearning(() =>
+      this.ml.detectPets(frame.path),
+    );
+    const result = await this.backgroundTasks.runMachineLearning(() =>
+      this.ml.detectFaces(frame.path),
+    );
     if (!result) throw new Error('Face detection returned no result');
     const maximumPetCandidateFaceScore = this.config.get(
       'machineLearning.petCandidateMaxFaceScore',
@@ -372,10 +391,12 @@ export class FaceDetectionProcessor extends WorkerHost {
     const pets: DetectedPet[] = [];
     for (const pet of detectedPets) {
       if (frame.timecodeMs !== null) {
-        const sharpness = await this.media.regionSharpness(frame.path, pet.boundingBox, {
-          width: petResult?.imageWidth ?? 0,
-          height: petResult?.imageHeight ?? 0,
-        });
+        const sharpness = await this.backgroundTasks.runMachineLearning(() =>
+          this.media.regionSharpness(frame.path, pet.boundingBox, {
+            width: petResult?.imageWidth ?? 0,
+            height: petResult?.imageHeight ?? 0,
+          }),
+        );
         if (
           !isUsableVideoPet(
             pet,
@@ -414,17 +435,21 @@ export class FaceDetectionProcessor extends WorkerHost {
       // the whole-animal detector several chances to find a real cat or dog.
       if (frame.timecodeMs !== null) continue;
       if (face.score > maximumPetCandidateFaceScore) continue;
-      const recovered = await this.ml.classifyPetFaceCandidate(frame.path, face.boundingBox);
+      const recovered = await this.backgroundTasks.runMachineLearning(() =>
+        this.ml.classifyPetFaceCandidate(frame.path, face.boundingBox),
+      );
       if (recovered) pets.push({ ...recovered, boundingBox: face.boundingBox });
     }
 
     const humanFaces: DetectedFace[] = [];
     for (const face of result.faces.filter((candidate) => !isInsidePet(candidate))) {
       if (frame.timecodeMs !== null) {
-        const sharpness = await this.media.regionSharpness(frame.path, face.boundingBox, {
-          width: result.imageWidth,
-          height: result.imageHeight,
-        });
+        const sharpness = await this.backgroundTasks.runMachineLearning(() =>
+          this.media.regionSharpness(frame.path, face.boundingBox, {
+            width: result.imageWidth,
+            height: result.imageHeight,
+          }),
+        );
         const usable = isUsableVideoFace(
           face,
           result.imageWidth,
@@ -550,6 +575,7 @@ export class FaceClusterProcessor extends WorkerHost {
     private readonly subjects: SubjectService,
     private readonly prisma: PrismaService,
     private readonly jobs: JobService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -563,14 +589,20 @@ export class FaceClusterProcessor extends WorkerHost {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
 
-    const result = await this.clustering.recluster(job.data.userId);
+    const result = await this.backgroundTasks.runMachineLearning(() =>
+      this.clustering.recluster(job.data.userId),
+    );
 
     // Every surviving group needs an avatar again.
     const groups = await this.prisma.person.findMany({
       where: { ownerId: job.data.userId, thumbnailPath: '' },
       select: { id: true },
     });
-    for (const group of groups) await this.subjects.generateThumbnail(group.id);
+    for (const group of groups) {
+      await this.backgroundTasks.runMachineLearning(() =>
+        this.subjects.generateThumbnail(group.id),
+      );
+    }
 
     return result;
   }

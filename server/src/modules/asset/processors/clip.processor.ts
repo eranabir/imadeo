@@ -1,7 +1,12 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
-import { QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
+import {
+  ML_JOB_CONCURRENCY,
+  QUEUE,
+  type AssetJobData,
+} from '../../../infra/job/job.constants';
 import { MachineLearningService } from '../../../infra/ml/ml.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 
@@ -11,13 +16,14 @@ import { PrismaService } from '../../../infra/prisma/prisma.service';
  * Runs from the preview rather than the original: CLIP works at 224px, so
  * sending a 60 MB raw file would cost a great deal and change nothing.
  */
-@Processor(QUEUE.SMART_SEARCH, { concurrency: 2 })
+@Processor(QUEUE.SMART_SEARCH, { concurrency: ML_JOB_CONCURRENCY })
 export class ClipProcessor extends WorkerHost {
   private readonly logger = new Logger(ClipProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ml: MachineLearningService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -33,7 +39,10 @@ export class ClipProcessor extends WorkerHost {
     const source = asset.previewPath ?? asset.originalPath;
     if (!source) return { skipped: 'no preview yet' };
 
-    const embedding = await this.ml.encodeImage(source);
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
+    const embedding = await this.backgroundTasks.runMachineLearning(() =>
+      this.ml.encodeImage(source),
+    );
     // Null means the model is switched off, which is a supported configuration
     // rather than a failure — searching by content simply stays unavailable.
     if (!embedding) return { skipped: 'search encoding unavailable' };

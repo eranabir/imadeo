@@ -21,6 +21,7 @@ import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { AssetService, type UploadedFile as MulterFile } from './asset.service';
 import { DuplicateService } from './duplicate.service';
+import { UploadPriorityInterceptor } from './upload-priority.interceptor';
 import {
   AssetQueryDto,
   BulkAssetIdsDto,
@@ -47,7 +48,7 @@ export class AssetController {
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('assetData'))
+  @UseInterceptors(UploadPriorityInterceptor, FileInterceptor('assetData'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Upload one photo or video',

@@ -22,6 +22,7 @@ import { DuplicateProcessor } from './processors/duplicate.processor';
 import { MetadataProcessor } from './processors/metadata.processor';
 import { ThumbnailProcessor } from './processors/thumbnail.processor';
 import { VideoProcessor } from './processors/video.processor';
+import { UploadPriorityInterceptor } from './upload-priority.interceptor';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { VideoProcessor } from './processors/video.processor';
     VideoProcessor,
     DuplicateProcessor,
     ClipProcessor,
+    UploadPriorityInterceptor,
   ],
   exports: [AssetService, DuplicateService],
 })

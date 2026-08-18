@@ -19,6 +19,10 @@ describe('deleted asset processing', () => {
     const encodeImage = vi.fn();
     const detectDuplicates = vi.fn();
     const detectFaces = vi.fn();
+    const backgroundTasks = {
+      runMachineLearning: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+      runThumbnail: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+    };
 
     const metadata = new MetadataProcessor(
       prisma as never,
@@ -35,8 +39,13 @@ describe('deleted asset processing', () => {
       {} as never,
       {} as never,
       {} as never,
+      backgroundTasks as never,
     );
-    const clip = new ClipProcessor(prisma as never, { encodeImage } as never);
+    const clip = new ClipProcessor(
+      prisma as never,
+      { encodeImage } as never,
+      backgroundTasks as never,
+    );
     const duplicate = new DuplicateProcessor(
       {
         asset: {
@@ -51,6 +60,7 @@ describe('deleted asset processing', () => {
       {} as never,
       {} as never,
       {} as never,
+      backgroundTasks as never,
       {} as never,
       {} as never,
       {} as never,
@@ -134,6 +144,7 @@ describe('deleted asset processing', () => {
       { enqueue } as never,
       {} as never,
       {} as never,
+      { runThumbnail: vi.fn() } as never,
     );
 
     await expect(
@@ -143,6 +154,47 @@ describe('deleted asset processing', () => {
       assetId: 'deleted-id',
     });
     expect(extractPosterFrame).not.toHaveBeenCalled();
+  });
+});
+
+describe('upload priority', () => {
+  it('waits for uploads to become idle before starting machine-learning work', async () => {
+    let releaseUpload: () => void = () => undefined;
+    const uploadIdle = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const runMachineLearning = vi.fn(async (operation: () => Promise<unknown>) => {
+      await uploadIdle;
+      return operation();
+    });
+    const encodeImage = vi.fn().mockResolvedValue([0.1]);
+    const prisma = {
+      asset: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'active-id',
+          deletedAt: null,
+          visibility: 'TIMELINE',
+          previewPath: '/preview.webp',
+          originalPath: '/original.jpg',
+        }),
+        findFirst: vi.fn().mockResolvedValue({ id: 'active-id' }),
+      },
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      assetJobStatus: { upsert: vi.fn().mockResolvedValue(undefined) },
+    };
+    const processor = new ClipProcessor(
+      prisma as never,
+      { encodeImage } as never,
+      { runMachineLearning } as never,
+    );
+
+    const processing = processor.process({ data: { assetId: 'active-id' } } as never);
+    await vi.waitFor(() => expect(runMachineLearning).toHaveBeenCalledOnce());
+    expect(encodeImage).not.toHaveBeenCalled();
+
+    releaseUpload();
+    await expect(processing).resolves.toEqual({ encoded: true });
+    expect(encodeImage).toHaveBeenCalledWith('/preview.webp');
   });
 });
 

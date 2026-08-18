@@ -188,7 +188,8 @@ export const configuration = () => {
       thumbnailConcurrency: int(process.env.JOB_THUMBNAIL_CONCURRENCY, 3),
       metadataConcurrency: int(process.env.JOB_METADATA_CONCURRENCY, 5),
       videoConcurrency: int(process.env.JOB_VIDEO_CONCURRENCY, 1),
-      mlConcurrency: int(process.env.JOB_ML_CONCURRENCY, 2),
+      mlConcurrency: int(process.env.JOB_ML_CONCURRENCY, 1),
+      uploadIdleMs: int(process.env.JOB_UPLOAD_IDLE_MS, 10_000),
     },
   };
 };

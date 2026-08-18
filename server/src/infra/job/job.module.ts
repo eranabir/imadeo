@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../../config/configuration';
 import { ALL_QUEUES } from './job.constants';
+import { BackgroundTaskGate } from './background-task-gate.service';
 import { JobService } from './job.service';
 
 @Global()
@@ -24,7 +25,7 @@ import { JobService } from './job.service';
     }),
     ...ALL_QUEUES.map((name) => BullModule.registerQueue({ name })),
   ],
-  providers: [JobService],
-  exports: [JobService, BullModule],
+  providers: [JobService, BackgroundTaskGate],
+  exports: [JobService, BackgroundTaskGate, BullModule],
 })
 export class JobModule {}

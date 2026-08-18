@@ -95,6 +95,8 @@ services:
     container_name: imadeo_ml
     image: ghcr.io/eranabir/imadeo/machine-learning:${IMADEO_VERSION:-latest}
     restart: unless-stopped
+    # Recognition is background work; reserve CPU for uploads, the API and web UI.
+    cpus: ${ML_CPU_LIMIT:-1.5}
     env_file:
       - .env
     environment:

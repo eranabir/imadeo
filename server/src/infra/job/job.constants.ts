@@ -19,6 +19,14 @@ export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
 
 export const ALL_QUEUES: QueueName[] = Object.values(QUEUE);
 
+const positiveInteger = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+/** Worker decorators run before Nest configuration is created, so read this limit once here. */
+export const ML_JOB_CONCURRENCY = positiveInteger(process.env.JOB_ML_CONCURRENCY, 1);
+
 export const JOB = {
   EXTRACT_METADATA: 'extract-metadata',
   /// Names the place of a photo that already has coordinates. Its own job so a
