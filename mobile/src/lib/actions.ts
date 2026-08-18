@@ -60,7 +60,7 @@ const writes = {
   toAlbum: (server: string, albumId: string, ids: string[]) =>
     request(server, `/albums/${albumId}/assets`, {
       method: 'PUT',
-      body: JSON.stringify({ assetIds: ids }),
+      body: JSON.stringify({ assetIds: ids, removeFromFolder: true }),
     }),
 
   share: (server: string, ids: string[], userIds: string[]) =>

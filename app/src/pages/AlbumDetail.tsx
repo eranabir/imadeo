@@ -341,7 +341,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
         <EmptyState
           icon={ImagePlus}
           title="This album is empty"
-          description="Drag photos onto the album in the sidebar, or right-click any photo and choose “Add to album”."
+          description="Drag photos onto the album to add them, or choose “Move to…” to move them here."
           action={
             <Button variant="primary" icon={<LayoutGrid size={15} />} onClick={() => navigate('/')}>
               Browse photos

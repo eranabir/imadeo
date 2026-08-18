@@ -190,11 +190,21 @@ export function useLibraryActions({
   );
 
   const assetsToAlbum = useMutation(
-    mutation(async ({ albumId, ids }: { albumId: string; ids: string[] }) =>
+    mutation(async ({ albumId, ids, move }: { albumId: string; ids: string[]; move?: boolean }) =>
       runBatchedOperation(
-        ids.length === 1 ? 'Adding photo to album' : `Adding ${ids.length} photos to album`,
+        move
+          ? ids.length === 1
+            ? 'Moving photo to album'
+            : `Moving ${ids.length} photos to album`
+          : ids.length === 1
+            ? 'Adding photo to album'
+            : `Adding ${ids.length} photos to album`,
         ids,
-        (batch) => api.put(`/albums/${albumId}/assets`, { assetIds: batch }),
+        (batch) =>
+          api.put(`/albums/${albumId}/assets`, {
+            assetIds: batch,
+            removeFromFolder: Boolean(move),
+          }),
       ),
     ),
   );
@@ -332,7 +342,8 @@ export function useLibraryActions({
   /** Only photos can be dropped onto an album. */
   const dropOnAlbum = useCallback(
     (albumId: string, payload: DragPayload) => {
-      if (payload.kind === 'assets') assetsToAlbum.mutate({ albumId, ids: payload.ids });
+      if (payload.kind === 'assets')
+        assetsToAlbum.mutate({ albumId, ids: payload.ids, move: false });
     },
     [assetsToAlbum],
   );
@@ -647,8 +658,9 @@ export function useLibraryActions({
             folderToFolder.mutate({ id: moving.folder.id, parentId: folderId });
           else albumToFolder.mutate({ id: moving.album.id, folderId });
         }}
-        onAddToAlbum={(albumId) => {
-          if (moving?.kind === 'assets') assetsToAlbum.mutate({ albumId, ids: moving.ids });
+        onMoveToAlbum={(albumId) => {
+          if (moving?.kind === 'assets')
+            assetsToAlbum.mutate({ albumId, ids: moving.ids, move: true });
         }}
       />
 

@@ -515,7 +515,12 @@ export class AlbumService {
 
   // -- album contents -------------------------------------------------------
 
-  async addAssets(auth: AuthDto, albumId: string, assetIds: string[]) {
+  async addAssets(
+    auth: AuthDto,
+    albumId: string,
+    assetIds: string[],
+    removeFromFolder = false,
+  ) {
     await this.assertCanEdit(auth, albumId);
 
     const album = await this.prisma.album.findUniqueOrThrow({ where: { id: albumId } });
@@ -528,8 +533,9 @@ export class AlbumService {
     const already = new Set(existing.map((e) => e.assetId));
     const toAdd = usable.filter((id) => !already.has(id));
 
+    const writes = [];
     if (toAdd.length > 0) {
-      await this.prisma.$transaction([
+      writes.push(
         this.prisma.albumAsset.createMany({
           data: toAdd.map((assetId) => ({ albumId, assetId, addedById: auth.user.id })),
           skipDuplicates: true,
@@ -541,13 +547,32 @@ export class AlbumService {
             thumbnailAssetId: album.thumbnailAssetId ?? toAdd[0],
           },
         }),
-      ]);
+      );
     }
+
+    // Albums normally group media without changing its folder. The explicit
+    // Move action opts into removing owned media from the source folder, and
+    // does so in the same transaction as the new album membership.
+    if (removeFromFolder && usable.length > 0) {
+      writes.push(
+        this.prisma.asset.updateMany({
+          where: { id: { in: usable }, ownerId: auth.user.id },
+          data: { folderId: null },
+        }),
+      );
+    }
+
+    if (writes.length > 0) await this.prisma.$transaction(writes);
 
     return assetIds.map((id) => ({
       id,
-      success: toAdd.includes(id),
-      error: already.has(id) ? 'duplicate' : usable.includes(id) ? undefined : 'no_permission',
+      success: toAdd.includes(id) || (removeFromFolder && usable.includes(id)),
+      error:
+        already.has(id) && !removeFromFolder
+          ? 'duplicate'
+          : usable.includes(id)
+            ? undefined
+            : 'no_permission',
     }));
   }
 

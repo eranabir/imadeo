@@ -55,6 +55,95 @@ describe('AlbumService.getAssetIds', () => {
   });
 });
 
+describe('AlbumService moving media into an album', () => {
+  it('adds album membership and removes owned media from its source folder atomically', async () => {
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const updateAlbum = vi.fn().mockResolvedValue({});
+    const updateAssets = vi.fn().mockResolvedValue({ count: 1 });
+    const transaction = vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations));
+    const service = new AlbumService(
+      {
+        album: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'album-id',
+            isLocked: false,
+            thumbnailAssetId: null,
+          }),
+          update: updateAlbum,
+        },
+        albumAsset: { findMany: vi.fn().mockResolvedValue([]), createMany },
+        partner: { findMany: vi.fn().mockResolvedValue([]) },
+        asset: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'asset-id' }]),
+          updateMany: updateAssets,
+        },
+        $transaction: transaction,
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await expect(
+      service.addAssets(
+        { user: { id: 'owner-id' } } as never,
+        'album-id',
+        ['asset-id'],
+        true,
+      ),
+    ).resolves.toEqual([{ id: 'asset-id', success: true, error: undefined }]);
+
+    expect(createMany).toHaveBeenCalledWith({
+      data: [{ albumId: 'album-id', assetId: 'asset-id', addedById: 'owner-id' }],
+      skipDuplicates: true,
+    });
+    expect(updateAssets).toHaveBeenCalledWith({
+      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id' },
+      data: { folderId: null },
+    });
+    expect(transaction).toHaveBeenCalledOnce();
+  });
+
+  it('still removes the folder when the photo already belongs to the album', async () => {
+    const updateAssets = vi.fn().mockResolvedValue({ count: 1 });
+    const service = new AlbumService(
+      {
+        album: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'album-id',
+            isLocked: false,
+            thumbnailAssetId: 'asset-id',
+          }),
+        },
+        albumAsset: { findMany: vi.fn().mockResolvedValue([{ assetId: 'asset-id' }]) },
+        partner: { findMany: vi.fn().mockResolvedValue([]) },
+        asset: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'asset-id' }]),
+          updateMany: updateAssets,
+        },
+        $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await expect(
+      service.addAssets(
+        { user: { id: 'owner-id' } } as never,
+        'album-id',
+        ['asset-id'],
+        true,
+      ),
+    ).resolves.toEqual([{ id: 'asset-id', success: true, error: undefined }]);
+    expect(updateAssets).toHaveBeenCalledOnce();
+  });
+});
+
 describe('AlbumService.processingStatus', () => {
   it('reports preview progress across the complete album', async () => {
     const count = vi.fn().mockResolvedValueOnce(7).mockResolvedValueOnce(4);

@@ -88,6 +88,11 @@ export class AlbumAssetsDto {
   @IsArray()
   @IsUUID('4', { each: true })
   assetIds!: string[];
+
+  /** A Move action removes owned media from its folder after adding album membership. */
+  @IsOptional()
+  @IsBoolean()
+  removeFromFolder?: boolean;
 }
 
 export class UpdateAlbumUserDto {

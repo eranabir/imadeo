@@ -85,7 +85,7 @@ export class AlbumController {
   @Auth({ sharedLink: true })
   @Put(':id/assets')
   addAssets(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: AlbumAssetsDto) {
-    return this.albumService.addAssets(auth, id, dto.assetIds);
+    return this.albumService.addAssets(auth, id, dto.assetIds, dto.removeFromFolder);
   }
 
   @Auth({ sharedLink: true })

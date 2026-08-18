@@ -21,16 +21,16 @@ interface Props {
   excludeFolderId?: string;
   onClose: () => void;
   onMoveToFolder: (folderId: string | null) => void;
-  onAddToAlbum: (albumId: string) => void;
+  onMoveToAlbum: (albumId: string) => void;
 }
 
 /**
  * One tree containing both folders and the albums filed inside them, so picking
  * a destination is a single act rather than a choice of category first.
  *
- * Folders and albums still mean different things — a folder is where the file
- * lives, an album is a grouping that leaves it in place — so the row for each
- * says which it is rather than hiding the difference.
+ * Folders and albums still mean different things, so the row for each says
+ * which it is rather than hiding the difference. This dialog performs a move;
+ * dragging directly onto an album remains the separate add/copy interaction.
  */
 export function MoveDialog({
   open,
@@ -40,7 +40,7 @@ export function MoveDialog({
   excludeFolderId,
   onClose,
   onMoveToFolder,
-  onAddToAlbum,
+  onMoveToAlbum,
 }: Props) {
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -149,7 +149,7 @@ export function MoveDialog({
       <button
         type="button"
         onClick={() => {
-          onAddToAlbum(album.id);
+          onMoveToAlbum(album.id);
           onClose();
         }}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-control px-2 py-2 text-left text-sm transition hover:bg-surface-sunken"
@@ -188,7 +188,7 @@ export function MoveDialog({
       title={title ?? (count === 1 ? 'Move photo' : `Move ${count} photos`)}
       description={
         allowAlbums
-          ? 'Pick a folder to file it under, or an album to add it to.'
+          ? 'Pick a folder or album to move it into.'
           : 'Pick the folder to file it under.'
       }
     >
