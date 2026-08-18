@@ -290,6 +290,9 @@ export class FolderService {
       isDeviceOnly: false,
       visibility: folder?.isLocked ? AssetVisibility.LOCKED : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
       ...(folderFilter === undefined && query.recursive && !folderId ? {} : { folderId: folderFilter }),
+      // Root Browse is the library inbox. Photos already represented by an
+      // album belong under that album rather than appearing twice at root.
+      ...(!folderId && !query.recursive ? { albums: { none: {} } } : {}),
     };
 
     const orderBy = this.assetOrderBy(query.sortBy ?? 'date', query.order ?? 'desc');

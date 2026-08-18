@@ -148,6 +148,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const shownFolders = (data?.folders ?? []).filter((f) => matches(f.name));
   const shownAlbums = (data?.albums ?? []).filter((a) => matches(a.name));
   const showAlbums = Boolean(folderId) || rootMode === 'browse';
+  const showAssets = Boolean(folderId) || rootMode === 'browse';
   const canChangeView = Boolean(folderId) || rootMode === 'browse';
   const visibleAlbums = showAlbums ? shownAlbums : [];
   const invalidate = () => queryClient.invalidateQueries();
@@ -207,11 +208,11 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
   const isEmpty =
     shownFolders.length === 0 &&
     visibleAlbums.length === 0 &&
-    (!folderId || shownAssets.length === 0);
+    (!showAssets || (needle ? shownAssets.length === 0 : data.pagination.total === 0));
   const visibleCount =
     shownFolders.length +
     visibleAlbums.length +
-    (folderId ? (needle ? shownAssets.length : data.pagination.total) : 0);
+    (showAssets ? (needle ? shownAssets.length : data.pagination.total) : 0);
   const rootTitle = rootMode === 'browse' ? 'Browse' : 'Folders';
   const folderBasePath = rootMode === 'browse' ? '/browse/folders' : '/folders';
   const albumBasePath = rootMode === 'browse' ? '/browse/albums' : '/albums';
@@ -273,7 +274,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
               }
             />
 
-            {folderId && (
+            {showAssets && (
               <>
                 <Select
                   size="sm"
@@ -484,12 +485,15 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           </Section>
         )}
 
-
-        {/* Only inside a folder. The top-level listing is a directory of
-            folders and albums, not a photo grid — but a folder you have opened
-            should show what is actually in it. */}
-        {folderId && viewMode === 'grid' && shownAssets.length > 0 && (
+        {/* Browse root is also the inbox for media that belongs to neither a
+            folder nor an album. Inside a folder, show its direct media. */}
+        {showAssets && viewMode === 'grid' && shownAssets.length > 0 && (
           <section className="mb-7">
+            {!folderId && rootMode === 'browse' && (
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-content-muted">
+                Unfiled photos
+              </h2>
+            )}
             <JustifiedGrid
               assets={shownAssets}
               selected={selected}
@@ -512,7 +516,7 @@ function LibraryPage({ rootMode }: { rootMode: 'browse' | 'folders' }) {
           <EmptyState
             icon={!folderId && rootMode === 'browse' ? BrowseIcon : Folder}
             title={folderId ? 'This folder is empty' : rootMode === 'browse' ? 'Nothing here yet' : 'No folders yet'}
-            description={folderId ? 'Upload photos here, or create a sub-folder to keep things organised.' : rootMode === 'browse' ? 'Create a folder or album to start organising your library.' : 'Create a folder to start organising your library.'}
+            description={folderId ? 'Upload photos here, or create a sub-folder to keep things organised.' : rootMode === 'browse' ? 'Create a folder or album, or upload photos to start organising your library.' : 'Create a folder to start organising your library.'}
             action={
               canManage ? (
               <div className="flex gap-2">

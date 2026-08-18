@@ -152,6 +152,31 @@ describe('FolderService.convertToAlbum', () => {
   });
 });
 
+describe('FolderService.getContents', () => {
+  it('returns only media outside both folders and albums at the Browse root', async () => {
+    const findAssets = vi.fn().mockResolvedValue([]);
+    const countAssets = vi.fn().mockResolvedValue(0);
+    const service = new FolderService(
+      {
+        folder: { findMany: vi.fn().mockResolvedValue([]) },
+        album: { findMany: vi.fn().mockResolvedValue([]) },
+        asset: { findMany: findAssets, count: countAssets },
+      } as never,
+      {} as never,
+    );
+
+    await service.getContents('owner-id', null);
+
+    const rootWhere = expect.objectContaining({
+      ownerId: 'owner-id',
+      folderId: null,
+      albums: { none: {} },
+    });
+    expect(findAssets).toHaveBeenCalledWith(expect.objectContaining({ where: rootWhere }));
+    expect(countAssets).toHaveBeenCalledWith({ where: rootWhere });
+  });
+});
+
 describe('FolderService.create', () => {
   it('revives a deleted folder when its path is uploaded again', async () => {
     const deletedAt = new Date('2026-08-14T00:00:00Z');

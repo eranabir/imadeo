@@ -41,7 +41,7 @@ export function FolderTree({
   if (folders.length === 0 && rootAlbums.length === 0) {
     return (
       <p className="px-3 py-2 text-xs text-content-muted">
-        Nothing in Browse yet. Create a folder or album to start organising.
+        No folders or albums yet.
       </p>
     );
   }
