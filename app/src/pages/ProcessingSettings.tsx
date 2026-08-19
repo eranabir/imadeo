@@ -41,6 +41,7 @@ interface ProcessingSnapshot {
     activeUploads: number;
     media: { active: number; waiting: number; limit: number };
     heavy: { active: number };
+    activeQueues: Record<string, number>;
   };
   queues: ProcessingQueue[];
   activeJobs: ActiveProcessingJob[];

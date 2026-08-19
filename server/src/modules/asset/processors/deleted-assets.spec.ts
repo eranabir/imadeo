@@ -47,6 +47,7 @@ describe('deleted asset processing', () => {
     const clip = new ClipProcessor(
       prisma as never,
       { encodeImage } as never,
+      {} as never,
       backgroundTasks as never,
     );
     const duplicate = new DuplicateProcessor(
@@ -56,6 +57,7 @@ describe('deleted asset processing', () => {
         },
       } as never,
       { detectForOwner: detectDuplicates } as never,
+      {} as never,
       backgroundTasks as never,
     );
     const face = new FaceDetectionProcessor(
@@ -173,6 +175,7 @@ describe('upload priority', () => {
       await uploadIdle;
       return operation();
     });
+    const waitForMediaProcessingIdle = vi.fn().mockResolvedValue(undefined);
     const encodeImage = vi.fn().mockResolvedValue([0.1]);
     const prisma = {
       asset: {
@@ -191,6 +194,7 @@ describe('upload priority', () => {
     const processor = new ClipProcessor(
       prisma as never,
       { encodeImage } as never,
+      { waitForMediaProcessingIdle } as never,
       { runMachineLearning } as never,
     );
 
@@ -200,6 +204,7 @@ describe('upload priority', () => {
 
     releaseUpload();
     await expect(processing).resolves.toEqual({ encoded: true });
+    expect(waitForMediaProcessingIdle).toHaveBeenCalledOnce();
     expect(encodeImage).toHaveBeenCalledWith('/preview.webp');
   });
 });

@@ -46,7 +46,7 @@ export class ThumbnailProcessor extends WorkerHost {
       return { queued: 'video worker' };
     }
 
-    return this.backgroundTasks.runThumbnail(() => this.generateThumbnail(asset));
+    return this.backgroundTasks.runThumbnail(() => this.generateThumbnail(asset), job.queueName);
   }
 
   private async generateThumbnail(asset: Asset) {

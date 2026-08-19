@@ -7,6 +7,7 @@ import {
   QUEUE,
   type AssetJobData,
 } from '../../../infra/job/job.constants';
+import { JobService } from '../../../infra/job/job.service';
 import { MachineLearningService } from '../../../infra/ml/ml.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 
@@ -23,6 +24,7 @@ export class ClipProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ml: MachineLearningService,
+    private readonly jobs: JobService,
     private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
@@ -39,9 +41,11 @@ export class ClipProcessor extends WorkerHost {
     const source = asset.previewPath ?? asset.originalPath;
     if (!source) return { skipped: 'no preview yet' };
 
+    await this.jobs.waitForMediaProcessingIdle();
     if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
-    const embedding = await this.backgroundTasks.runMachineLearning(() =>
-      this.ml.encodeImage(source),
+    const embedding = await this.backgroundTasks.runMachineLearning(
+      () => this.ml.encodeImage(source),
+      QUEUE.SMART_SEARCH,
     );
     // Null means the model is switched off, which is a supported configuration
     // rather than a failure — searching by content simply stays unavailable.

@@ -100,4 +100,32 @@ describe('JobService', () => {
       progress: 25,
     })]);
   });
+
+  it('keeps analysis waiting until every media queue is drained', async () => {
+    const queue = {
+      getJobCounts: vi.fn().mockResolvedValue({ active: 0, waiting: 0, delayed: 0 }),
+      isPaused: vi.fn().mockResolvedValue(false),
+    };
+    const service = new JobService(
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+      queue as never,
+    );
+    const statistics = vi.spyOn(service, 'getQueueStatistics');
+    statistics
+      .mockResolvedValueOnce({ active: 1, waiting: 0, delayed: 0 } as never)
+      .mockResolvedValueOnce({ active: 0, waiting: 0, delayed: 0 } as never)
+      .mockResolvedValueOnce({ active: 0, waiting: 0, delayed: 0 } as never)
+      .mockResolvedValue({ active: 0, waiting: 0, delayed: 0 } as never);
+
+    await service.waitForMediaProcessingIdle(0);
+
+    expect(statistics).toHaveBeenCalledTimes(6);
+  });
 });

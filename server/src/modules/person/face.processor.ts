@@ -218,6 +218,9 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     if (!this.ml.faceRecognitionEnabled) return { skipped: 'face recognition disabled' };
 
+    await this.jobs.waitForMediaProcessingIdle();
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
+
     const frames = await this.framesFor(asset);
     if (frames.length === 0) {
       // A corrupt or audio-only video must not leave library progress stuck
@@ -260,7 +263,7 @@ export class FaceDetectionProcessor extends WorkerHost {
       );
     }
 
-    const subjects = await this.backgroundTasks.runMachineLearning(() =>
+    const subjects = await this.runRecognition(() =>
       this.clustering.assignFacesForAsset(asset.id, asset.ownerId),
     );
     if (asset.type === AssetType.VIDEO) {
@@ -276,7 +279,7 @@ export class FaceDetectionProcessor extends WorkerHost {
         select: { thumbnailPath: true, thumbnailIsCustom: true },
       });
       if (!subject?.thumbnailIsCustom) {
-        await this.backgroundTasks.runMachineLearning(() =>
+        await this.runRecognition(() =>
           this.subjects.refreshThumbnail(subjectId),
         );
       }
@@ -325,6 +328,11 @@ export class FaceDetectionProcessor extends WorkerHost {
     );
   }
 
+  private async runRecognition<T>(operation: () => Promise<T>) {
+    await this.jobs.waitForMediaProcessingIdle();
+    return this.backgroundTasks.runMachineLearning(operation, QUEUE.FACE_DETECTION);
+  }
+
   private async framesFor(asset: {
     id: string;
     ownerId: string;
@@ -338,7 +346,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     }
 
     const source = asset.encodedVideoPath ?? asset.originalPath;
-    const probe = await this.backgroundTasks.runMachineLearning(() =>
+    const probe = await this.runRecognition(() =>
       this.media.probeVideo(source),
     );
     const timestamps = videoRecognitionTimestamps(
@@ -355,7 +363,7 @@ export class FaceDetectionProcessor extends WorkerHost {
       );
       try {
         await this.storage.remove(path);
-        await this.backgroundTasks.runMachineLearning(() =>
+        await this.runRecognition(() =>
           this.media.extractPosterFrame(source, path, seconds),
         );
         frames.push({ path, timecodeMs: Math.round(seconds * 1000), temporary: true });
@@ -373,10 +381,10 @@ export class FaceDetectionProcessor extends WorkerHost {
     // Run the pet detector first. Face detectors can mistake the front of a
     // dog or cat for a human face; a face centred inside a confirmed pet box
     // belongs to the pet, not the People tab.
-    const petResult = await this.backgroundTasks.runMachineLearning(() =>
+    const petResult = await this.runRecognition(() =>
       this.ml.detectPets(frame.path),
     );
-    const result = await this.backgroundTasks.runMachineLearning(() =>
+    const result = await this.runRecognition(() =>
       this.ml.detectFaces(frame.path),
     );
     if (!result) throw new Error('Face detection returned no result');
@@ -391,7 +399,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     const pets: DetectedPet[] = [];
     for (const pet of detectedPets) {
       if (frame.timecodeMs !== null) {
-        const sharpness = await this.backgroundTasks.runMachineLearning(() =>
+        const sharpness = await this.runRecognition(() =>
           this.media.regionSharpness(frame.path, pet.boundingBox, {
             width: petResult?.imageWidth ?? 0,
             height: petResult?.imageHeight ?? 0,
@@ -435,7 +443,7 @@ export class FaceDetectionProcessor extends WorkerHost {
       // the whole-animal detector several chances to find a real cat or dog.
       if (frame.timecodeMs !== null) continue;
       if (face.score > maximumPetCandidateFaceScore) continue;
-      const recovered = await this.backgroundTasks.runMachineLearning(() =>
+      const recovered = await this.runRecognition(() =>
         this.ml.classifyPetFaceCandidate(frame.path, face.boundingBox),
       );
       if (recovered) pets.push({ ...recovered, boundingBox: face.boundingBox });
@@ -444,7 +452,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     const humanFaces: DetectedFace[] = [];
     for (const face of result.faces.filter((candidate) => !isInsidePet(candidate))) {
       if (frame.timecodeMs !== null) {
-        const sharpness = await this.backgroundTasks.runMachineLearning(() =>
+        const sharpness = await this.runRecognition(() =>
           this.media.regionSharpness(frame.path, face.boundingBox, {
             width: result.imageWidth,
             height: result.imageHeight,
@@ -589,8 +597,10 @@ export class FaceClusterProcessor extends WorkerHost {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
 
-    const result = await this.backgroundTasks.runMachineLearning(() =>
-      this.clustering.recluster(job.data.userId),
+    await this.jobs.waitForMediaProcessingIdle();
+    const result = await this.backgroundTasks.runMachineLearning(
+      () => this.clustering.recluster(job.data.userId),
+      QUEUE.FACE_CLUSTER,
     );
 
     // Every surviving group needs an avatar again.
@@ -599,8 +609,9 @@ export class FaceClusterProcessor extends WorkerHost {
       select: { id: true },
     });
     for (const group of groups) {
-      await this.backgroundTasks.runMachineLearning(() =>
-        this.subjects.generateThumbnail(group.id),
+      await this.backgroundTasks.runMachineLearning(
+        () => this.subjects.generateThumbnail(group.id),
+        QUEUE.FACE_CLUSTER,
       );
     }
 

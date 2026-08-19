@@ -218,6 +218,20 @@ export class JobService {
     return Object.fromEntries(entries);
   }
 
+  /** Analysis must not compete with metadata, previews, or video transcoding. */
+  async waitForMediaProcessingIdle(pollMs = 500) {
+    const mediaQueues = [QUEUE.METADATA, QUEUE.THUMBNAIL, QUEUE.VIDEO] as const;
+    while (true) {
+      const statistics = await Promise.all(
+        mediaQueues.map((queue) => this.getQueueStatistics(queue)),
+      );
+      if (statistics.every(({ active, waiting, delayed }) => active + waiting + delayed === 0)) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+
   /**
    * A lightweight operational snapshot for Settings. Only active jobs are
    * expanded into files; queue totals stay aggregated so a large backlog does

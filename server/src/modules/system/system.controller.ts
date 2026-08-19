@@ -96,7 +96,23 @@ export class SystemController {
   @ApiOperation({ summary: 'Live file-processing jobs and queue depth' })
   async processing() {
     const snapshot = await this.jobs.getAssetProcessingSnapshot();
-    const assetIds = [...new Set(snapshot.activeJobs.map(({ assetId }) => assetId))];
+    const scheduler = this.backgroundTasks.getStatus();
+    const activeSlots = new Map(Object.entries(scheduler.activeQueues));
+    const activeJobs = snapshot.activeJobs.filter(({ queue }) => {
+      const available = activeSlots.get(queue) ?? 0;
+      if (available <= 0) return false;
+      activeSlots.set(queue, available - 1);
+      return true;
+    });
+    const queues = snapshot.queues.map((queue) => {
+      const active = Math.min(queue.active, scheduler.activeQueues[queue.name] ?? 0);
+      return {
+        ...queue,
+        active,
+        waiting: queue.waiting + Math.max(0, queue.active - active),
+      };
+    });
+    const assetIds = [...new Set(activeJobs.map(({ assetId }) => assetId))];
     const assets = await this.prisma.asset.findMany({
       where: { id: { in: assetIds } },
       select: {
@@ -111,8 +127,9 @@ export class SystemController {
 
     return {
       ...snapshot,
-      scheduler: this.backgroundTasks.getStatus(),
-      activeJobs: snapshot.activeJobs.map((job) => {
+      scheduler,
+      queues,
+      activeJobs: activeJobs.map((job) => {
         const asset = byId.get(job.assetId);
         return {
           ...job,

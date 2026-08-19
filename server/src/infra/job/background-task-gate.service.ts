@@ -22,6 +22,7 @@ export class BackgroundTaskGate implements OnModuleDestroy {
   private activeProcessing = 0;
   private waitingProcessing = 0;
   private activeHeavyProcessing = 0;
+  private readonly activeQueues = new Map<string, number>();
   private idleTimer: NodeJS.Timeout | null = null;
   private userIdleTimer: NodeJS.Timeout | null = null;
 
@@ -85,11 +86,12 @@ export class BackgroundTaskGate implements OnModuleDestroy {
    * Runs file metadata and thumbnail work in the shared media lane. Browsing
    * reduces its concurrency instead of freezing it, so progress remains visible.
    */
-  async runMediaProcessing<T>(operation: () => Promise<T>): Promise<T> {
+  async runMediaProcessing<T>(operation: () => Promise<T>, queue?: string): Promise<T> {
     this.waitingProcessing += 1;
     try {
       while (!this.canStartMediaProcessing()) await this.waitForStateChange();
       this.activeProcessing += 1;
+      this.markQueueStarted(queue);
     } finally {
       this.waitingProcessing = Math.max(0, this.waitingProcessing - 1);
     }
@@ -98,31 +100,34 @@ export class BackgroundTaskGate implements OnModuleDestroy {
       return await operation();
     } finally {
       this.activeProcessing = Math.max(0, this.activeProcessing - 1);
+      this.markQueueFinished(queue);
       this.notifyStateChange();
     }
   }
 
   /** Backwards-compatible name used by the thumbnail processor. */
-  runThumbnail<T>(operation: () => Promise<T>): Promise<T> {
-    return this.runMediaProcessing(operation);
+  runThumbnail<T>(operation: () => Promise<T>, queue?: string): Promise<T> {
+    return this.runMediaProcessing(operation, queue);
   }
 
   /** Runs transcoding, duplicate scans and inference only during quiet periods. */
-  async runHeavyProcessing<T>(operation: () => Promise<T>): Promise<T> {
+  async runHeavyProcessing<T>(operation: () => Promise<T>, queue?: string): Promise<T> {
     while (!this.canStartHeavyProcessing()) await this.waitForStateChange();
     this.activeHeavyProcessing += 1;
+    this.markQueueStarted(queue);
 
     try {
       return await operation();
     } finally {
       this.activeHeavyProcessing = Math.max(0, this.activeHeavyProcessing - 1);
+      this.markQueueFinished(queue);
       this.notifyStateChange();
     }
   }
 
   /** Backwards-compatible semantic name used by ML processors. */
-  runMachineLearning<T>(operation: () => Promise<T>): Promise<T> {
-    return this.runHeavyProcessing(operation);
+  runMachineLearning<T>(operation: () => Promise<T>, queue?: string): Promise<T> {
+    return this.runHeavyProcessing(operation, queue);
   }
 
   /** Current scheduler state for the administrator Processing page. */
@@ -142,6 +147,7 @@ export class BackgroundTaskGate implements OnModuleDestroy {
             : this.processingConcurrency,
       },
       heavy: { active: this.activeHeavyProcessing },
+      activeQueues: Object.fromEntries(this.activeQueues),
     };
   }
 
@@ -154,6 +160,7 @@ export class BackgroundTaskGate implements OnModuleDestroy {
     this.activeProcessing = 0;
     this.waitingProcessing = 0;
     this.activeHeavyProcessing = 0;
+    this.activeQueues.clear();
     this.notifyStateChange();
   }
 
@@ -195,6 +202,18 @@ export class BackgroundTaskGate implements OnModuleDestroy {
 
   private waitForStateChange() {
     return new Promise<void>((resolve) => this.stateWaiters.add(resolve));
+  }
+
+  private markQueueStarted(queue?: string) {
+    if (!queue) return;
+    this.activeQueues.set(queue, (this.activeQueues.get(queue) ?? 0) + 1);
+  }
+
+  private markQueueFinished(queue?: string) {
+    if (!queue) return;
+    const remaining = Math.max(0, (this.activeQueues.get(queue) ?? 0) - 1);
+    if (remaining === 0) this.activeQueues.delete(queue);
+    else this.activeQueues.set(queue, remaining);
   }
 
   private notifyStateChange() {

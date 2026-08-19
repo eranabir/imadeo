@@ -38,14 +38,17 @@ export class MetadataProcessor extends WorkerHost {
     // the database. Sharing the queue keeps it behind the same concurrency
     // limit as everything else touching EXIF.
     if (job.name === JOB.REVERSE_GEOCODE) {
-      return this.backgroundTasks.runMediaProcessing(() => this.reverseGeocode(job.data.assetId));
+      return this.backgroundTasks.runMediaProcessing(
+        () => this.reverseGeocode(job.data.assetId),
+        QUEUE.METADATA,
+      );
     }
 
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
 
-    return this.backgroundTasks.runMediaProcessing(() => this.processAsset(asset));
+    return this.backgroundTasks.runMediaProcessing(() => this.processAsset(asset), QUEUE.METADATA);
   }
 
   private async processAsset(asset: Asset) {

@@ -154,4 +154,19 @@ describe('BackgroundTaskGate', () => {
       'ml-2-start',
     ]);
   });
+
+  it('reports only work that has entered a scheduler lane as active', async () => {
+    const gate = createGate(0);
+    let finish: () => void = () => undefined;
+    const hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+
+    const processing = gate.runMachineLearning(async () => hold, 'face-detection');
+    expect(gate.getStatus().activeQueues).toEqual({ 'face-detection': 1 });
+
+    finish();
+    await processing;
+    expect(gate.getStatus().activeQueues).toEqual({});
+  });
 });

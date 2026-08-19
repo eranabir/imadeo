@@ -38,7 +38,7 @@ export class VideoProcessor extends WorkerHost {
     if (!asset || asset.type !== 'VIDEO') return { skipped: 'not a video' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
 
-    return this.backgroundTasks.runHeavyProcessing(() => this.transcode(asset));
+    return this.backgroundTasks.runHeavyProcessing(() => this.transcode(asset), QUEUE.VIDEO);
   }
 
   private async transcode(asset: Asset) {
