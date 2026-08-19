@@ -17,10 +17,12 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { api, ensureFreshBrowserSession, errorMessage } from '../lib/api';
+import { createBrowserThumbnail } from '../lib/browserThumbnail';
 import { formatBytes } from '../lib/format';
 import { buildUploadForm } from '../lib/uploadForm';
 import {
   classifyUploadCandidates,
+  ensureFileReadable,
   filesFromDrop,
   MEDIA_ACCEPT,
   uploadRootSegments,
@@ -141,6 +143,23 @@ export function UploadButton({
   const runControls = useRef(new Map<string, { cancelled: boolean }>());
   const controllers = useRef(new Set<AbortController>());
   const limitUpload = useRef(createUploadLimiter(WEB_UPLOAD_CONCURRENCY)).current;
+  const refreshTimer = useRef<number | null>(null);
+
+  const scheduleLibraryRefresh = () => {
+    if (refreshTimer.current !== null) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['folders'] }),
+        queryClient.invalidateQueries({ queryKey: ['albums'] }),
+        queryClient.invalidateQueries({ queryKey: ['assets'] }),
+      ]);
+    }, 1_000);
+  };
+
+  useEffect(() => () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+  }, []);
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -300,6 +319,8 @@ export function UploadButton({
           bytesConfirmed += file.size;
           uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
         } else {
+          await ensureFileReadable(file);
+          const browserThumbnail = createBrowserThumbnail(file);
           // A 401 received after a multi-gigabyte body wastes the entire
           // transfer. Refresh before opening the request, while concurrent
           // files share the same refresh operation.
@@ -316,6 +337,18 @@ export function UploadButton({
           },
           });
           storedAssetIds.add(data.id);
+
+          // Give the grid something small to render immediately. This is only
+          // a provisional derivative; the idle server job replaces it later.
+          const thumbnail = await browserThumbnail;
+          if (thumbnail) {
+            const preview = new FormData();
+            preview.append('thumbnailData', thumbnail, 'browser-preview.jpg');
+            await api
+              .post(`/assets/${data.id}/browser-thumbnail`, preview, { timeout: 10_000 })
+              .catch(() => undefined);
+          }
+          scheduleLibraryRefresh();
 
           if (data.status === 'confirmed') {
             if (destination.albumId) {

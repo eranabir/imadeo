@@ -2,6 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { DuplicateService } from '../duplicate.service';
 
@@ -19,6 +20,7 @@ export class DuplicateProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly duplicates: DuplicateService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -31,20 +33,28 @@ export class DuplicateProcessor extends WorkerHost {
     if (!asset) return { skipped: 'asset gone' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
 
-    const result = await this.duplicates.detectForOwner(asset.ownerId);
+    return this.backgroundTasks.runHeavyProcessing(async () => {
+      const activeBefore = await this.prisma.asset.findFirst({
+        where: { id: job.data.assetId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!activeBefore) return { skipped: 'asset deleted' };
 
-    const active = await this.prisma.asset.findFirst({
-      where: { id: job.data.assetId, deletedAt: null },
-      select: { id: true },
+      const result = await this.duplicates.detectForOwner(asset.ownerId);
+
+      const active = await this.prisma.asset.findFirst({
+        where: { id: job.data.assetId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!active) return { skipped: 'asset deleted' };
+
+      await this.prisma.assetJobStatus.upsert({
+        where: { assetId: job.data.assetId },
+        create: { assetId: job.data.assetId, duplicatesDetectedAt: new Date() },
+        update: { duplicatesDetectedAt: new Date() },
+      });
+
+      return result;
     });
-    if (!active) return { skipped: 'asset deleted' };
-
-    await this.prisma.assetJobStatus.upsert({
-      where: { assetId: job.data.assetId },
-      create: { assetId: job.data.assetId, duplicatesDetectedAt: new Date() },
-      update: { duplicatesDetectedAt: new Date() },
-    });
-
-    return result;
   }
 }

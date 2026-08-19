@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { extname } from 'node:path';
+import sharp from 'sharp';
 import { DateTime } from 'luxon';
 import type { AuthDto } from '../../common/auth.types';
 import { MAIN_LIBRARY_ASSET_SQL, mainLibraryAssetWhere } from '../../common/asset-scope';
@@ -21,6 +22,7 @@ import { AlbumUserRole, AssetType, AssetVisibility, Prisma, UserStatus } from '.
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
+import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import { DeviceService } from '../device/device.service';
@@ -186,6 +188,47 @@ export class AssetService implements OnModuleInit {
     }
 
     return this.createFromNewUpload(userId, file, dto);
+  }
+
+  /**
+   * Stores a tiny, untrusted browser preview only after validating its JPEG
+   * header and dimensions. It never marks canonical processing as complete.
+   */
+  async storeBrowserThumbnail(userId: string, assetId: string, file: UploadedFile) {
+    try {
+      if (file.size > 1_000_000 || file.mimetype !== 'image/jpeg') {
+        throw new BadRequestException('Browser thumbnail must be a JPEG smaller than 1 MB');
+      }
+      const metadata = await sharp(file.path, { failOn: 'error' }).metadata();
+      if (
+        metadata.format !== 'jpeg' ||
+        !metadata.width ||
+        !metadata.height ||
+        metadata.width > 1_024 ||
+        metadata.height > 1_024
+      ) {
+        throw new BadRequestException('Browser thumbnail has invalid dimensions');
+      }
+
+      const asset = await this.prisma.asset.findFirst({
+        where: { id: assetId, ownerId: userId, deletedAt: null },
+        select: { id: true, thumbnailPath: true },
+      });
+      if (!asset) throw new NotFoundException('Asset not found');
+      if (asset.thumbnailPath) return { stored: false, canonicalReady: true };
+
+      const destination = this.storage.buildBrowserThumbnailPath(userId, assetId);
+      await this.storage.remove(destination);
+      const thumbnailPath = await this.storage.move(file.path, destination);
+      const updated = await this.prisma.asset.updateMany({
+        where: { id: assetId, ownerId: userId, deletedAt: null, thumbnailPath: null },
+        data: { thumbnailPath },
+      });
+      if (updated.count === 0) await this.storage.remove(thumbnailPath);
+      return { stored: updated.count === 1, canonicalReady: updated.count === 0 };
+    } finally {
+      await this.storage.remove(file.path);
+    }
   }
 
   private async createFromNewUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
@@ -1558,16 +1601,14 @@ export class AssetService implements OnModuleInit {
       this.prisma.assetUser.deleteMany({
         where: { assetId: { in: uniqueIds }, userId },
       }),
-    ]);
+    ], BULK_MUTATION_TRANSACTION);
     this.forgetDeferredAssetProcessing(affectedIds);
     await this.jobs.cancelAssetProcessing(affectedIds).catch((error) =>
       this.logger.warn(`Could not cancel processing for trashed assets: ${String(error)}`),
     );
     // Cover regeneration is cleanup, not part of moving the asset to Trash.
     // A bad historical crop must not turn a successful delete into HTTP 500.
-    await this.subjects.refreshThumbnailsForAssets(affectedIds).catch((error) =>
-      this.logger.warn(`Could not refresh People & Pets covers after trashing assets: ${String(error)}`),
-    );
+    this.lifecycle.refreshThumbnailsForAssets(affectedIds);
     return { trashed: trashed.count, removedShares: removedShares.count };
   }
 
@@ -1608,7 +1649,7 @@ export class AssetService implements OnModuleInit {
       data: { deletedAt: null, status: 'ACTIVE' },
     });
     await this.resumeAssetProcessing(userId, affectedIds);
-    await this.subjects.refreshThumbnailsForAssets(affectedIds);
+    this.lifecycle.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }
 
@@ -1632,7 +1673,7 @@ export class AssetService implements OnModuleInit {
     });
     const affectedIds = assets.map((asset) => asset.id);
     await this.resumeAssetProcessing(userId, affectedIds);
-    await this.subjects.refreshThumbnailsForAssets(affectedIds);
+    this.lifecycle.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }
 

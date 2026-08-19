@@ -8,6 +8,7 @@ import {
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
+import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { ALBUM_COVER_INCLUDE, pickCover } from '../album/album.service';
 import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
@@ -695,7 +696,7 @@ export class FolderService {
       await tx.folder.updateMany({ where: { id: { in: ids } }, data: { deletedAt: now } });
 
       return { deletedFolders: ids.length, trashedAssetIds: content.map((asset) => asset.id) };
-    });
+    }, BULK_MUTATION_TRANSACTION);
     await this.assetLifecycle.refreshThumbnailsForAssets(result.trashedAssetIds);
     return { deletedFolders: result.deletedFolders, trashedAssets: result.trashedAssetIds.length };
   }
@@ -774,7 +775,7 @@ export class FolderService {
         where: { id: { in: folderIds }, ownerId: userId, deletedAt },
         data: { deletedAt: null },
       }),
-    ]);
+    ], BULK_MUTATION_TRANSACTION);
     await this.assetLifecycle.refreshThumbnailsForAssets(assetRows.map((asset) => asset.id));
 
     const restored = await this.prisma.folder.findUniqueOrThrow({ where: { id: root.id } });
@@ -889,7 +890,7 @@ export class FolderService {
         where: { ownerId: userId, folderId: { in: folderIds }, deletedAt: folder.deletedAt },
       }),
       this.prisma.folder.deleteMany({ where: { id: { in: folderIds }, ownerId: userId } }),
-    ]);
+    ], BULK_MUTATION_TRANSACTION);
     return {
       deletedFolders: folders.count,
       deletedAlbums: deletedAlbums.count,

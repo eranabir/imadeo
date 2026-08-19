@@ -29,6 +29,24 @@ export const isMediaFile = (file: File) =>
   file.type.startsWith('video/') ||
   MEDIA_EXTENSIONS.has(file.name.slice(file.name.lastIndexOf('.')).toLowerCase());
 
+/**
+ * Cloud-backed Finder files can exist as metadata-only placeholders. The
+ * browser then reports a vague network timeout even though the server never
+ * received a byte. Reading a small slice first both asks the provider to
+ * hydrate the file and gives the user an actionable failure when it cannot.
+ */
+export async function ensureFileReadable(file: File) {
+  if (file.size === 0) return;
+  try {
+    await file.slice(0, Math.min(file.size, 64 * 1024)).arrayBuffer();
+  } catch (cause) {
+    throw new Error(
+      'Could not read this file from your computer. If it is stored in Google Drive, iCloud, or OneDrive, download it or make it available offline, then retry.',
+      { cause },
+    );
+  }
+}
+
 /** Finder/Explorer bookkeeping is not user media and should stay invisible. */
 export const isSystemMetadataFile = (file: File) => {
   const name = file.name.toLowerCase();

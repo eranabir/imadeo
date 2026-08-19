@@ -1,9 +1,14 @@
 import { NotFoundException } from '@nestjs/common';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 import { AssetService } from './asset.service';
 
 function createService(existing: Record<string, unknown>) {
   const assetUpdate = vi.fn().mockResolvedValue({ id: existing.id });
+  const assetUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const albumFindFirst = vi.fn().mockResolvedValue({ id: 'album-id' });
   const albumAssetCreateMany = vi.fn().mockResolvedValue({ count: 1 });
   const albumUpdate = vi.fn().mockResolvedValue({ id: 'album-id' });
@@ -19,12 +24,17 @@ function createService(existing: Record<string, unknown>) {
         findFirst: vi.fn().mockResolvedValue(existing),
         findMany: vi.fn().mockResolvedValue([]),
         update: assetUpdate,
+        updateMany: assetUpdateMany,
       },
       album: { findFirst: albumFindFirst, update: albumUpdate },
       albumAsset: { createMany: albumAssetCreateMany },
       $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     } as never,
-    { remove: storageRemove } as never,
+    {
+      remove: storageRemove,
+      move: vi.fn().mockResolvedValue('/data/thumbs/asset-id-browser.jpg'),
+      buildBrowserThumbnailPath: vi.fn().mockReturnValue('/data/thumbs/asset-id-browser.jpg'),
+    } as never,
     {
       releaseJobIds: vi.fn().mockResolvedValue(0),
       enqueueMany: vi.fn().mockResolvedValue(undefined),
@@ -35,7 +45,7 @@ function createService(existing: Record<string, unknown>) {
     { assertQuota } as never,
     {} as never,
     { get: vi.fn().mockReturnValue(false) } as never,
-    {} as never,
+    { refreshThumbnailsForAssets: refreshThumbnails } as never,
   );
   Object.defineProperty(service, 'hashFile', {
     value: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
@@ -43,6 +53,7 @@ function createService(existing: Record<string, unknown>) {
   return {
     service,
     assetUpdate,
+    assetUpdateMany,
     storageRemove,
     ensurePath,
     refreshThumbnails,
@@ -54,6 +65,37 @@ function createService(existing: Record<string, unknown>) {
     albumUpdate,
   };
 }
+
+describe('AssetService browser thumbnail', () => {
+  it('validates and stores a provisional JPEG without completing canonical processing', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'imadeo-browser-thumbnail-'));
+    const path = join(directory, 'preview.jpg');
+    await sharp({
+      create: { width: 32, height: 24, channels: 3, background: '#123456' },
+    }).jpeg().toFile(path);
+    const test = createService({ id: 'asset-id', thumbnailPath: null });
+
+    try {
+      await expect(test.service.storeBrowserThumbnail('owner-id', 'asset-id', {
+        path,
+        originalname: 'browser-preview.jpg',
+        mimetype: 'image/jpeg',
+        size: 300,
+      })).resolves.toEqual({ stored: true, canonicalReady: false });
+      expect(test.assetUpdateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'asset-id',
+          ownerId: 'owner-id',
+          deletedAt: null,
+          thumbnailPath: null,
+        },
+        data: { thumbnailPath: '/data/thumbs/asset-id-browser.jpg' },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('AssetService library filters', () => {
   it('finds media that belongs to neither a folder nor an album', () => {
@@ -334,9 +376,9 @@ describe('AssetService deferred upload processing', () => {
       { onAssetUploaded, releaseJobIds, enqueueMany } as never,
       { getById: vi.fn() } as never,
       { register: vi.fn().mockResolvedValue(null) } as never,
-      {} as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
       { assertQuota: vi.fn() } as never,
-      {} as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
       {} as never,
       {} as never,
     );
@@ -387,7 +429,7 @@ describe('AssetService deferred upload processing', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -577,7 +619,7 @@ describe('AssetService Live Photo Trash lifecycle', () => {
       {} as never,
       {} as never,
       {} as never,
-      {} as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
     );
 
     await expect(service.trash('owner-id', ['still-id'])).resolves.toEqual({
@@ -619,7 +661,7 @@ describe('AssetService Live Photo Trash lifecycle', () => {
       {} as never,
       { faceRecognitionEnabled: false } as never,
       { get: vi.fn().mockReturnValue(false) } as never,
-      {} as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
     );
 
     await expect(service.restore('owner-id', ['asset-id'])).resolves.toEqual({ restored: 1 });

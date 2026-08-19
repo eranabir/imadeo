@@ -5,8 +5,20 @@ describe('BackgroundTaskGate', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  const createGate = (idleMs = 10_000) =>
-    new BackgroundTaskGate({ get: vi.fn().mockReturnValue(idleMs) } as never);
+  const createGate = (
+    idleMs = 10_000,
+    userIdleMs = 15_000,
+    processingConcurrency = 3,
+    activeUserConcurrency = 1,
+  ) =>
+    new BackgroundTaskGate({
+      get: vi.fn((key: string) => {
+        if (key === 'jobs.userIdleMs') return userIdleMs;
+        if (key === 'jobs.processingConcurrency') return processingConcurrency;
+        if (key === 'jobs.activeUserConcurrency') return activeUserConcurrency;
+        return idleMs;
+      }),
+    } as never);
 
   it('holds background work until the upload idle grace period ends', async () => {
     const gate = createGate();
@@ -64,6 +76,36 @@ describe('BackgroundTaskGate', () => {
     await vi.advanceTimersByTimeAsync(1);
     await thumbnail;
     expect(started).toBe(true);
+  });
+
+  it('keeps one media slot moving during activity while heavy work waits', async () => {
+    const gate = createGate(0, 2_000);
+    gate.noteUserActivity();
+    const events: string[] = [];
+    let releaseFirst: () => void = () => undefined;
+    const firstHold = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = gate.runMediaProcessing(async () => {
+      events.push('media-1-start');
+      await firstHold;
+      events.push('media-1-end');
+    });
+    const second = gate.runMediaProcessing(async () => events.push('media-2'));
+    const heavy = gate.runHeavyProcessing(async () => events.push('heavy'));
+
+    expect(events).toEqual(['media-1-start']);
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(events).toEqual(['media-1-start']);
+
+    releaseFirst();
+    await first;
+    await second;
+    expect(events).toEqual(['media-1-start', 'media-1-end', 'media-2']);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await heavy;
+    expect(events).toEqual(['media-1-start', 'media-1-end', 'media-2', 'heavy']);
   });
 
   it('finishes active ML, runs waiting thumbnails first, and never overlaps them', async () => {

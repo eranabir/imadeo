@@ -72,6 +72,12 @@ export class StorageService {
     return join(base, shard, name);
   }
 
+  /** Temporary browser-rendered thumbnail, replaced by the canonical derivative. */
+  buildBrowserThumbnailPath(ownerId: string, assetId: string) {
+    const canonical = this.buildDerivativePath('thumb', ownerId, assetId);
+    return join(dirname(canonical), `${assetId}-browser.jpg`);
+  }
+
   buildProfilePath(userId: string, ext: string) {
     return join(this.buildUserRoot(userId), 'profile', `avatar${ext}`);
   }

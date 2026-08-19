@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   classifyUploadCandidates,
+  ensureFileReadable,
   filesFromEntry,
   isMediaFile,
   MEDIA_EXTENSIONS,
@@ -105,6 +106,17 @@ describe('web upload selection', () => {
       'birthday.mov',
     ]);
     expect(selection.unsupported.map(({ file }) => file.name)).toEqual(['notes.txt']);
+  });
+
+  it('explains when a cloud-backed file is not available locally', async () => {
+    const file = new File(['photo'], 'IMG_3386.heic');
+    Object.defineProperty(file, 'slice', {
+      value: () => ({ arrayBuffer: () => Promise.reject(new Error('timeout exceeded')) }),
+    });
+
+    await expect(ensureFileReadable(file)).rejects.toThrow(
+      'download it or make it available offline',
+    );
   });
 
   it('finds each visible root before a nested folder upload begins', () => {

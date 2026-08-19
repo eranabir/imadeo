@@ -4,8 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import type { Job } from 'bullmq';
 import { DateTime } from 'luxon';
 import type { AppConfig } from '../../../config/configuration';
-import { AssetType } from '../../../db';
+import { AssetType, type Asset } from '../../../db';
 import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import { GeocodingService } from '../../../infra/geo/geocoding.service';
 import { JobService } from '../../../infra/job/job.service';
 import { MediaService } from '../../../infra/media/media.service';
@@ -27,6 +28,7 @@ export class MetadataProcessor extends WorkerHost {
     private readonly jobs: JobService,
     private readonly geocoding: GeocodingService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -35,11 +37,20 @@ export class MetadataProcessor extends WorkerHost {
     // Naming a place needs no file read at all — the coordinates are already in
     // the database. Sharing the queue keeps it behind the same concurrency
     // limit as everything else touching EXIF.
-    if (job.name === JOB.REVERSE_GEOCODE) return this.reverseGeocode(job.data.assetId);
+    if (job.name === JOB.REVERSE_GEOCODE) {
+      return this.backgroundTasks.runMediaProcessing(() => this.reverseGeocode(job.data.assetId));
+    }
 
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset) return { skipped: 'asset gone' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
+
+    return this.backgroundTasks.runMediaProcessing(() => this.processAsset(asset));
+  }
+
+  private async processAsset(asset: Asset) {
+    // The asset may have been trashed while this job waited for a processing slot.
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     const tags = await this.metadata.extract(asset.originalPath);
 

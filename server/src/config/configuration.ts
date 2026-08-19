@@ -185,11 +185,14 @@ export const configuration = () => {
     },
 
     jobs: {
-      thumbnailConcurrency: int(process.env.JOB_THUMBNAIL_CONCURRENCY, 3),
-      metadataConcurrency: int(process.env.JOB_METADATA_CONCURRENCY, 5),
-      videoConcurrency: int(process.env.JOB_VIDEO_CONCURRENCY, 1),
+      processingConcurrency: int(
+        process.env.JOB_BACKGROUND_CONCURRENCY ?? process.env.JOB_THUMBNAIL_CONCURRENCY,
+        3,
+      ),
+      activeUserConcurrency: int(process.env.JOB_ACTIVE_USER_CONCURRENCY, 1),
       mlConcurrency: int(process.env.JOB_ML_CONCURRENCY, 1),
       uploadIdleMs: int(process.env.JOB_UPLOAD_IDLE_MS, 10_000),
+      userIdleMs: int(process.env.JOB_USER_IDLE_MS, 15_000),
     },
   };
 };

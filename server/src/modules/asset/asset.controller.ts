@@ -87,6 +87,21 @@ export class AssetController {
     return this.assetService.createFromUpload(userId, file, dto);
   }
 
+  @Post(':id/browser-thumbnail')
+  @UseInterceptors(UploadPriorityInterceptor, FileInterceptor('thumbnailData', {
+    limits: { fileSize: 1_000_000 },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Store a provisional thumbnail rendered by the web browser' })
+  async browserThumbnail(
+    @AuthedUserId() userId: string,
+    @Param('id') id: string,
+    @UploadedFile() file: MulterFile | undefined,
+  ) {
+    if (!file) throw new BadRequestException('No browser thumbnail was uploaded');
+    return this.assetService.storeBrowserThumbnail(userId, id, file);
+  }
+
   @Post('upload-status')
   @HttpCode(200)
   @ApiOperation({ summary: 'Confirm which web uploads committed after a lost response' })

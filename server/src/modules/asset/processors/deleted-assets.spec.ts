@@ -21,6 +21,8 @@ describe('deleted asset processing', () => {
     const detectFaces = vi.fn();
     const backgroundTasks = {
       runMachineLearning: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+      runHeavyProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+      runMediaProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()),
       runThumbnail: vi.fn(async (operation: () => Promise<unknown>) => operation()),
     };
 
@@ -31,6 +33,7 @@ describe('deleted asset processing', () => {
       {} as never,
       {} as never,
       {} as never,
+      backgroundTasks as never,
     );
     const thumbnail = new ThumbnailProcessor(
       prisma as never,
@@ -53,6 +56,7 @@ describe('deleted asset processing', () => {
         },
       } as never,
       { detectForOwner: detectDuplicates } as never,
+      backgroundTasks as never,
     );
     const face = new FaceDetectionProcessor(
       prisma as never,
@@ -103,6 +107,7 @@ describe('deleted asset processing', () => {
       { probeVideo } as never,
       {} as never,
       {} as never,
+      { runHeavyProcessing: vi.fn() } as never,
     );
 
     await expect(processor.process(job(JOB.TRANSCODE_VIDEO))).resolves.toEqual({
@@ -118,6 +123,7 @@ describe('deleted asset processing', () => {
       {} as never,
       {} as never,
       { process: processThumbnail } as never,
+      { runHeavyProcessing: vi.fn() } as never,
     );
 
     await expect(processor.process(job(JOB.GENERATE_THUMBNAILS))).resolves.toEqual({
@@ -254,6 +260,7 @@ describe('Live Photo metadata', () => {
       { enqueue } as never,
       { lookup: vi.fn() } as never,
       {} as never,
+      { runMediaProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()) } as never,
     );
 
     await processor.process(job(JOB.EXTRACT_METADATA));

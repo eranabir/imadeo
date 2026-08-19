@@ -98,6 +98,13 @@ export class ThumbnailProcessor extends WorkerHost {
 
       const { thumbnailPath, previewPath } = rendered;
 
+      // A web upload may have supplied a small provisional thumbnail. Keep its
+      // path long enough for the UI, then remove it after the canonical files
+      // and database row have safely replaced it.
+      const provisionalThumbnailPath = await this.prisma.asset
+        .findUnique({ where: { id: asset.id }, select: { thumbnailPath: true } })
+        .then((current) => current?.thumbnailPath ?? null);
+
       const thumbhash = await this.media.generateThumbhash(source).catch(() => null);
       // Computed from the same decoded source the thumbnails came from, so a
       // RAW or a video is hashed from its rendered frame rather than bytes
@@ -120,6 +127,10 @@ export class ThumbnailProcessor extends WorkerHost {
           update: { thumbnailAt: new Date() },
         }),
       ]);
+
+      if (provisionalThumbnailPath && provisionalThumbnailPath !== thumbnailPath) {
+        await this.storage.remove(provisionalThumbnailPath);
+      }
 
       // Downstream stages only make sense once a preview exists: the ML service
       // reads the preview rather than a 60 MB original.

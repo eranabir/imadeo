@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AlbumUserRole, AssetVisibility, Prisma } from '../../db';
 import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
+import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { InvitationService } from '../auth/invitation.service';
 import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
@@ -465,7 +466,7 @@ export class AlbumService {
       });
       await tx.album.update({ where: { id: albumId }, data: { deletedAt } });
       return ids;
-    });
+    }, BULK_MUTATION_TRANSACTION);
     await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
     return { successful: true, trashedAssets: assetIds.length };
   }
@@ -490,7 +491,7 @@ export class AlbumService {
         where: { id: { in: assetIds }, ownerId: userId, deletedAt: album.deletedAt },
         data: { deletedAt: null, status: 'ACTIVE' },
       }),
-    ]);
+    ], BULK_MUTATION_TRANSACTION);
     await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
     return { ...restored, restoredAssets: assetIds.length };
   }

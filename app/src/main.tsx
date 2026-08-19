@@ -85,6 +85,28 @@ function App() {
     };
   }, [status]);
 
+  // A visible tab is not necessarily active. Send a throttled signal only for
+  // real interactions, allowing thumbnails and recognition to resume while a
+  // page is simply left open in the background.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    let lastSignal = 0;
+    const signal = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastSignal < 5_000) return;
+      lastSignal = now;
+      void api.post('/activity').catch(() => undefined);
+    };
+    const options = { passive: true } as AddEventListenerOptions;
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    signal();
+    for (const event of events) window.addEventListener(event, signal, options);
+    return () => {
+      for (const event of events) window.removeEventListener(event, signal, options);
+    };
+  }, [location.key, status]);
+
   // The store owns the preference; the application root owns the document
   // class. Keeping this sync here makes every route, including setup, update.
   useEffect(() => {

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AssetLifecycleService } from './asset-lifecycle.service';
 
+const immediateBackgroundTasks = () => ({
+  runMediaProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()),
+}) as never;
+
 describe('AssetLifecycleService.deletePermanently', () => {
   it('removes only trashed owned assets, their files and their quota usage', async () => {
     const deleteMany = vi.fn().mockResolvedValue({ count: 1 });
@@ -28,6 +32,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       prisma as never,
       { removeMany } as never,
       { refreshThumbnailsForAssets: refresh } as never,
+      immediateBackgroundTasks(),
     );
 
     await expect(service.deletePermanently('owner-id', ['asset-id'])).resolves.toEqual({
@@ -52,7 +57,105 @@ describe('AssetLifecycleService.deletePermanently', () => {
       where: { id: 'owner-id' },
       data: { quotaUsageInBytes: { decrement: 42n } },
     });
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Array),
+      { maxWait: 30_000, timeout: 60_000 },
+    );
+    expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      removeMany.mock.invocationCallOrder[0],
+    );
     expect(refresh).toHaveBeenCalledWith(['asset-id']);
+  });
+
+  it('keeps files intact when the database deletion cannot commit', async () => {
+    const removeMany = vi.fn().mockResolvedValue(undefined);
+    const service = new AssetLifecycleService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([{
+            id: 'asset-id',
+            livePhotoVideoId: null,
+            originalPath: '/data/original.jpg',
+            thumbnailPath: null,
+            previewPath: null,
+            encodedVideoPath: null,
+            fileSizeInByte: 42n,
+          }]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        user: { update: vi.fn().mockResolvedValue({}) },
+        $transaction: vi.fn().mockRejectedValue(new Error('transaction expired')),
+      } as never,
+      { removeMany } as never,
+      { refreshThumbnailsForAssets: vi.fn() } as never,
+      immediateBackgroundTasks(),
+    );
+
+    await expect(service.deletePermanently('owner-id', ['asset-id'])).rejects.toThrow(
+      'transaction expired',
+    );
+    expect(removeMany).not.toHaveBeenCalled();
+  });
+
+  it('deletes a large trash collection in bounded transactions', async () => {
+    const assets = Array.from({ length: 250 }, (_, index) => ({
+      id: `asset-${index}`,
+      livePhotoVideoId: null,
+      originalPath: `/data/${index}.jpg`,
+      thumbnailPath: null,
+      previewPath: null,
+      encodedVideoPath: null,
+      fileSizeInByte: 1n,
+    }));
+    const transaction = vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations));
+    const service = new AssetLifecycleService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue(assets),
+          deleteMany: vi.fn().mockResolvedValue({ count: 100 }),
+        },
+        user: { update: vi.fn().mockResolvedValue({}) },
+        $transaction: transaction,
+      } as never,
+      { removeMany: vi.fn().mockResolvedValue(undefined) } as never,
+      { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
+      immediateBackgroundTasks(),
+    );
+
+    await expect(service.deletePermanently('owner-id', assets.map(({ id }) => id))).resolves.toEqual({
+      deleted: 250,
+      freedBytes: 250n,
+    });
+    expect(transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not report a committed deletion as failed when cover cleanup fails', async () => {
+    const service = new AssetLifecycleService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([{
+            id: 'asset-id',
+            livePhotoVideoId: null,
+            originalPath: '/data/original.jpg',
+            thumbnailPath: null,
+            previewPath: null,
+            encodedVideoPath: null,
+            fileSizeInByte: 42n,
+          }]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        user: { update: vi.fn().mockResolvedValue({}) },
+        $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      } as never,
+      { removeMany: vi.fn().mockResolvedValue(undefined) } as never,
+      { refreshThumbnailsForAssets: vi.fn().mockRejectedValue(new Error('cover failed')) } as never,
+      immediateBackgroundTasks(),
+    );
+
+    await expect(service.deletePermanently('owner-id', ['asset-id'])).resolves.toEqual({
+      deleted: 1,
+      freedBytes: 42n,
+    });
   });
 
   it('removes a hidden Live Photo motion clip with its trashed still', async () => {
@@ -86,6 +189,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       } as never,
       { removeMany } as never,
       { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
+      immediateBackgroundTasks(),
     );
 
     await expect(service.deletePermanently('owner-id', ['still-id'])).resolves.toEqual({

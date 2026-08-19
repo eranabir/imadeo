@@ -8,6 +8,7 @@ import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType } from '../../db';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
+import { BackgroundTaskGate } from '../../infra/job/background-task-gate.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
 import { MailSettingsService } from '../../infra/mail/mail-settings.service';
@@ -27,6 +28,7 @@ export class SystemController {
     private readonly faceRecognition: FaceRecognitionSettingsService,
     private readonly jobs: JobService,
     private readonly databaseBackup: DatabaseBackupService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {}
 
   @Auth({ public: true })
@@ -79,6 +81,14 @@ export class SystemController {
       },
       trashRetentionDays: this.config.get('trash.retentionDays', { infer: true }),
     };
+  }
+
+  @Auth()
+  @Post('activity')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Pause heavy background work while a signed-in user is active' })
+  activity() {
+    this.backgroundTasks.noteUserActivity();
   }
 
   @Auth({ admin: true })

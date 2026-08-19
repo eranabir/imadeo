@@ -1,7 +1,9 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
+import type { Asset } from '../../../db';
 import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import { MediaService } from '../../../infra/media/media.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { StorageService } from '../../../infra/storage/storage.service';
@@ -22,6 +24,7 @@ export class VideoProcessor extends WorkerHost {
     private readonly media: MediaService,
     private readonly storage: StorageService,
     private readonly thumbnails: ThumbnailProcessor,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {
     super();
   }
@@ -34,6 +37,12 @@ export class VideoProcessor extends WorkerHost {
     const asset = await this.prisma.asset.findUnique({ where: { id: job.data.assetId } });
     if (!asset || asset.type !== 'VIDEO') return { skipped: 'not a video' };
     if (asset.deletedAt) return { skipped: 'asset deleted' };
+
+    return this.backgroundTasks.runHeavyProcessing(() => this.transcode(asset));
+  }
+
+  private async transcode(asset: Asset) {
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     const probe = await this.media.probeVideo(asset.originalPath);
 
