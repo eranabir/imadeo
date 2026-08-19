@@ -432,19 +432,6 @@ export class FolderService {
       }
     }
 
-    // Folder names are unique even after a soft delete. Reusing the same name
-    // therefore means reviving that exact location; this also lets a repeated
-    // directory upload rebuild its path without hitting the database index.
-    const deleted = await this.prisma.folder.findFirst({
-      where: {
-        ownerId: userId,
-        parentId: parent?.id ?? null,
-        name,
-        deletedAt: { not: null },
-      },
-    });
-    if (deleted) return this.restore(userId, deleted.id);
-
     await this.assertNameFree(userId, dto.parentId ?? null, name);
 
     // The path contains the folder's own id, which only exists after the insert,

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -174,7 +175,15 @@ export class AssetService implements OnModuleInit {
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     if (dto.uploadId) {
       return this.withUploadLock(`receipt:${userId}:${dto.uploadId}`, async () => {
-        const receipt = await this.findUploadReceipt(userId, dto.uploadId!);
+        const receipt = await this.findUploadReceipt(
+          userId,
+          dto.uploadId!,
+          dto.uploadBatchId,
+        );
+        if (receipt?.folder?.deletedAt) {
+          await this.storage.remove(file.path);
+          throw new ConflictException('Upload stopped because its destination was moved to Trash');
+        }
         if (receipt) {
           await this.storage.remove(file.path);
           if (dto.albumId) await this.attachUploadToAlbum(userId, dto.albumId, receipt.id);
@@ -285,17 +294,18 @@ export class AssetService implements OnModuleInit {
           },
           select: duplicateSelect,
         });
-    existing ??= dto.uploadId
-      ? null
-      : await this.prisma.asset.findFirst({
-          where: {
-            ownerId: userId,
-            checksum,
-            originalFileName,
-            OR: [{ deletedAt: { not: null } }, { folder: { deletedAt: { not: null } } }],
-          },
-          select: duplicateSelect,
-        });
+    // A fresh web selection may deliberately create another active copy, but
+    // it must reuse an exact copy that is already in Trash. Otherwise deleting
+    // an interrupted folder and uploading it again makes both generations live.
+    existing ??= await this.prisma.asset.findFirst({
+      where: {
+        ownerId: userId,
+        checksum,
+        originalFileName,
+        OR: [{ deletedAt: { not: null } }, { folder: { deletedAt: { not: null } } }],
+      },
+      select: duplicateSelect,
+    });
 
     if (existing) {
       // The bytes are already here, but the requested destination still
@@ -319,6 +329,9 @@ export class AssetService implements OnModuleInit {
             deletedAt: null,
             status: 'ACTIVE',
             ...(promotedToPhotos ? { isDeviceOnly: false } : {}),
+            ...(dto.uploadId
+              ? { uploadId: dto.uploadId, uploadBatchId: dto.uploadBatchId ?? null }
+              : {}),
             // With no explicit destination, an asset restored from a deleted
             // folder becomes loose rather than remaining invisible there.
             folderId: folderChanged || wasOrphaned ? destinationFolderId : undefined,
@@ -326,7 +339,11 @@ export class AssetService implements OnModuleInit {
         });
         if (existing.deletedAt) {
           await this.subjects.refreshThumbnailsForAssets([existing.id]);
-          await this.resumeAssetProcessing(userId, [existing.id]);
+          if (dto.deferProcessing && dto.uploadBatchId) {
+            this.deferAssetProcessing(userId, dto.uploadBatchId, existing.id);
+          } else {
+            await this.resumeAssetProcessing(userId, [existing.id]);
+          }
           return { id: existing.id, status: 'restored' as const };
         }
         return { id: existing.id, status: 'organized' as const };
@@ -449,10 +466,18 @@ export class AssetService implements OnModuleInit {
     return folder.id;
   }
 
-  private findUploadReceipt(userId: string, uploadId: string) {
+  private findUploadReceipt(userId: string, uploadId: string, uploadBatchId?: string) {
     return this.prisma.asset.findFirst({
-      where: { ownerId: userId, uploadId },
-      select: { id: true },
+      where: {
+        ownerId: userId,
+        OR: [
+          { uploadId },
+          ...(uploadBatchId
+            ? [{ uploadBatchId, folder: { deletedAt: { not: null } } }]
+            : []),
+        ],
+      },
+      select: { id: true, folder: { select: { deletedAt: true } } },
     });
   }
 
@@ -566,7 +591,7 @@ export class AssetService implements OnModuleInit {
     }
     const byUploadId = new Map(
       assets
-        .filter((asset) => asset.uploadId)
+        .filter((asset) => asset.uploadId && !asset.deletedAt && !asset.folder?.deletedAt)
         .map((asset) => [asset.uploadId!, asset.id]),
     );
     return uploadIds.map((uploadId) => ({

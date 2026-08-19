@@ -251,7 +251,6 @@ model Folder {
   /// A folder holds sub-folders, loose assets AND albums.
   albums    Album[]
 
-  @@unique([ownerId, parentId, name])
   @@index([ownerId, path])
   @@index([parentId])
   @@map("folders")

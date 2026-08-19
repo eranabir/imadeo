@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AssetService } from './asset.service';
 
 function createService(existing: Record<string, unknown>) {
+  const assetFindFirst = vi.fn().mockResolvedValue(existing);
   const assetUpdate = vi.fn().mockResolvedValue({ id: existing.id });
   const assetUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const albumFindFirst = vi.fn().mockResolvedValue({ id: 'album-id' });
@@ -21,7 +22,7 @@ function createService(existing: Record<string, unknown>) {
   const service = new AssetService(
     {
       asset: {
-        findFirst: vi.fn().mockResolvedValue(existing),
+        findFirst: assetFindFirst,
         findMany: vi.fn().mockResolvedValue([]),
         update: assetUpdate,
         updateMany: assetUpdateMany,
@@ -52,6 +53,7 @@ function createService(existing: Record<string, unknown>) {
   });
   return {
     service,
+    assetFindFirst,
     assetUpdate,
     assetUpdateMany,
     storageRemove,
@@ -179,6 +181,50 @@ describe('AssetService duplicate upload destinations', () => {
     ).resolves.toEqual({ id: 'asset-id', status: 'confirmed' });
     expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
     expect(test.assertQuota).not.toHaveBeenCalled();
+  });
+
+  it('reuses a matching trashed copy for a fresh web upload receipt', async () => {
+    const deleted = {
+      id: 'asset-id',
+      deletedAt: new Date(),
+      folderId: 'deleted-folder',
+      folder: { deletedAt: new Date() },
+    };
+    const test = createService(deleted);
+    test.assetFindFirst.mockReset().mockResolvedValueOnce(null).mockResolvedValueOnce(deleted);
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, {
+        uploadId: 'fresh-upload-id',
+        relativePath: '2010/re-upload.jpg',
+        folderId: 'parent-folder',
+      }),
+    ).resolves.toEqual({ id: 'asset-id', status: 'restored' });
+    expect(test.assetUpdate).toHaveBeenCalledWith({
+      where: { id: 'asset-id' },
+      data: {
+        deletedAt: null,
+        status: 'ACTIVE',
+        uploadId: 'fresh-upload-id',
+        uploadBatchId: null,
+        folderId: 'new-folder',
+      },
+    });
+    expect(test.assertQuota).not.toHaveBeenCalled();
+  });
+
+  it('rejects remaining requests after their destination folder enters Trash', async () => {
+    const test = createService({ id: 'old-asset', folder: { deletedAt: new Date() } });
+
+    await expect(
+      test.service.createFromUpload('owner-id', upload, {
+        uploadId: 'late-upload-id',
+        uploadBatchId: 'interrupted-batch',
+        relativePath: '2010/re-upload.jpg',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(test.storageRemove).toHaveBeenCalledWith('/tmp/re-upload.jpg');
+    expect(test.ensurePath).not.toHaveBeenCalled();
   });
 
   it('confirms a committed upload only after restoring its requested album membership', async () => {
@@ -393,10 +439,13 @@ describe('AssetService deferred upload processing', () => {
         { uploadId: 'upload-id', uploadBatchId: 'batch-id', deferProcessing: true },
       ),
     ).resolves.toEqual({ id: assetId, status: 'created' });
-    expect(findFirst).toHaveBeenCalledOnce();
-    expect(findFirst).toHaveBeenCalledWith({
-      where: { ownerId: 'owner-id', uploadId: 'upload-id' },
-      select: { id: true },
+    expect(findFirst).toHaveBeenCalledTimes(2);
+    expect(findFirst).toHaveBeenNthCalledWith(1, {
+      where: { ownerId: 'owner-id', OR: [{ uploadId: 'upload-id' }, {
+        uploadBatchId: 'batch-id',
+        folder: { deletedAt: { not: null } },
+      }] },
+      select: { id: true, folder: { select: { deletedAt: true } } },
     });
     expect(onAssetUploaded).not.toHaveBeenCalled();
     expect(enqueueMany).not.toHaveBeenCalled();

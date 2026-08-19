@@ -178,54 +178,38 @@ describe('FolderService.getContents', () => {
 });
 
 describe('FolderService.create', () => {
-  it('revives a deleted folder when its path is uploaded again', async () => {
-    const deletedAt = new Date('2026-08-14T00:00:00Z');
-    const deletedFolder = {
-      id: 'deleted-folder',
+  it('creates a separate active folder while the old one remains in Trash', async () => {
+    const createdFolder = {
+      id: 'new-folder',
       ownerId: 'owner-id',
       parentId: null,
-      path: '/deleted-folder/',
+      path: '/',
       depth: 0,
       name: '2010',
-      deletedAt,
+      deletedAt: null,
     };
-    const folderUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const create = vi.fn().mockResolvedValue(createdFolder);
+    const update = vi.fn().mockResolvedValue({
+      ...createdFolder,
+      path: '/new-folder/',
+    });
     const prisma = {
       folder: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValueOnce(deletedFolder)
-          .mockResolvedValueOnce(deletedFolder)
-          .mockResolvedValueOnce(null),
-        findMany: vi.fn().mockResolvedValue([deletedFolder]),
-        updateMany: folderUpdateMany,
-        findUniqueOrThrow: vi.fn().mockResolvedValue({ ...deletedFolder, deletedAt: null }),
+        findFirst: vi.fn().mockResolvedValue(null),
       },
-      album: {
-        findMany: vi.fn().mockResolvedValue([{ id: 'album-id' }]),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      asset: {
-        findMany: vi.fn().mockResolvedValue([{ id: 'photo-id' }]),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      $transaction: vi.fn(async (work: (tx: unknown) => unknown) =>
+        work({ folder: { create, update } }),
+      ),
     } as unknown as PrismaService;
-    const service = new FolderService(prisma, {
-      refreshThumbnailsForAssets: vi.fn(),
-      deletePermanently: vi.fn(),
-    } as never);
+    const service = new FolderService(prisma, {} as never);
 
     await expect(service.create('owner-id', { name: '2010' })).resolves.toMatchObject({
-      id: 'deleted-folder',
+      id: 'new-folder',
       deletedAt: null,
-      restoredFolders: 1,
-      restoredAlbums: 1,
-      restoredAssets: 1,
+      path: '/new-folder/',
     });
-    expect(folderUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['deleted-folder'] }, ownerId: 'owner-id', deletedAt },
-      data: { deletedAt: null },
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ ownerId: 'owner-id', parentId: null, name: '2010' }),
     });
   });
 });
