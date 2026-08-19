@@ -95,6 +95,11 @@ describe('BackgroundTaskGate', () => {
     const heavy = gate.runHeavyProcessing(async () => events.push('heavy'));
 
     expect(events).toEqual(['media-1-start']);
+    expect(gate.getStatus()).toMatchObject({
+      mode: 'interactive',
+      media: { active: 1, waiting: 1, limit: 1 },
+      heavy: { active: 0 },
+    });
     await vi.advanceTimersByTimeAsync(1_999);
     expect(events).toEqual(['media-1-start']);
 

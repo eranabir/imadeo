@@ -19,6 +19,16 @@ export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
 
 export const ALL_QUEUES: QueueName[] = Object.values(QUEUE);
 
+/** Queues whose active jobs point at one concrete photo or video. */
+export const ASSET_PROCESSING_QUEUES: QueueName[] = [
+  QUEUE.METADATA,
+  QUEUE.THUMBNAIL,
+  QUEUE.VIDEO,
+  QUEUE.SMART_SEARCH,
+  QUEUE.FACE_DETECTION,
+  QUEUE.DUPLICATE,
+];
+
 const positiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;

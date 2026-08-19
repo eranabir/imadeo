@@ -16,6 +16,7 @@ import {
   Mail,
   MailWarning,
   Palette,
+  Activity,
   Save,
   ScanFace,
   ShieldCheck,
@@ -30,6 +31,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AppleMark, GoogleMark } from '../components/ProviderMarks';
 import { UploadHistorySettings } from './UploadHistory';
+import { ProcessingSettings } from './ProcessingSettings';
 import { api, errorMessage } from '../lib/api';
 import { formatBytes, formatInstant } from '../lib/format';
 import { useAuth, type CurrentUser } from '../store/auth';
@@ -64,6 +66,7 @@ const SECTIONS = [
   { id: 'sign-in', label: 'Sign-in', icon: LogIn, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'backups', label: 'Backups', icon: DatabaseBackup, adminOnly: true },
+  { id: 'processing', label: 'Processing', icon: Activity, adminOnly: true },
   { id: 'upload-history', label: 'Upload history', icon: History },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'devices', label: 'Devices', icon: Smartphone },
@@ -143,6 +146,7 @@ export function SettingsPage() {
           {section === 'sign-in' && <SignInProviders />}
           {section === 'email' && <EmailSettings />}
           {section === 'backups' && <Backups />}
+          {section === 'processing' && <ProcessingSettings />}
           {section === 'upload-history' && <UploadHistorySettings />}
           {section === 'storage' && <Storage />}
           {section === 'devices' && <Devices />}

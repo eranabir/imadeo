@@ -56,4 +56,48 @@ describe('JobService', () => {
     expect(waitingRemove).toHaveBeenCalledTimes(8);
     expect(activeRemove).not.toHaveBeenCalled();
   });
+
+  it('expands only active file jobs while keeping queue backlogs aggregated', async () => {
+    const emptyQueue = () => ({
+      getJobCounts: vi.fn().mockResolvedValue({ active: 0, waiting: 4, delayed: 0, failed: 0 }),
+      isPaused: vi.fn().mockResolvedValue(false),
+      getActive: vi.fn().mockResolvedValue([]),
+    });
+    const metadata = {
+      getJobCounts: vi.fn().mockResolvedValue({ active: 1, waiting: 12, delayed: 0, failed: 0 }),
+      isPaused: vi.fn().mockResolvedValue(false),
+      getActive: vi.fn().mockResolvedValue([{
+        id: 'job-id',
+        name: JOB.EXTRACT_METADATA,
+        data: { assetId: 'asset-id' },
+        progress: 25,
+        timestamp: Date.parse('2026-08-19T10:00:00Z'),
+        processedOn: Date.parse('2026-08-19T10:00:01Z'),
+        attemptsMade: 0,
+      }]),
+    };
+    const service = new JobService(
+      metadata as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+      emptyQueue() as never,
+    );
+
+    const result = await service.getAssetProcessingSnapshot();
+
+    expect(result.queues).toHaveLength(6);
+    expect(result.queues[0]).toMatchObject({ name: QUEUE.METADATA, active: 1, waiting: 12 });
+    expect(result.activeJobs).toEqual([expect.objectContaining({
+      id: 'job-id',
+      assetId: 'asset-id',
+      queue: QUEUE.METADATA,
+      name: JOB.EXTRACT_METADATA,
+      progress: 25,
+    })]);
+  });
 });

@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import {
   ALL_QUEUES,
+  ASSET_PROCESSING_QUEUES,
   AssetJobData,
   DEFAULT_JOB_OPTIONS,
   FACE_DETECTION_JOB_OPTIONS,
@@ -215,6 +216,51 @@ export class JobService {
       }),
     );
     return Object.fromEntries(entries);
+  }
+
+  /**
+   * A lightweight operational snapshot for Settings. Only active jobs are
+   * expanded into files; queue totals stay aggregated so a large backlog does
+   * not turn a monitoring request into another source of server load.
+   */
+  async getAssetProcessingSnapshot() {
+    const queues = await Promise.all(
+      ASSET_PROCESSING_QUEUES.map(async (name) => {
+        const queue = this.queues[name];
+        const [statistics, active] = await Promise.all([
+          this.getQueueStatistics(name),
+          queue.getActive(0, -1),
+        ]);
+        return {
+          name,
+          ...statistics,
+          activeJobs: active.flatMap((job) => {
+            const assetId =
+              job.data && typeof job.data === 'object' && typeof job.data.assetId === 'string'
+                ? job.data.assetId
+                : null;
+            if (!assetId) return [];
+            return [{
+              id: String(job.id ?? `${name}-${assetId}`),
+              queue: name,
+              name: job.name,
+              assetId,
+              progress: job.progress,
+              createdAt: new Date(job.timestamp).toISOString(),
+              startedAt: job.processedOn ? new Date(job.processedOn).toISOString() : null,
+              attemptsMade: job.attemptsMade,
+            }];
+          }),
+        };
+      }),
+    );
+
+    return {
+      queues: queues.map(({ activeJobs: _activeJobs, ...queue }) => queue),
+      activeJobs: queues
+        .flatMap(({ activeJobs }) => activeJobs)
+        .sort((a, b) => (a.startedAt ?? a.createdAt).localeCompare(b.startedAt ?? b.createdAt)),
+    };
   }
 
   async pause(queue: QueueName) {

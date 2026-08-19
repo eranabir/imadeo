@@ -125,6 +125,26 @@ export class BackgroundTaskGate implements OnModuleDestroy {
     return this.runHeavyProcessing(operation);
   }
 
+  /** Current scheduler state for the administrator Processing page. */
+  getStatus() {
+    const uploadPriority = this.activeUploads > 0 || Boolean(this.idleTimer);
+    const mode = uploadPriority ? 'uploading' : this.userIdleTimer ? 'interactive' : 'idle';
+    return {
+      mode,
+      activeUploads: this.activeUploads,
+      media: {
+        active: this.activeProcessing,
+        waiting: this.waitingProcessing,
+        limit: uploadPriority
+          ? 0
+          : this.userIdleTimer
+            ? this.activeUserConcurrency
+            : this.processingConcurrency,
+      },
+      heavy: { active: this.activeHeavyProcessing },
+    };
+  }
+
   onModuleDestroy() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.userIdleTimer) clearTimeout(this.userIdleTimer);

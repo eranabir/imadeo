@@ -92,6 +92,41 @@ export class SystemController {
   }
 
   @Auth({ admin: true })
+  @Get('admin/processing')
+  @ApiOperation({ summary: 'Live file-processing jobs and queue depth' })
+  async processing() {
+    const snapshot = await this.jobs.getAssetProcessingSnapshot();
+    const assetIds = [...new Set(snapshot.activeJobs.map(({ assetId }) => assetId))];
+    const assets = await this.prisma.asset.findMany({
+      where: { id: { in: assetIds } },
+      select: {
+        id: true,
+        originalFileName: true,
+        type: true,
+        fileSizeInByte: true,
+        owner: { select: { name: true, email: true } },
+      },
+    });
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+
+    return {
+      ...snapshot,
+      scheduler: this.backgroundTasks.getStatus(),
+      activeJobs: snapshot.activeJobs.map((job) => {
+        const asset = byId.get(job.assetId);
+        return {
+          ...job,
+          fileName: asset?.originalFileName ?? 'Media no longer available',
+          mediaType: asset?.type ?? null,
+          fileSizeInByte: asset?.fileSizeInByte.toString() ?? null,
+          owner: asset?.owner.name || asset?.owner.email || null,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  @Auth({ admin: true })
   @Get(['admin/people-and-pets-recognition', 'admin/face-recognition'])
   @ApiOperation({ summary: 'People and pets recognition setting for this server' })
   faceRecognitionSettings() {
