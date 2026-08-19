@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  CircleAlert,
   Clock3,
   FileImage,
   Film,
@@ -16,7 +15,6 @@ interface ProcessingQueue {
   active: number;
   waiting: number;
   delayed: number;
-  failed: number;
   completed: number;
   paused: number;
   isPaused: boolean;
@@ -88,7 +86,6 @@ export function ProcessingSettings() {
 
   const snapshot = query.data;
   const waiting = snapshot?.queues.reduce((sum, queue) => sum + queue.waiting + queue.delayed, 0) ?? 0;
-  const failed = snapshot?.queues.reduce((sum, queue) => sum + queue.failed, 0) ?? 0;
   const active = snapshot?.activeJobs.length ?? 0;
 
   return (
@@ -116,10 +113,9 @@ export function ProcessingSettings() {
             </div>
 
             {snapshot && (
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <Summary label="Active" value={active} />
-                <Summary label="Waiting" value={waiting} />
-                <Summary label="Failed" value={failed} danger={failed > 0} />
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Summary label="Processing now" value={active} />
+                <Summary label="Remaining" value={waiting} />
               </div>
             )}
           </div>
@@ -146,10 +142,8 @@ export function ProcessingSettings() {
               <p className="mt-2 text-sm font-medium">No files are processing right now</p>
               <p className="mt-1 text-xs text-content-muted">
                 {waiting > 0
-                  ? `${waiting.toLocaleString()} jobs are waiting for capacity.`
-                  : failed > 0
-                    ? `${failed.toLocaleString()} failed ${failed === 1 ? 'task needs' : 'tasks need'} attention.`
-                    : 'All processing queues are caught up.'}
+                  ? `${waiting.toLocaleString()} files are waiting for processing.`
+                  : 'All processing queues are caught up.'}
               </p>
             </div>
           ) : (
@@ -173,10 +167,10 @@ export function ProcessingSettings() {
   );
 }
 
-function Summary({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
+function Summary({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-control bg-surface-sunken px-3 py-2">
-      <p className={`text-lg font-semibold tabular-nums ${danger ? 'text-danger' : ''}`}>{value.toLocaleString()}</p>
+      <p className="text-lg font-semibold tabular-nums">{value.toLocaleString()}</p>
       <p className="text-[11px] text-content-muted">{label}</p>
     </div>
   );
@@ -218,14 +212,9 @@ function QueueStatus({ queue }: { queue: ProcessingQueue }) {
         {queue.active > 0 && <LoaderCircle size={14} className="animate-spin text-primary" />}
       </div>
       <p className="mt-1 text-xs tabular-nums text-content-muted">
-        {queue.active.toLocaleString()} active · {(queue.waiting + queue.delayed).toLocaleString()} waiting
+        {queue.active.toLocaleString()} processing now · {(queue.waiting + queue.delayed).toLocaleString()} remaining
       </p>
-      {(queue.failed > 0 || queue.isPaused) && (
-        <p className="mt-1 flex items-center gap-1 text-[11px] text-danger">
-          <CircleAlert size={12} />
-          {queue.isPaused ? 'Queue paused' : `${queue.failed.toLocaleString()} failed`}
-        </p>
-      )}
+      {queue.isPaused && <p className="mt-1 text-[11px] text-content-muted">Queue paused</p>}
     </div>
   );
 }
