@@ -32,6 +32,28 @@ describe('SubjectService.list', () => {
   });
 });
 
+describe('SubjectService.getAssets', () => {
+  it('returns a bounded page and the total number of pages', async () => {
+    const findMany = vi.fn().mockResolvedValue([{ id: 'asset-101' }]);
+    const count = vi.fn().mockResolvedValue(275);
+    const service = new SubjectService(
+      { asset: { findMany, count } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'get').mockResolvedValue({ id: 'subject-id' } as never);
+
+    await expect(service.getAssets('owner-id', 'subject-id', 2, 100)).resolves.toEqual({
+      items: [{ id: 'asset-101' }],
+      pagination: { page: 2, size: 100, total: 275, pages: 3 },
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 100, take: 100 }),
+    );
+  });
+});
+
 describe('SubjectService classification corrections', () => {
   it('removes pet species from the subject and its detections when moved to People', async () => {
     const personUpdate = vi.fn().mockResolvedValue({
@@ -63,6 +85,39 @@ describe('SubjectService classification corrections', () => {
     });
   });
 
+  it('pins the current representative when a group is named', async () => {
+    const faceFindFirst = vi.fn().mockResolvedValue({ id: 'cover-face' });
+    const faceUpdate = vi.fn().mockResolvedValue({});
+    const transaction = vi.fn(async (work) =>
+      work({
+        person: { update: vi.fn().mockResolvedValue({ id: 'subject-id', name: 'Eran' }) },
+        assetFace: { findFirst: faceFindFirst, update: faceUpdate },
+      }),
+    );
+    const service = new SubjectService(
+      { $transaction: transaction } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'get').mockResolvedValue({
+      id: 'subject-id',
+      faceAssetId: 'cover-asset',
+    } as never);
+
+    await service.update('owner-id', 'subject-id', { name: 'Eran' });
+
+    expect(faceFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ assetId: 'cover-asset', personId: 'subject-id' }),
+      }),
+    );
+    expect(faceUpdate).toHaveBeenCalledWith({
+      where: { id: 'cover-face' },
+      data: { isPinned: true },
+    });
+  });
+
   it('moves exact detections to the selected person and clears their pet species', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const service = new SubjectService(
@@ -91,5 +146,92 @@ describe('SubjectService classification corrections', () => {
         sourceType: SourceType.MANUAL,
       },
     });
+  });
+
+  it('does not guess which face belongs to a person in an ambiguous photo', async () => {
+    const faceUpdate = vi.fn();
+    const faceCreate = vi.fn().mockResolvedValue({});
+    const service = new SubjectService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'asset-id',
+              exif: { exifImageWidth: 1200, exifImageHeight: 800 },
+              faces: [
+                { id: 'face-a', kind: SubjectKind.PERSON, personId: null },
+                { id: 'face-b', kind: SubjectKind.PERSON, personId: null },
+              ],
+            },
+          ]),
+        },
+        assetFace: { update: faceUpdate, create: faceCreate },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'get').mockResolvedValue({
+      id: 'target-id',
+      kind: SubjectKind.PERSON,
+      species: null,
+    } as never);
+
+    await expect(service.attachAssets('owner-id', 'target-id', ['asset-id'])).resolves.toEqual({
+      moved: 0,
+      created: 1,
+      total: 1,
+    });
+    expect(faceUpdate).not.toHaveBeenCalled();
+    expect(faceCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        assetId: 'asset-id',
+        personId: 'target-id',
+        sourceType: SourceType.MANUAL,
+        isPinned: true,
+      }),
+    });
+  });
+
+  it('moves the detected face when a photo contains exactly one candidate', async () => {
+    const faceUpdate = vi.fn().mockResolvedValue({});
+    const faceCreate = vi.fn();
+    const service = new SubjectService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'asset-id',
+              exif: null,
+              faces: [{ id: 'only-face', kind: SubjectKind.PERSON, personId: null }],
+            },
+          ]),
+        },
+        assetFace: { update: faceUpdate, create: faceCreate },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'get').mockResolvedValue({
+      id: 'target-id',
+      kind: SubjectKind.PERSON,
+      species: null,
+    } as never);
+
+    await expect(service.attachAssets('owner-id', 'target-id', ['asset-id'])).resolves.toEqual({
+      moved: 1,
+      created: 0,
+      total: 1,
+    });
+    expect(faceUpdate).toHaveBeenCalledWith({
+      where: { id: 'only-face' },
+      data: {
+        personId: 'target-id',
+        isPinned: true,
+        sourceType: SourceType.MANUAL,
+      },
+    });
+    expect(faceCreate).not.toHaveBeenCalled();
   });
 });

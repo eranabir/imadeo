@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, EyeOff, Image as ImageIcon, Pencil, UserRound, UserRoundX } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
+import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { RetryingImage } from '../components/RetryingImage';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { SelectionBar } from '../components/SelectionBar';
@@ -110,11 +111,26 @@ export function SubjectPage() {
     ],
   });
 
-  const { data: photos } = useQuery({
+  const {
+    data: photoPages,
+    isLoading: photosLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['subjects', subjectId, 'assets'],
-    queryFn: async () =>
-      (await api.get<Paginated<AssetWithFaces>>(`/people-and-pets/${subjectId}/assets`)).data,
+    queryFn: async ({ pageParam }) =>
+      (
+        await api.get<Paginated<AssetWithFaces>>(`/people-and-pets/${subjectId}/assets`, {
+          params: { page: pageParam, size: 250 },
+        })
+      ).data,
     enabled: Boolean(subjectId),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page * lastPage.pagination.size < lastPage.pagination.total
+        ? lastPage.pagination.page + 1
+        : undefined,
   });
 
   const invalidate = () => queryClient.invalidateQueries();
@@ -184,10 +200,10 @@ export function SubjectPage() {
     onError,
   });
 
-  if (isLoading) return <Loading label="Loading media…" />;
+  if (isLoading || photosLoading) return <Loading label="Loading media…" />;
   if (!subject) return null;
 
-  const assets: AssetWithFaces[] = photos?.items ?? [];
+  const assets: AssetWithFaces[] = photoPages?.pages.flatMap((page) => page.items) ?? [];
   assetsRef.current = assets;
 
   return (
@@ -326,6 +342,11 @@ export function SubjectPage() {
             onSelectRange={(a) => selectRange(a, assets)}
             onAnchor={setAnchor}
             onContextMenu={actions.onAssetContextMenu}
+          />
+          <InfiniteScrollSentinel
+            enabled={hasNextPage}
+            loading={isFetchingNextPage}
+            onVisible={() => void fetchNextPage()}
           />
         </div>
       )}

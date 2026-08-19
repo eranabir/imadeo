@@ -688,8 +688,7 @@ model AssetFace {
 
   embedding      Unsupported("vector(512)")?
   sourceType     SourceType                  @default(MACHINE_LEARNING)
-  /// Set when a user explicitly detaches a face from a person so re-clustering
-  /// does not put it back.
+  /// Protects an explicit user correction or identity anchor from re-clustering.
   isPinned       Boolean                     @default(false)
 
   deletedAt      DateTime?
@@ -697,6 +696,7 @@ model AssetFace {
 
   @@index([assetId])
   @@index([personId])
+  @@index([personId, createdAt])
   @@index([kind])
   @@map("asset_faces")
 }

@@ -115,6 +115,9 @@ export class SubjectService {
   async getAssets(userId: string, personId: string, page = 1, size = 250) {
     await this.get(userId, personId);
 
+    const safePage = Number.isFinite(page) ? Math.max(1, Math.trunc(page)) : 1;
+    const safeSize = Number.isFinite(size) ? Math.min(1000, Math.max(1, Math.trunc(size))) : 250;
+
     const where: Prisma.AssetWhereInput = {
       ...mainLibraryAssetWhere(userId),
       faces: { some: { personId, deletedAt: null } },
@@ -131,19 +134,27 @@ export class SubjectService {
           faces: { where: { personId, deletedAt: null }, select: { id: true } },
         },
         orderBy: [{ localDateTime: 'desc' }],
-        skip: (page - 1) * size,
-        take: size,
+        skip: (safePage - 1) * safeSize,
+        take: safeSize,
       }),
       this.prisma.asset.count({ where }),
     ]);
 
-    return { items, pagination: { page, size, total } };
+    return {
+      items,
+      pagination: {
+        page: safePage,
+        size: safeSize,
+        total,
+        pages: Math.ceil(total / safeSize),
+      },
+    };
   }
 
   // -- writes ---------------------------------------------------------------
 
   async update(userId: string, personId: string, dto: UpdateSubjectDto) {
-    await this.get(userId, personId);
+    const current = await this.get(userId, personId);
     const becomingPerson = dto.kind === SubjectKind.PERSON;
 
     return this.prisma.$transaction(async (tx) => {
@@ -167,6 +178,13 @@ export class SubjectService {
           where: { personId },
           data: { kind: dto.kind, species: becomingPerson ? null : undefined },
         });
+      }
+
+      // Naming a group confirms the identity represented by its current cover.
+      // Keep that one face as a stable anchor; all other automatic assignments
+      // remain free to be corrected by a future re-cluster.
+      if (dto.name?.trim()) {
+        await this.pinRepresentativeFace(tx, personId, current.faceAssetId);
       }
 
       return subject;
@@ -195,6 +213,13 @@ export class SubjectService {
     const namedSource = sources.find((person) => person.name !== '');
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // A manual merge is identity evidence. Preserve one representative from
+      // every merged group so different ages or appearances remain recognised
+      // after automatic assignments are rebuilt.
+      for (const person of [target, ...sources]) {
+        await this.pinRepresentativeFace(tx, person.id, person.faceAssetId);
+      }
+
       const moved = await tx.assetFace.updateMany({
         where: { personId: { in: sources.map((s) => s.id) } },
         data: { personId: targetId },
@@ -286,14 +311,17 @@ export class SubjectService {
     for (const asset of assets) {
       if (asset.faces.some((face) => face.personId === personId)) continue;
 
-      // Prefer an unclaimed detection of the right kind over inventing one.
-      const free = asset.faces.find(
+      // A single detection is unambiguous. If several people are in the photo,
+      // guessing the first one silently assigns the wrong identity; record the
+      // user's statement about the photo without turning that guess into face
+      // recognition evidence.
+      const free = asset.faces.filter(
         (face) => face.kind === person.kind && face.personId === null,
       );
 
-      if (free) {
+      if (free.length === 1) {
         await this.prisma.assetFace.update({
-          where: { id: free.id },
+          where: { id: free[0].id },
           data: { personId, isPinned: true, sourceType: SourceType.MANUAL },
         });
         moved++;
@@ -407,9 +435,12 @@ export class SubjectService {
       throw new BadRequestException('That media item is not part of this group');
     }
 
-    await this.prisma.person.update({
-      where: { id: personId },
-      data: { faceAssetId: assetId, thumbnailIsCustom: true },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.assetFace.update({ where: { id: face.id }, data: { isPinned: true } });
+      await tx.person.update({
+        where: { id: personId },
+        data: { faceAssetId: assetId, thumbnailIsCustom: true },
+      });
     });
 
     // Remove the old crop so the new one is not served from cache.
@@ -575,6 +606,32 @@ export class SubjectService {
 
     for (const subject of subjects) {
       await this.refreshThumbnail(subject.id);
+    }
+  }
+
+  /** Preserve one embedding as an identity anchor without freezing the group. */
+  private async pinRepresentativeFace(
+    tx: Prisma.TransactionClient,
+    personId: string,
+    preferredAssetId: string | null | undefined,
+  ) {
+    const where = { personId, deletedAt: null };
+    const preferred = preferredAssetId
+      ? await tx.assetFace.findFirst({
+          where: { ...where, assetId: preferredAssetId },
+          select: { id: true },
+          orderBy: [{ score: 'desc' }],
+        })
+      : null;
+    const face =
+      preferred ??
+      (await tx.assetFace.findFirst({
+        where,
+        select: { id: true },
+        orderBy: [{ sourceTimecodeMs: 'asc' }, { score: 'desc' }, { createdAt: 'asc' }],
+      }));
+    if (face) {
+      await tx.assetFace.update({ where: { id: face.id }, data: { isPinned: true } });
     }
   }
 
