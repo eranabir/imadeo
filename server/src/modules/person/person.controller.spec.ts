@@ -21,6 +21,9 @@ function createController() {
     isFaceRecognitionReady: vi.fn().mockResolvedValue(true),
     hasPets: vi.fn().mockResolvedValue(true),
   };
+  const backgroundTasks = {
+    getStatus: vi.fn().mockReturnValue({ activeQueues: {} }),
+  };
   const controller = new PeopleAndPetsController(
     {} as never,
     {} as never,
@@ -32,8 +35,9 @@ function createController() {
       recognitionBatch,
     } as never,
     {} as never,
+    backgroundTasks as never,
   );
-  return { controller, count, findMany, jobs, ml, recognitionBatch };
+  return { controller, count, findMany, jobs, ml, recognitionBatch, backgroundTasks };
 }
 
 const expectedScope = {
@@ -56,9 +60,9 @@ describe('PeopleAndPetsController discovery scope', () => {
   });
 
   it('reports progress for the active upload instead of the lifetime library', async () => {
-    const { controller, count, jobs, ml, recognitionBatch } = createController();
+    const { controller, count, ml, recognitionBatch, backgroundTasks } = createController();
     ml.videoRecognitionEnabled = true;
-    jobs.getQueueStatistics.mockResolvedValue({ active: 1, waiting: 25, delayed: 0 });
+    backgroundTasks.getStatus.mockReturnValue({ activeQueues: { 'face-detection': 1 } });
     recognitionBatch.findFirst.mockResolvedValue({ id: 'new-upload' });
     count
       .mockResolvedValueOnce(4_428)
@@ -71,7 +75,18 @@ describe('PeopleAndPetsController discovery scope', () => {
       pendingAssets: 26,
       scanTotalAssets: 36,
       scanPendingAssets: 26,
+      processingAssets: 1,
       scanning: true,
+    });
+  });
+
+  it('does not report recognition as running while video processing owns the server', async () => {
+    const { controller, backgroundTasks } = createController();
+    backgroundTasks.getStatus.mockReturnValue({ activeQueues: { 'video-transcode': 1 } });
+
+    await expect(controller.status('owner-id')).resolves.toMatchObject({
+      processingAssets: 0,
+      scanning: false,
     });
   });
 

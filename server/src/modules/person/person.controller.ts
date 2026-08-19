@@ -20,6 +20,7 @@ import { Auth, AuthedUserId } from '../../common/decorators';
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType } from '../../db';
 import { StorageService } from '../../infra/storage/storage.service';
+import { BackgroundTaskGate } from '../../infra/job/background-task-gate.service';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
 import { JobService } from '../../infra/job/job.service';
 import { MachineLearningService } from '../../infra/ml/ml.service';
@@ -57,6 +58,7 @@ export class PeopleAndPetsController {
     private readonly jobs: JobService,
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly backgroundTasks: BackgroundTaskGate,
   ) {}
 
   @Get()
@@ -81,14 +83,13 @@ export class PeopleAndPetsController {
       previewPath: { not: null },
     };
 
-    const [ready, petsReady, total, queue, activeBatch] = await Promise.all([
+    const [ready, petsReady, total, activeBatch] = await Promise.all([
       this.ml.isFaceRecognitionReady(),
       this.ml.hasPets(),
       // The denominator. A count of what is left says nothing on its own —
       // two hundred outstanding is nearly done in one library and barely
       // started in another.
       this.prisma.asset.count({ where: eligible }),
-      this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION),
       this.prisma.recognitionBatch.findFirst({
         where: { ownerId: userId, completedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -124,6 +125,9 @@ export class PeopleAndPetsController {
       }
     }
 
+    const processingAssets =
+      this.backgroundTasks.getStatus().activeQueues[QUEUE.FACE_DETECTION] ?? 0;
+
     return {
       enabled: this.ml.faceRecognitionEnabled,
       videosEnabled,
@@ -133,7 +137,11 @@ export class PeopleAndPetsController {
       totalAssets: total,
       scanPendingAssets,
       scanTotalAssets,
-      scanning: queue.active + queue.waiting + queue.delayed > 0,
+      // BullMQ can already own a job while it waits behind video or thumbnail
+      // work. The scheduler is the authority for work that is truly using the
+      // recognition service right now.
+      processingAssets,
+      scanning: processingAssets > 0,
     };
   }
 

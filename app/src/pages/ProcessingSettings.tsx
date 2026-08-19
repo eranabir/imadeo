@@ -10,16 +10,6 @@ import { api, errorMessage } from '../lib/api';
 import { formatBytes, formatInstant } from '../lib/format';
 import { Progress } from '../ui';
 
-interface ProcessingQueue {
-  name: string;
-  active: number;
-  waiting: number;
-  delayed: number;
-  completed: number;
-  paused: number;
-  isPaused: boolean;
-}
-
 interface ActiveProcessingJob {
   id: string;
   queue: string;
@@ -43,7 +33,6 @@ interface ProcessingSnapshot {
     heavy: { active: number };
     activeQueues: Record<string, number>;
   };
-  queues: ProcessingQueue[];
   activeJobs: ActiveProcessingJob[];
   updatedAt: string;
 }
@@ -86,8 +75,9 @@ export function ProcessingSettings() {
   });
 
   const snapshot = query.data;
-  const waiting = snapshot?.queues.reduce((sum, queue) => sum + queue.waiting + queue.delayed, 0) ?? 0;
   const active = snapshot?.activeJobs.length ?? 0;
+  const recognitionActive = snapshot?.activeJobs.filter((job) => job.name === 'detect-faces').length ?? 0;
+  const mediaActive = active - recognitionActive;
 
   return (
     <div className="space-y-6">
@@ -115,15 +105,15 @@ export function ProcessingSettings() {
 
             {snapshot && (
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <Summary label="Processing now" value={active} />
-                <Summary label="Remaining" value={waiting} />
+                <Summary label="Media processing now" value={mediaActive} />
+                <Summary label="Face recognition now" value={recognitionActive} />
               </div>
             )}
           </div>
         </div>
 
         {query.isLoading && (
-          <p className="mt-4 text-sm text-content-muted">Reading the processing queues…</p>
+          <p className="mt-4 text-sm text-content-muted">Reading current processing…</p>
         )}
         {query.isError && (
           <p className="mt-4 rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -142,9 +132,7 @@ export function ProcessingSettings() {
               <Clock3 size={20} className="mx-auto text-content-muted" />
               <p className="mt-2 text-sm font-medium">No files are processing right now</p>
               <p className="mt-1 text-xs text-content-muted">
-                {waiting > 0
-                  ? `${waiting.toLocaleString()} files are waiting for processing.`
-                  : 'All processing queues are caught up.'}
+                Thumbnail creation, video optimisation and recognition are idle.
               </p>
             </div>
           ) : (
@@ -157,10 +145,15 @@ export function ProcessingSettings() {
 
       {snapshot && (
         <section className="rounded-panel border border-border-subtle bg-surface-raised p-5">
-          <h2 className="text-sm font-semibold">Queues</h2>
-          <p className="mt-1 text-xs text-content-muted">Live workload for every media-processing stage.</p>
+          <h2 className="text-sm font-semibold">Processing activity</h2>
+          <p className="mt-1 text-xs text-content-muted">Only files being worked on right now.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            {snapshot.queues.map((queue) => <QueueStatus key={queue.name} queue={queue} />)}
+            <StageStatus label="Reading media details" active={countJobs(snapshot.activeJobs, ['extract-metadata', 'reverse-geocode'])} />
+            <StageStatus label="Creating thumbnails" active={countJobs(snapshot.activeJobs, ['generate-thumbnails'])} />
+            <StageStatus label="Optimising videos" active={countJobs(snapshot.activeJobs, ['transcode-video'])} />
+            <StageStatus label="Indexing search" active={countJobs(snapshot.activeJobs, ['encode-clip'])} />
+            <StageStatus label="People & Pets recognition" active={recognitionActive} />
+            <StageStatus label="Checking duplicates" active={countJobs(snapshot.activeJobs, ['detect-duplicates'])} />
           </div>
         </section>
       )}
@@ -205,17 +198,22 @@ function ActiveJob({ job }: { job: ActiveProcessingJob }) {
   );
 }
 
-function QueueStatus({ queue }: { queue: ProcessingQueue }) {
+function countJobs(jobs: ActiveProcessingJob[], names: string[]) {
+  return jobs.filter((job) => names.includes(job.name)).length;
+}
+
+function StageStatus({ label, active }: { label: string; active: number }) {
   return (
     <div className="rounded-control border border-border-subtle bg-surface-sunken px-3.5 py-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{QUEUE_LABELS[queue.name] ?? queue.name}</p>
-        {queue.active > 0 && <LoaderCircle size={14} className="animate-spin text-primary" />}
+        <p className="text-sm font-medium">{label}</p>
+        {active > 0 && <LoaderCircle size={14} className="animate-spin text-primary" />}
       </div>
       <p className="mt-1 text-xs tabular-nums text-content-muted">
-        {queue.active.toLocaleString()} processing now · {(queue.waiting + queue.delayed).toLocaleString()} remaining
+        {active > 0
+          ? `${active.toLocaleString()} ${active === 1 ? 'file' : 'files'} processing now`
+          : 'Not running'}
       </p>
-      {queue.isPaused && <p className="mt-1 text-[11px] text-content-muted">Queue paused</p>}
     </div>
   );
 }

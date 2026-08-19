@@ -30,7 +30,9 @@ interface FaceStatus {
   /** Current upload/rescan batch, rather than the lifetime library total. */
   scanPendingAssets: number;
   scanTotalAssets: number;
-  /** At least one recognition job is active, queued, or waiting to retry. */
+  /** Media files the recognition service is actively processing right now. */
+  processingAssets: number;
+  /** At least one recognition job is actively running. */
   scanning: boolean;
 }
 
@@ -83,6 +85,7 @@ export function PeopleAndPetsPage() {
   const scanPending = status?.scanPendingAssets ?? status?.pendingAssets ?? 0;
   const scanned = scanTotal - scanPending;
   const mediaLabel = status?.videosEnabled ? 'photos and videos' : 'photos';
+  const processingAssets = status?.processingAssets ?? (status?.scanning ? 1 : 0);
 
   const { data: subjects = [], isLoading } = useQuery({
     queryKey: ['subjects', showHidden, kind],
@@ -338,8 +341,11 @@ export function PeopleAndPetsPage() {
       {status?.ready && status.pendingAssets > 0 && status.scanning && (
         <div className="mx-5 mt-4 rounded-control bg-primary-soft px-3.5 py-2.5">
           <p className="text-sm text-primary">
-            Scanning — {scanned.toLocaleString()} of {scanTotal.toLocaleString()} {mediaLabel} done ·{' '}
-            {scanPending.toLocaleString()} remaining
+            People &amp; Pets recognition is running — {processingAssets.toLocaleString()}{' '}
+            {processingAssets === 1 ? 'file' : 'files'} processing now
+          </p>
+          <p className="mt-1 text-xs text-content-muted">
+            {scanPending.toLocaleString()} of {scanTotal.toLocaleString()} {mediaLabel} still need recognition.
           </p>
           <Progress
             value={scanned / Math.max(1, scanTotal)}
@@ -347,13 +353,6 @@ export function PeopleAndPetsPage() {
             className="mt-2.5"
           />
         </div>
-      )}
-
-      {status?.ready && status.pendingAssets > 0 && !status.scanning && (
-        <p className="mx-5 mt-4 rounded-control bg-surface-sunken px-3.5 py-2.5 text-sm text-warning">
-          Recognition needs attention — {status.pendingAssets.toLocaleString()} {mediaLabel} remain. Continue
-          from Settings → Recognition.
-        </p>
       )}
 
       {!isLoading && visible.length === 0 ? (
