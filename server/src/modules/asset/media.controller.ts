@@ -17,7 +17,15 @@ const MIME_TYPES: Record<string, string> = {
   '.avi': 'video/x-msvideo', '.m4v': 'video/x-m4v', '.3gp': 'video/3gpp',
 };
 
-const mimeFor = (path: string) => MIME_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
+/**
+ * Originals are stored by path without an extension. Keep using a derivative's
+ * real extension when it has one, then fall back to the uploaded filename so
+ * native media players receive a useful Content-Type while processing catches up.
+ */
+export const mimeFor = (path: string, originalFileName?: string) => {
+  const extension = extname(path).toLowerCase() || extname(originalFileName ?? '').toLowerCase();
+  return MIME_TYPES[extension] ?? 'application/octet-stream';
+};
 
 @ApiTags('Media')
 @Controller('assets')
@@ -37,12 +45,12 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { path } = await this.assetService.resolveMediaPath(
+    const { path, asset } = await this.assetService.resolveMediaPath(
       auth,
       id,
       size === 'preview' ? 'preview' : 'thumbnail',
     );
-    return this.send(path, req, res);
+    return this.send(path, req, res, asset.originalFileName);
   }
 
   @Auth({ sharedLink: true })
@@ -55,8 +63,8 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { path } = await this.assetService.resolveMediaPath(auth, id, 'original');
-    return this.send(path, req, res);
+    const { path, asset } = await this.assetService.resolveMediaPath(auth, id, 'original');
+    return this.send(path, req, res, asset.originalFileName);
   }
 
   @Auth({ sharedLink: true })
@@ -73,12 +81,12 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { path } = await this.assetService.resolveMediaPath(
+    const { path, asset } = await this.assetService.resolveMediaPath(
       auth,
       id,
       quality === 'original' ? 'original' : 'video',
     );
-    return this.send(path, req, res);
+    return this.send(path, req, res, asset.originalFileName);
   }
 
   @Auth({ sharedLink: true })
@@ -95,7 +103,7 @@ export class MediaController {
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(asset.originalFileName)}"`,
     );
-    return this.send(path, req, res);
+    return this.send(path, req, res, asset.originalFileName);
   }
 
   @Auth()
@@ -145,9 +153,9 @@ export class MediaController {
    * Streams a file, honouring `Range` so browsers and native players can seek
    * without downloading the whole video first.
    */
-  private async send(path: string, req: Request, res: Response) {
+  private async send(path: string, req: Request, res: Response, originalFileName?: string) {
     const info = await stat(path);
-    const mime = mimeFor(path);
+    const mime = mimeFor(path, originalFileName);
     const range = req.headers.range;
 
     res.setHeader('Accept-Ranges', 'bytes');

@@ -3,6 +3,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { autoplayVideos } from '../lib/preferences';
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   FlatList,
   Modal,
@@ -15,6 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { duration as formatDuration, type Asset } from '../lib/api';
+import { ensureFreshToken } from '../lib/auth';
 import { colors, radius } from '../theme';
 import { useGrowFrom, type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
@@ -138,6 +140,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
               {item.type === 'VIDEO' ? (
                 <VideoPage
                   uri={`${serverUrl}/api/assets/${item.id}/video`}
+                  serverUrl={serverUrl}
                   token={token}
                   active={i === current}
                   controlsVisible={chrome && i === current}
@@ -288,6 +291,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
  */
 export function VideoPage({
   uri,
+  serverUrl,
   token,
   active,
   controlsVisible,
@@ -296,6 +300,7 @@ export function VideoPage({
   rotation,
 }: {
   uri: string;
+  serverUrl?: string;
   token: string | null;
   active: boolean;
   controlsVisible: boolean;
@@ -308,13 +313,12 @@ export function VideoPage({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progressWidth, setProgressWidth] = useState(0);
-  const player = useVideoPlayer(
-    { uri, headers: token ? { Authorization: `Bearer ${token}` } : undefined },
-    (instance) => {
-      instance.loop = false;
-      instance.timeUpdateEventInterval = 0.25;
-    },
-  );
+  const [status, setStatus] = useState<'idle' | 'loading' | 'readyToPlay' | 'error'>('loading');
+  const [attempt, setAttempt] = useState(0);
+  const player = useVideoPlayer(null, (instance) => {
+    instance.loop = false;
+    instance.timeUpdateEventInterval = 0.25;
+  });
 
   useEffect(() => {
     const playingSubscription = player.addListener('playingChange', ({ isPlaying }) =>
@@ -326,21 +330,59 @@ export function VideoPage({
     const sourceSubscription = player.addListener('sourceLoad', ({ duration: next }) =>
       setDuration(next),
     );
+    const statusSubscription = player.addListener('statusChange', ({ status: next }) =>
+      setStatus(next),
+    );
     setCurrentTime(player.currentTime);
     setDuration(player.duration);
     return () => {
       playingSubscription.remove();
       timeSubscription.remove();
       sourceSubscription.remove();
+      statusSubscription.remove();
     };
   }, [player]);
 
   useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    setStatus('loading');
+    setCurrentTime(0);
+    setDuration(0);
+
+    const load = async () => {
+      const accessToken = serverUrl ? await ensureFreshToken(serverUrl) : token;
+      if (!alive) return;
+      const separator = uri.includes('?') ? '&' : '?';
+      await player.replaceAsync({
+        uri: `${uri}${separator}playbackAttempt=${attempt}`,
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+        contentType: 'progressive',
+      });
+    };
+
+    void load().catch(() => {
+      if (alive) setStatus('error');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [active, attempt, player, serverUrl, uri]);
+
+  // A video can be opened before its compatible copy is ready. Keep the page
+  // alive and pick it up automatically when background processing finishes.
+  useEffect(() => {
+    if (!active || status !== 'error' || !serverUrl) return;
+    const timer = setTimeout(() => setAttempt((value) => value + 1), 10_000);
+    return () => clearTimeout(timer);
+  }, [active, serverUrl, status]);
+
+  useEffect(() => {
     // Read at the moment the page becomes active rather than subscribed to:
     // changing the setting mid-video should not start or stop what is playing.
-    if (active && autoplayVideos()) player.play();
+    if (active && status === 'readyToPlay' && autoplayVideos()) player.play();
     else player.pause();
-  }, [active, player]);
+  }, [active, player, status]);
 
   const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0;
 
@@ -359,6 +401,35 @@ export function VideoPage({
         fullscreenOptions={{ enable: true }}
       />
 
+      {status !== 'readyToPlay' && (
+        <View
+          style={{
+            position: 'absolute',
+            alignItems: 'center',
+            gap: 12,
+            paddingHorizontal: 22,
+            paddingVertical: 18,
+            borderRadius: radius.lg,
+            backgroundColor: colors.overlay,
+          }}
+        >
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
+            {status === 'error' ? 'Preparing this video…' : 'Loading video…'}
+          </Text>
+          {status === 'error' && (
+            <Touchable
+              onPress={() => setAttempt((value) => value + 1)}
+              radius={radius.pill}
+              label="Try video again"
+              style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.surface }}
+            >
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Try again</Text>
+            </Touchable>
+          )}
+        </View>
+      )}
+
       {controlsVisible && <View
         style={{
           position: 'absolute',
@@ -376,7 +447,8 @@ export function VideoPage({
       >
         <Touchable
           onPress={() => {
-            if (playing) player.pause();
+            if (status !== 'readyToPlay') setAttempt((value) => value + 1);
+            else if (playing) player.pause();
             else if (duration > 0 && currentTime >= duration - 0.05) player.replay();
             else player.play();
           }}
