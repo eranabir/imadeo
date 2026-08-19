@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
-import { AssetVisibility, Prisma, UserStatus } from '../../db';
+import { AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
 import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -385,23 +385,44 @@ export class FolderService {
     };
   }
 
-  /** A cheap count-only poll while newly uploaded media receives its previews. */
+  /** Count every preparation stage across this folder and its complete subtree. */
   async processingStatus(userId: string, folderId: string) {
     const folder = await this.getById(userId, folderId);
     const where: Prisma.AssetWhereInput = {
       ownerId: folder.ownerId,
-      folderId,
+      folder: { deletedAt: null, path: { startsWith: folder.path } },
       deletedAt: null,
       isDeviceOnly: false,
       visibility: folder.isLocked
         ? AssetVisibility.LOCKED
         : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },
     };
-    const [total, ready] = await Promise.all([
+    const [total, previewsReady, videos, videoPreviewsReady, videosReady] = await Promise.all([
       this.prisma.asset.count({ where }),
       this.prisma.asset.count({ where: { ...where, thumbnailPath: { not: null } } }),
+      this.prisma.asset.count({ where: { ...where, type: AssetType.VIDEO } }),
+      this.prisma.asset.count({
+        where: { ...where, type: AssetType.VIDEO, thumbnailPath: { not: null } },
+      }),
+      this.prisma.asset.count({
+        where: {
+          ...where,
+          type: AssetType.VIDEO,
+          thumbnailPath: { not: null },
+          jobStatus: { videoEncodedAt: { not: null } },
+        },
+      }),
     ]);
-    return { total, ready, pending: Math.max(0, total - ready) };
+    const ready = previewsReady - videoPreviewsReady + videosReady;
+    return {
+      total,
+      ready,
+      pending: Math.max(0, total - ready),
+      progressTotal: total + videos,
+      progressReady: previewsReady + videosReady,
+      previewsPending: Math.max(0, total - previewsReady),
+      videosPending: Math.max(0, videos - videosReady),
+    };
   }
 
   private assetOrderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AssetOrderByWithRelationInput[] {

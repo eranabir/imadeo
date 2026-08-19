@@ -7,6 +7,10 @@ interface ProcessingStatus {
   total: number;
   ready: number;
   pending: number;
+  progressTotal: number;
+  progressReady: number;
+  previewsPending: number;
+  videosPending: number;
 }
 
 export function MediaProcessingProgress({
@@ -29,8 +33,17 @@ export function MediaProcessingProgress({
 
   if (!data || data.total === 0 || data.pending === 0) return null;
 
-  const percent = Math.floor((data.ready / data.total) * 100);
-  const label = `${data.ready.toLocaleString()} of ${data.total.toLocaleString()} previews ready`;
+  const progress = data.progressTotal > 0 ? data.progressReady / data.progressTotal : 0;
+  const percent = Math.floor(progress * 100);
+  const label = `${data.ready.toLocaleString()} of ${data.total.toLocaleString()} files ready`;
+  const remaining = [
+    data.previewsPending > 0
+      ? `${data.previewsPending.toLocaleString()} ${data.previewsPending === 1 ? 'preview' : 'previews'}`
+      : null,
+    data.videosPending > 0
+      ? `${data.videosPending.toLocaleString()} ${data.videosPending === 1 ? 'video' : 'videos'}`
+      : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <section
@@ -43,15 +56,15 @@ export function MediaProcessingProgress({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
-            <strong className="text-sm font-semibold">Preparing media previews</strong>
+            <strong className="text-sm font-semibold">Preparing media</strong>
             <span className="shrink-0 text-xs tabular-nums text-content-muted">{percent}%</span>
           </span>
           <p className="mt-0.5 text-xs tabular-nums text-content-muted">
-            {label} · {data.pending.toLocaleString()} remaining
+            {label} · {remaining} remaining
           </p>
-          <Progress value={data.ready / data.total} label={label} className="mt-2.5" />
+          <Progress value={progress} label={`${percent}% media processing complete`} className="mt-2.5" />
           <p className="mt-2 text-[11px] text-content-muted">
-            Your originals are already backed up. Imadeo is creating thumbnails in the background.
+            Your originals are already backed up. Imadeo is creating previews and preparing videos in the background.
           </p>
         </span>
       </div>

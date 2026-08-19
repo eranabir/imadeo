@@ -338,7 +338,12 @@ describe('FolderService.getAssetIds', () => {
 
 describe('FolderService.processingStatus', () => {
   it('reports how many previews remain for the complete folder', async () => {
-    const count = vi.fn().mockResolvedValueOnce(5).mockResolvedValueOnce(2);
+    const count = vi.fn()
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1);
     const prisma = {
       folder: {
         findFirst: vi.fn().mockResolvedValue({
@@ -354,13 +359,17 @@ describe('FolderService.processingStatus', () => {
 
     await expect(service.processingStatus('owner-id', 'folder-id')).resolves.toEqual({
       total: 5,
-      ready: 2,
-      pending: 3,
+      ready: 3,
+      pending: 2,
+      progressTotal: 7,
+      progressReady: 5,
+      previewsPending: 1,
+      videosPending: 1,
     });
     expect(count).toHaveBeenNthCalledWith(2, {
       where: expect.objectContaining({
         ownerId: 'owner-id',
-        folderId: 'folder-id',
+        folder: { deletedAt: null, path: { startsWith: '/folder-id/' } },
         thumbnailPath: { not: null },
       }),
     });

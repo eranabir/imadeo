@@ -146,7 +146,12 @@ describe('AlbumService moving media into an album', () => {
 
 describe('AlbumService.processingStatus', () => {
   it('reports preview progress across the complete album', async () => {
-    const count = vi.fn().mockResolvedValueOnce(7).mockResolvedValueOnce(4);
+    const count = vi.fn()
+      .mockResolvedValueOnce(7)
+      .mockResolvedValueOnce(6)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(2);
     const service = new AlbumService(
       { albumAsset: { count } } as never,
       {} as never,
@@ -158,7 +163,15 @@ describe('AlbumService.processingStatus', () => {
 
     await expect(
       service.processingStatus({ user: { id: 'owner-id' } } as never, 'album-id'),
-    ).resolves.toEqual({ total: 7, ready: 4, pending: 3 });
+    ).resolves.toEqual({
+      total: 7,
+      ready: 5,
+      pending: 2,
+      progressTotal: 10,
+      progressReady: 8,
+      previewsPending: 1,
+      videosPending: 1,
+    });
     expect(count).toHaveBeenNthCalledWith(2, {
       where: {
         albumId: 'album-id',

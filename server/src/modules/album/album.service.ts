@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AlbumUserRole, AssetVisibility, Prisma } from '../../db';
+import { AlbumUserRole, AssetType, AssetVisibility, Prisma } from '../../db';
 import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
@@ -315,7 +315,7 @@ export class AlbumService {
     return { ids: assets.map((asset) => asset.assetId) };
   }
 
-  /** A count-only poll used while the background queue creates album previews. */
+  /** Count preview and video preparation for every asset in this album. */
   async processingStatus(auth: AuthDto, albumId: string) {
     await this.getAccess(auth, albumId);
     const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
@@ -323,13 +323,42 @@ export class AlbumService {
       ...ACTIVE_ALBUM_ASSET,
       ...(restrictTo ? { id: { in: restrictTo } } : {}),
     };
-    const [total, ready] = await Promise.all([
+    const [total, previewsReady, videos, videoPreviewsReady, videosReady] = await Promise.all([
       this.prisma.albumAsset.count({ where: { albumId, asset: assetWhere } }),
       this.prisma.albumAsset.count({
         where: { albumId, asset: { ...assetWhere, thumbnailPath: { not: null } } },
       }),
+      this.prisma.albumAsset.count({
+        where: { albumId, asset: { ...assetWhere, type: AssetType.VIDEO } },
+      }),
+      this.prisma.albumAsset.count({
+        where: {
+          albumId,
+          asset: { ...assetWhere, type: AssetType.VIDEO, thumbnailPath: { not: null } },
+        },
+      }),
+      this.prisma.albumAsset.count({
+        where: {
+          albumId,
+          asset: {
+            ...assetWhere,
+            type: AssetType.VIDEO,
+            thumbnailPath: { not: null },
+            jobStatus: { videoEncodedAt: { not: null } },
+          },
+        },
+      }),
     ]);
-    return { total, ready, pending: Math.max(0, total - ready) };
+    const ready = previewsReady - videoPreviewsReady + videosReady;
+    return {
+      total,
+      ready,
+      pending: Math.max(0, total - ready),
+      progressTotal: total + videos,
+      progressReady: previewsReady + videosReady,
+      previewsPending: Math.max(0, total - previewsReady),
+      videosPending: Math.max(0, videos - videosReady),
+    };
   }
 
   private orderBy(sortBy: string, order: 'asc' | 'desc'): Prisma.AlbumAssetOrderByWithRelationInput[] {
