@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { restore as restoreAutoBackup } from './lib/autobackup';
-import { onSessionExpired, signOut, storedToken } from './lib/auth';
+import { ensureFreshToken, onSessionExpired, signOut, storedToken } from './lib/auth';
 import { beginServerCheck, libraryChanged, request } from './lib/api';
 import { restorePreferences } from './lib/preferences';
 import {
@@ -47,6 +47,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // A rejected refresh token ends one shared session, not four unrelated tab
   // requests. Returning through the gate also clears every stale screen.
   useEffect(() => onSessionExpired(() => setSignedIn(false)), []);
+
+  // Keep native image/video headers valid even while the user stays on one
+  // screen without making an API request. Resume refresh covers long periods
+  // where iOS or Android suspended the interval.
+  useEffect(() => {
+    if (!signedIn || !server) return;
+    const renew = () => void ensureFreshToken(server.url).catch(() => undefined);
+    renew();
+    const timer = setInterval(renew, 5 * 60 * 1000);
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') renew();
+    });
+    return () => {
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [server, signedIn]);
 
   // A delete or upload may have happened in the web app while this app was in
   // the background. The routed tree stays mounted, so refresh every resource

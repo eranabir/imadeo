@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { expireSession, refreshToken, SessionRefreshError, storedToken } from './auth';
+import {
+  expireSession,
+  onTokenChanged,
+  refreshToken,
+  SessionRefreshError,
+  storedToken,
+} from './auth';
 
 /** The asset fields every grid in the app needs, and no more. */
 export interface Asset {
@@ -303,6 +309,8 @@ export function useResource<T>(
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(path !== null);
 
+  useEffect(() => onTokenChanged(setToken), []);
+
   /**
    * Only the newest request may write to state.
    *
@@ -328,10 +336,8 @@ export function useResource<T>(
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const [body, auth] = await Promise.all([
-        request<T>(serverUrl, path),
-        storedToken(),
-      ]);
+      const body = await request<T>(serverUrl, path);
+      const auth = await storedToken();
       if (mine !== generation.current) return;
       setData(body);
       setLoadedPath(path);
@@ -386,6 +392,8 @@ export function usePagedResource<T>(
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(path !== null);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => onTokenChanged(setToken), []);
   const page = useRef(0);
   const generation = useRef(0);
   const seen = useRevision();
@@ -402,13 +410,11 @@ export function usePagedResource<T>(
       setError(null);
       try {
         const separator = path.includes('?') ? '&' : '?';
-        const [body, auth] = await Promise.all([
-          request<Paged<T> | AssetPage<T>>(
-            serverUrl,
-            `${path}${separator}page=${nextPage}&size=${size}`,
-          ),
-          storedToken(),
-        ]);
+        const body = await request<Paged<T> | AssetPage<T>>(
+          serverUrl,
+          `${path}${separator}page=${nextPage}&size=${size}`,
+        );
+        const auth = await storedToken();
         if (mine !== generation.current) return;
         const nextItems = itemsKey === 'assets'
           ? ('assets' in body ? body.assets : undefined)
@@ -471,6 +477,7 @@ export function useToken() {
   const [token, setToken] = useState<string | null>(null);
   useEffect(() => {
     void storedToken().then(setToken);
+    return onTokenChanged(setToken);
   }, []);
   return token;
 }

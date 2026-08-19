@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import './index.css';
-import { api } from './lib/api';
+import { api, ensureFreshBrowserSession } from './lib/api';
 import { AlbumPage, BrowseAlbumPage } from './pages/AlbumDetail';
 import { AlbumsPage } from './pages/Albums';
 import { FavoritesPage } from './pages/Favorites';
@@ -61,6 +61,29 @@ function App() {
   useEffect(() => {
     void restore();
   }, [restore]);
+
+  // Keep the HttpOnly access cookie fresh before API, image, or video requests
+  // can encounter its short expiry. Browsers throttle timers in the
+  // background, so returning to the tab also renews immediately.
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const renew = () => void ensureFreshBrowserSession().catch(() => undefined);
+    const whenVisible = () => {
+      if (document.visibilityState === 'visible') renew();
+    };
+
+    renew();
+    const timer = window.setInterval(renew, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', whenVisible);
+    window.addEventListener('focus', renew);
+    window.addEventListener('online', renew);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', whenVisible);
+      window.removeEventListener('focus', renew);
+      window.removeEventListener('online', renew);
+    };
+  }, [status]);
 
   // The store owns the preference; the application root owns the document
   // class. Keeping this sync here makes every route, including setup, update.

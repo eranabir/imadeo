@@ -14,7 +14,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
 import { Platform } from 'react-native';
 import { libraryChanged, request } from './api';
-import { refreshToken, storedToken } from './auth';
+import { ensureFreshToken, refreshToken, storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
 
@@ -356,6 +356,11 @@ async function send(
       if (!uri || uri.startsWith('ph://')) {
         throw new Error(`No local file for ${asset.filename}`);
       }
+
+      // Authentication is checked before the native HTTP stack streams the
+      // body. Refresh first so a multi-gigabyte video never gets rejected
+      // after spending minutes crossing the network.
+      token = await ensureFreshToken(baseUrl);
 
       /**
        * Streamed from disk rather than assembled in memory.

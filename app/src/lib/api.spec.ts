@@ -1,6 +1,6 @@
 import axios, { AxiosError, type AxiosAdapter } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api } from './api';
+import { api, ensureFreshBrowserSession } from './api';
 
 const originalAdapter = api.defaults.adapter;
 
@@ -10,6 +10,29 @@ afterEach(() => {
 });
 
 describe('session refresh', () => {
+  it('refreshes once before concurrent uploads and reuses the fresh session', async () => {
+    const refresh = vi.spyOn(axios, 'post').mockResolvedValue({ data: { successful: true } });
+
+    await Promise.all([
+      ensureFreshBrowserSession(0),
+      ensureFreshBrowserSession(0),
+      ensureFreshBrowserSession(0),
+    ]);
+    await ensureFreshBrowserSession();
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith('/api/auth/refresh', undefined, expect.objectContaining({
+      withCredentials: true,
+    }));
+  });
+
+  it('does not end the signed-in session when refresh is interrupted by the network', async () => {
+    const interrupted = new AxiosError('Network interrupted', AxiosError.ERR_NETWORK);
+    vi.spyOn(axios, 'post').mockRejectedValue(interrupted);
+
+    await expect(ensureFreshBrowserSession(0)).rejects.toBe(interrupted);
+  });
+
   it('refreshes an expired access cookie during the startup session probe', async () => {
     let attempts = 0;
     api.defaults.adapter = (async (config) => {

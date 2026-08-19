@@ -15,7 +15,15 @@ const REFRESH = 'imadeo.refresh';
  */
 let cached: string | null = null;
 let refreshing: Promise<string> | null = null;
+let lastSuccessfulRefresh = 0;
 const expiredListeners = new Set<() => void>();
+const tokenListeners = new Set<(token: string | null) => void>();
+const TOKEN_FRESHNESS_MS = 5 * 60 * 1000;
+
+function setCachedToken(token: string | null) {
+  cached = token;
+  for (const listener of tokenListeners) listener(token);
+}
 
 export interface Session {
   accessToken: string;
@@ -68,14 +76,23 @@ export async function login(baseUrl: string, email: string, password: string): P
 
   await setItem(ACCESS, body.accessToken);
   if (body.refreshToken) await setItem(REFRESH, body.refreshToken);
-  cached = body.accessToken;
+  lastSuccessfulRefresh = Date.now();
+  setCachedToken(body.accessToken);
   return body as Session;
 }
 
 export async function storedToken() {
   if (cached) return cached;
-  cached = await getItem(ACCESS);
+  setCachedToken(await getItem(ACCESS));
   return cached;
+}
+
+/** Updates image/video request headers whenever a refresh rotates the token. */
+export function onTokenChanged(listener: (token: string | null) => void) {
+  tokenListeners.add(listener);
+  return () => {
+    tokenListeners.delete(listener);
+  };
 }
 
 /**
@@ -152,7 +169,8 @@ export async function refreshToken(baseUrl: string): Promise<string> {
       setItem(ACCESS, body.accessToken),
       setItem(REFRESH, body.refreshToken),
     ]);
-    cached = body.accessToken;
+    lastSuccessfulRefresh = Date.now();
+    setCachedToken(body.accessToken);
     return body.accessToken as string;
   })().finally(() => {
     refreshing = null;
@@ -161,9 +179,21 @@ export async function refreshToken(baseUrl: string): Promise<string> {
   return refreshing;
 }
 
+/** Gives long native operations a fresh token before sending their first byte. */
+export async function ensureFreshToken(baseUrl: string, maxAgeMs = TOKEN_FRESHNESS_MS) {
+  const token = await storedToken();
+  if (!token) {
+    await expireSession();
+    throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
+  }
+  if (maxAgeMs > 0 && Date.now() - lastSuccessfulRefresh < maxAgeMs) return token;
+  return refreshToken(baseUrl);
+}
+
 export async function signOut() {
-  cached = null;
+  setCachedToken(null);
   refreshing = null;
+  lastSuccessfulRefresh = 0;
   await Promise.all([
     removeItem(ACCESS),
     removeItem(REFRESH),

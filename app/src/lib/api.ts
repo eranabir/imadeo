@@ -20,6 +20,47 @@ export const clearLegacyTokens = () => {
 
 // A single in-flight refresh, shared by every request that got a 401 at once.
 let refreshing: Promise<void> | null = null;
+let lastSuccessfulRefresh = 0;
+const UPLOAD_SESSION_FRESHNESS_MS = 5 * 60 * 1000;
+
+function refreshBrowserSession() {
+  refreshing ??= axios
+    .post('/api/auth/refresh', undefined, {
+      withCredentials: true,
+      headers: { 'X-Imadeo-Client': 'web' },
+    })
+    .then(() => {
+      lastSuccessfulRefresh = Date.now();
+    })
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+function refreshSessionWasRejected(error: unknown) {
+  const status = error instanceof AxiosError ? error.response?.status : undefined;
+  return status === 401 || status === 403;
+}
+
+function expireBrowserSession() {
+  clearLegacyTokens();
+  window.location.href = '/login';
+}
+
+/** Ensures a large request starts with an access token that has ample life left. */
+export async function ensureFreshBrowserSession(maxAgeMs = UPLOAD_SESSION_FRESHNESS_MS) {
+  if (maxAgeMs > 0 && Date.now() - lastSuccessfulRefresh < maxAgeMs) return;
+  try {
+    await refreshBrowserSession();
+  } catch (error) {
+    // Losing Wi-Fi, changing server addresses, or a temporary 5xx must keep
+    // the signed-in state intact. Only the server rejecting the refresh token
+    // proves that the session has actually ended.
+    if (refreshSessionWasRejected(error)) expireBrowserSession();
+    throw error;
+  }
+}
 
 api.interceptors.response.use(
   (response) => response,
@@ -38,22 +79,15 @@ api.interceptors.response.use(
 
     request._retried = true;
 
-    refreshing ??= axios
-      .post('/api/auth/refresh', undefined, {
-        withCredentials: true,
-        headers: { 'X-Imadeo-Client': 'web' },
-      })
-      .then(() => undefined)
-      .catch((refreshError) => {
+    try {
+      await refreshBrowserSession();
+    } catch (refreshError) {
+      if (refreshSessionWasRejected(refreshError)) {
         clearLegacyTokens();
         if (!isSessionProbe) window.location.href = '/login';
-        throw refreshError;
-      })
-      .finally(() => {
-        refreshing = null;
-      });
-
-    await refreshing;
+      }
+      throw refreshError;
+    }
     return api.request(request);
   },
 );

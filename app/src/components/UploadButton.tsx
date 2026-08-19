@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, matchPath, useLocation } from 'react-router-dom';
-import { api, errorMessage } from '../lib/api';
+import { api, ensureFreshBrowserSession, errorMessage } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { buildUploadForm } from '../lib/uploadForm';
 import {
@@ -300,6 +300,10 @@ export function UploadButton({
           bytesConfirmed += file.size;
           uploadItems[index] = { ...uploadItems[index], status: 'confirmed', fraction: 1 };
         } else {
+          // A 401 received after a multi-gigabyte body wastes the entire
+          // transfer. Refresh before opening the request, while concurrent
+          // files share the same refresh operation.
+          await ensureFreshBrowserSession();
           const { data } = await api.post('/assets/upload', form, {
           signal: controller.signal,
           // A multi-gigabyte video must not be cut off by a client timeout.
