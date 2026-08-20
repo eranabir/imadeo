@@ -37,6 +37,14 @@ interface ProcessingSnapshot {
   updatedAt: string;
 }
 
+interface RecognitionSnapshot {
+  queuedAssets: number;
+  processingAssets: number;
+  scanPendingAssets: number;
+  scanTotalAssets: number;
+  scanning: boolean;
+}
+
 const QUEUE_LABELS: Record<string, string> = {
   metadata: 'Metadata',
   thumbnail: 'Previews',
@@ -73,18 +81,36 @@ export function ProcessingSettings() {
     queryFn: async () => (await api.get<ProcessingSnapshot>('/admin/processing')).data,
     refetchInterval: 3_000,
   });
+  const recognitionQuery = useQuery({
+    queryKey: ['subjects', 'status'],
+    queryFn: async () =>
+      (await api.get<RecognitionSnapshot>('/people-and-pets/status')).data,
+    refetchInterval: 3_000,
+  });
 
   const snapshot = query.data;
-  const active = snapshot?.activeJobs.length ?? 0;
-  const recognitionActive = snapshot?.activeJobs.filter((job) => job.name === 'detect-faces').length ?? 0;
-  const mediaActive = active - recognitionActive;
+  const recognition = recognitionQuery.data;
+  const activeJobs = snapshot?.activeJobs ?? [];
+  const detectedRecognitionJobs = activeJobs.filter((job) => job.name === 'detect-faces').length;
+  const recognitionActive = recognition?.processingAssets ?? detectedRecognitionJobs;
+  const mediaActive = activeJobs.filter((job) => job.name !== 'detect-faces').length;
+  const active = mediaActive + recognitionActive;
+  const recognitionVisible =
+    recognitionActive > 0 || (recognition?.queuedAssets ?? 0) > 0;
+  const recognitionWaiting = recognitionVisible && recognitionActive === 0;
 
   return (
     <div className="space-y-6">
       <section className="rounded-panel border border-border-subtle bg-surface-raised p-5">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
-            {active > 0 ? <LoaderCircle size={19} className="animate-spin" /> : <Gauge size={19} />}
+            {active > 0 ? (
+              <LoaderCircle size={19} className="animate-spin" />
+            ) : recognitionWaiting ? (
+              <Clock3 size={19} />
+            ) : (
+              <Gauge size={19} />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -92,9 +118,17 @@ export function ProcessingSettings() {
                 <h2 className="text-sm font-semibold">
                   {active > 0
                     ? `${active} active file ${active === 1 ? 'task' : 'tasks'}`
+                    : recognitionWaiting
+                      ? 'Face recognition is queued'
                     : 'Processing is idle'}
                 </h2>
-                {snapshot && <p className="mt-1 text-xs text-content-muted">{schedulerCopy(snapshot)}</p>}
+                {snapshot && (
+                  <p className="mt-1 text-xs text-content-muted">
+                    {recognitionWaiting
+                      ? 'Recognition will start automatically when media processing and recent activity are quiet.'
+                      : schedulerCopy(snapshot)}
+                  </p>
+                )}
               </div>
               {snapshot && (
                 <span className="text-[11px] text-content-muted">
@@ -127,7 +161,11 @@ export function ProcessingSettings() {
           <h2 className="text-sm font-semibold">Currently processing</h2>
           <p className="mt-1 text-xs text-content-muted">Every active task and the file it is working on.</p>
 
-          {snapshot.activeJobs.length === 0 ? (
+          {recognitionVisible && recognition && (
+            <RecognitionProgress recognition={recognition} />
+          )}
+
+          {snapshot.activeJobs.length === 0 && !recognitionVisible ? (
             <div className="mt-4 rounded-control bg-surface-sunken px-4 py-5 text-center">
               <Clock3 size={20} className="mx-auto text-content-muted" />
               <p className="mt-2 text-sm font-medium">No files are processing right now</p>
@@ -136,7 +174,7 @@ export function ProcessingSettings() {
               </p>
             </div>
           ) : (
-            <div className="mt-4 divide-y divide-border-subtle">
+            <div className={recognitionVisible ? 'mt-3 divide-y divide-border-subtle' : 'mt-4 divide-y divide-border-subtle'}>
               {snapshot.activeJobs.map((job) => <ActiveJob key={`${job.queue}-${job.id}`} job={job} />)}
             </div>
           )}
@@ -152,11 +190,45 @@ export function ProcessingSettings() {
             <StageStatus label="Creating thumbnails" active={countJobs(snapshot.activeJobs, ['generate-thumbnails'])} />
             <StageStatus label="Optimising videos" active={countJobs(snapshot.activeJobs, ['transcode-video'])} />
             <StageStatus label="Indexing search" active={countJobs(snapshot.activeJobs, ['encode-clip'])} />
-            <StageStatus label="People & Pets recognition" active={recognitionActive} />
+            <StageStatus
+              label="People & Pets recognition"
+              active={recognitionActive}
+              waiting={recognition?.queuedAssets ?? 0}
+            />
             <StageStatus label="Checking duplicates" active={countJobs(snapshot.activeJobs, ['detect-duplicates'])} />
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function RecognitionProgress({ recognition }: { recognition: RecognitionSnapshot }) {
+  const total = recognition.scanTotalAssets;
+  const remaining = recognition.scanPendingAssets;
+  const done = Math.max(0, total - remaining);
+  const value = total > 0 ? done / total : 0;
+  const running = recognition.processingAssets > 0;
+
+  return (
+    <div className="mt-4 rounded-control border border-border-subtle bg-surface-sunken px-4 py-3">
+      <div className="flex items-start gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
+          {running ? <LoaderCircle size={17} className="animate-spin" /> : <Clock3 size={17} />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-medium">People & Pets recognition</p>
+            <span className="text-xs font-medium text-primary">
+              {running ? 'Scanning now' : 'Waiting to scan'}
+            </span>
+          </div>
+          <p className="mt-1 text-xs tabular-nums text-content-muted">
+            {done.toLocaleString()} of {total.toLocaleString()} media scanned · {remaining.toLocaleString()} remaining
+          </p>
+          <Progress value={value} label={`${Math.round(value * 100)}%`} className="mt-2" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -202,7 +274,15 @@ function countJobs(jobs: ActiveProcessingJob[], names: string[]) {
   return jobs.filter((job) => names.includes(job.name)).length;
 }
 
-function StageStatus({ label, active }: { label: string; active: number }) {
+function StageStatus({
+  label,
+  active,
+  waiting = 0,
+}: {
+  label: string;
+  active: number;
+  waiting?: number;
+}) {
   return (
     <div className="rounded-control border border-border-subtle bg-surface-sunken px-3.5 py-3">
       <div className="flex items-center justify-between gap-2">
@@ -211,7 +291,9 @@ function StageStatus({ label, active }: { label: string; active: number }) {
       </div>
       <p className="mt-1 text-xs tabular-nums text-content-muted">
         {active > 0
-          ? `${active.toLocaleString()} ${active === 1 ? 'file' : 'files'} processing now`
+          ? `${active.toLocaleString()} ${active === 1 ? 'file' : 'files'} processing now${waiting > active ? ` · ${waiting.toLocaleString()} remaining` : ''}`
+          : waiting > 0
+            ? `${waiting.toLocaleString()} ${waiting === 1 ? 'file' : 'files'} waiting to scan`
           : 'Not running'}
       </p>
     </div>

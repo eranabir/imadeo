@@ -90,6 +90,17 @@ describe('PeopleAndPetsController discovery scope', () => {
     });
   });
 
+  it('reports recognition jobs that are queued behind media processing', async () => {
+    const { controller, jobs } = createController();
+    jobs.getQueueStatistics.mockResolvedValue({ active: 1, waiting: 24, delayed: 3 });
+
+    await expect(controller.status('owner-id')).resolves.toMatchObject({
+      queuedAssets: 28,
+      processingAssets: 0,
+      scanning: false,
+    });
+  });
+
   it('queues scans only for media visible in the main library', async () => {
     const { controller, findMany } = createController();
     await controller.scan('owner-id');

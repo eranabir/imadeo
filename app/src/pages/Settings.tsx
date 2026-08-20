@@ -635,6 +635,8 @@ interface PeopleAndPetsRecognitionStatus {
   ready: boolean;
   totalAssets: number;
   pendingAssets: number;
+  queuedAssets: number;
+  processingAssets: number;
   videosEnabled: boolean;
 }
 
@@ -679,6 +681,10 @@ function PeopleAndPetsRecognition() {
     },
   });
 
+  const queuedAssets = status?.queuedAssets ?? 0;
+  const processingAssets = status?.processingAssets ?? 0;
+  const recognitionQueued = queuedAssets > 0;
+
   return (
     <Card
       title="People & Pets recognition"
@@ -721,15 +727,25 @@ function PeopleAndPetsRecognition() {
         <Button
           size="sm"
           icon={<ScanFace size={14} />}
-          disabled={!data?.enabled || !status?.ready || rescan.isPending}
+          disabled={!data?.enabled || !status?.ready || rescan.isPending || recognitionQueued}
           onClick={() => rescan.mutate()}
         >
-          {rescan.isPending ? 'Starting…' : 'Scan again'}
+          {rescan.isPending ? 'Starting…' : recognitionQueued ? 'Queued' : 'Scan again'}
         </Button>
       </Row>
+      {recognitionQueued && (
+        <div className="mt-3 flex items-start gap-2 rounded-control bg-primary-soft px-3 py-2.5 text-xs text-primary">
+          <Activity className="mt-0.5 shrink-0 animate-pulse" size={14} />
+          <p>
+            {processingAssets > 0
+              ? `Recognition is running now. ${queuedAssets.toLocaleString()} media ${queuedAssets === 1 ? 'item remains' : 'items remain'}.`
+              : `${queuedAssets.toLocaleString()} media ${queuedAssets === 1 ? 'item is' : 'items are'} queued. Recognition starts automatically when media optimisation and thumbnails are idle.`}
+          </p>
+        </div>
+      )}
       {rescan.isSuccess && (
         <p className="mt-3 text-xs text-success">
-          {rescan.data.queued.toLocaleString()} of {status?.totalAssets.toLocaleString() ?? '0'} media items queued.
+          Scan requested for {rescan.data.queued.toLocaleString()} of {status?.totalAssets.toLocaleString() ?? '0'} media items.
         </p>
       )}
       {rescan.isError && <p className="mt-3 text-xs text-danger">{errorMessage(rescan.error)}</p>}

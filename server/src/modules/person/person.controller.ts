@@ -83,13 +83,14 @@ export class PeopleAndPetsController {
       previewPath: { not: null },
     };
 
-    const [ready, petsReady, total, activeBatch] = await Promise.all([
+    const [ready, petsReady, total, queue, activeBatch] = await Promise.all([
       this.ml.isFaceRecognitionReady(),
       this.ml.hasPets(),
       // The denominator. A count of what is left says nothing on its own —
       // two hundred outstanding is nearly done in one library and barely
       // started in another.
       this.prisma.asset.count({ where: eligible }),
+      this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION),
       this.prisma.recognitionBatch.findFirst({
         where: { ownerId: userId, completedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -127,6 +128,7 @@ export class PeopleAndPetsController {
 
     const processingAssets =
       this.backgroundTasks.getStatus().activeQueues[QUEUE.FACE_DETECTION] ?? 0;
+    const queuedAssets = queue.active + queue.waiting + queue.delayed;
 
     return {
       enabled: this.ml.faceRecognitionEnabled,
@@ -137,6 +139,7 @@ export class PeopleAndPetsController {
       totalAssets: total,
       scanPendingAssets,
       scanTotalAssets,
+      queuedAssets,
       // BullMQ can already own a job while it waits behind video or thumbnail
       // work. The scheduler is the authority for work that is truly using the
       // recognition service right now.
