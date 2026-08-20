@@ -10,18 +10,78 @@ interface Candidate {
   distance: number;
 }
 
-interface Neighbour extends Candidate {
-  centroidDistance: number;
+interface Neighbour {
+  faceId: string;
+  personId: string | null;
+  assetId: string;
+  distance: number;
+}
+
+interface HumanClusterDecision {
+  personId: string | null;
+  distance: number | null;
+  isCore: boolean;
+  ambiguous: boolean;
+  unassignedFaceIds: string[];
+}
+
+/**
+ * Density-based identity decision, kept pure so its precision/recall rules are
+ * covered without a database fixture.
+ *
+ * A relaxed edge can grow an identity only when the face sits inside a dense
+ * neighbourhood. An isolated face may still join through the stricter distance,
+ * but cannot become a bridge between two people. This is the useful part of
+ * DBSCAN for a photo library: repeated appearances establish identity, while a
+ * stranger in one background photo remains an outlier.
+ */
+export function decideHumanCluster(
+  neighbours: Neighbour[],
+  strictDistance: number,
+  maxDistance: number,
+  minFaces: number,
+): HumanClusterDecision {
+  const nearby = neighbours.filter(
+    (neighbour) => Number.isFinite(neighbour.distance) && neighbour.distance <= maxDistance,
+  );
+  const isCore = nearby.length >= Math.max(1, minFaces);
+
+  const closestByPerson = new Map<string, number>();
+  for (const neighbour of nearby) {
+    if (!neighbour.personId) continue;
+    const previous = closestByPerson.get(neighbour.personId) ?? Number.POSITIVE_INFINITY;
+    closestByPerson.set(neighbour.personId, Math.min(previous, neighbour.distance));
+  }
+
+  const candidates = [...closestByPerson.entries()]
+    .filter(([, distance]) => isCore || distance <= strictDistance)
+    .sort((a, b) => a[1] - b[1]);
+  const winner = candidates[0];
+  const runnerUp = candidates[1];
+
+  // Two existing identities at virtually the same distance are not enough
+  // evidence to choose one. Leaving the face unassigned is recoverable; a
+  // silent wrong merge is not.
+  const ambiguous = winner && runnerUp && runnerUp[1] - winner[1] < 0.04;
+
+  return {
+    personId: winner && !ambiguous ? winner[0] : null,
+    distance: winner && !ambiguous ? winner[1] : null,
+    isCore,
+    ambiguous: Boolean(ambiguous),
+    unassignedFaceIds: nearby
+      .filter((neighbour) => neighbour.personId === null)
+      .map((neighbour) => neighbour.faceId),
+  };
 }
 
 /**
  * Groups recognition embeddings into people and pets.
  *
- * The approach is incremental nearest-neighbour rather than a batch algorithm
- * like DBSCAN: each new face is compared against faces already assigned to a
- * person and joins the closest one within a distance threshold, or starts a new
- * person. That matters because photos arrive one at a time — a batch clusterer
- * would have to re-run over the whole library after every upload.
+ * Human faces use incremental density clustering derived from DBSCAN. A person
+ * is created only when several distinct media items agree; isolated detections
+ * remain available for a later upload to complete the group. This makes the
+ * result independent of which one photo happened to finish processing first.
  *
  * The comparison is cosine distance in pgvector (`<=>`), which the HNSW index on
  * `asset_faces.embedding` serves directly.
@@ -48,13 +108,16 @@ export class FaceClusteringService {
     return this.config.get('machineLearning.faceClusterRelaxedDistance', { infer: true });
   }
 
+  private get minFaces() {
+    return this.config.get('machineLearning.faceMinCount', { infer: true });
+  }
+
   /**
    * Finds the person a face belongs to, or null when it looks like someone new.
    *
-   * Uses nearest faces from distinct media together with each subject's
-   * centroid. A lone near-match is often a bad crop or the statistical outlier
-   * of a very large library; requiring both local and whole-cluster agreement
-   * keeps that face from silently contaminating an established person.
+   * Uses nearest faces from distinct media. Repeated appearances form a dense
+   * identity core; an isolated face can join an existing person only through
+   * the stricter distance.
    */
   async findPerson(
     ownerId: string,
@@ -62,11 +125,60 @@ export class FaceClusteringService {
     kind: SubjectKind = SubjectKind.PERSON,
     deviceOnly = false,
   ): Promise<Candidate | null> {
-    const vector = `[${embedding.join(',')}]`;
+    const neighbours = await this.findNeighbours(ownerId, embedding, kind, deviceOnly);
 
-    const neighbours = await this.prisma.$queryRaw<Neighbour[]>`
+    // Appearance is a blunter signal than face geometry, so pets need to look
+    // markedly more alike before they are called the same animal.
+    if (kind === SubjectKind.PERSON) {
+      const decision = decideHumanCluster(
+        neighbours,
+        this.threshold,
+        this.relaxedFaceThreshold,
+        this.minFaces,
+      );
+      return decision.personId && decision.distance !== null
+        ? { personId: decision.personId, distance: decision.distance }
+        : null;
+    }
+
+    const withinThreshold = neighbours.filter(
+      (neighbour) => neighbour.personId && neighbour.distance <= this.petThreshold,
+    );
+    if (withinThreshold.length === 0) return null;
+
+    // Vote by count, breaking ties on the closest single face.
+    const tally = new Map<string, { votes: number; best: number }>();
+    for (const neighbour of withinThreshold) {
+      const personId = neighbour.personId!;
+      const entry = tally.get(personId) ?? { votes: 0, best: Number.POSITIVE_INFINITY };
+      entry.votes += 1;
+      entry.best = Math.min(entry.best, neighbour.distance);
+      tally.set(personId, entry);
+    }
+
+    const ranked = [...tally.entries()].sort(
+      (a, b) => b[1].votes - a[1].votes || a[1].best - b[1].best,
+    );
+    const [personId, winner] = ranked[0];
+    return { personId, distance: winner.best };
+  }
+
+  /** Nearest detections, with one vote per media item. */
+  private async findNeighbours(
+    ownerId: string,
+    embedding: number[],
+    kind: SubjectKind,
+    deviceOnly: boolean,
+  ) {
+    const vector = `[${embedding.join(',')}]`;
+    const maxDistance =
+      kind === SubjectKind.PET ? this.petThreshold : this.relaxedFaceThreshold;
+    const limit = Math.max(60, this.minFaces * 20);
+
+    return this.prisma.$queryRaw<Neighbour[]>`
       WITH nearest AS MATERIALIZED (
         SELECT
+          f.id AS "faceId",
           f."personId",
           f."assetId",
           (f.embedding <=> ${vector}::vector) AS distance
@@ -76,138 +188,27 @@ export class FaceClusteringService {
           ${deviceOnly
             ? Prisma.sql`AND a."deletedAt" IS NULL AND a."isDeviceOnly" = true`
             : MAIN_LIBRARY_ASSET_SQL}
-          AND f."personId" IS NOT NULL
           AND f."deletedAt" IS NULL
           AND f.embedding IS NOT NULL
-          -- Faces and pets come from different models, so their embeddings live in
-          -- unrelated spaces. Comparing across them is meaningless, and would let
-          -- a dog be grouped with whoever is holding it.
           AND f.kind = ${kind}::"SubjectKind"
+          -- A face explicitly detached by the user is pinned with no person.
+          -- It must not seed or extend another automatic group.
+          AND (f."personId" IS NOT NULL OR f."isPinned" = false)
         ORDER BY f.embedding <=> ${vector}::vector
-        LIMIT 60
+        LIMIT ${limit}
       ), nearest_per_asset AS (
-        -- Video sampling can produce many nearly identical frames. One video
-        -- must count as one piece of evidence rather than sixty votes.
-        SELECT DISTINCT ON ("personId", "assetId")
-          "personId", "assetId", distance
+        -- Twenty similar frames from one video are one appearance, not twenty
+        -- independent votes that can create a person by themselves.
+        SELECT DISTINCT ON ("assetId")
+          "faceId", "personId", "assetId", distance
         FROM nearest
-        ORDER BY "personId", "assetId", distance
-      ), ranked AS (
-        SELECT
-          "personId",
-          distance,
-          ROW_NUMBER() OVER (PARTITION BY "personId" ORDER BY distance) AS rank
-        FROM nearest_per_asset
-      ), candidate_people AS (
-        SELECT DISTINCT "personId" FROM nearest
-      ), centroids AS (
-        -- A stable anchor prevents single-link chaining: an unrelated face may
-        -- resemble one outlier, but it must also resemble the identity's origin.
-        -- Custom covers are strongest, followed by explicit corrections, then
-        -- the first face that created an automatic group. Scalar subqueries let
-        -- PostgreSQL stop at the first available source instead of averaging a
-        -- ten-thousand-face cluster for every new detection.
-        SELECT
-          candidate."personId",
-          COALESCE(
-            (
-              SELECT AVG(custom.embedding)
-              FROM asset_faces custom
-              JOIN assets a ON a.id = custom."assetId"
-              WHERE custom."personId" = candidate."personId"
-                AND p."thumbnailIsCustom" = true
-                AND custom."assetId" = p."faceAssetId"
-                ${deviceOnly
-                  ? Prisma.sql`AND a."deletedAt" IS NULL AND a."isDeviceOnly" = true`
-                  : MAIN_LIBRARY_ASSET_SQL}
-                AND custom."deletedAt" IS NULL
-                AND custom.embedding IS NOT NULL
-            ),
-            (
-              SELECT AVG(pinned.embedding)
-              FROM asset_faces pinned
-              JOIN assets a ON a.id = pinned."assetId"
-              WHERE pinned."personId" = candidate."personId"
-                AND pinned."isPinned" = true
-                ${deviceOnly
-                  ? Prisma.sql`AND a."deletedAt" IS NULL AND a."isDeviceOnly" = true`
-                  : MAIN_LIBRARY_ASSET_SQL}
-                AND pinned."deletedAt" IS NULL
-                AND pinned.embedding IS NOT NULL
-            ),
-            (
-              SELECT seed.embedding
-              FROM asset_faces seed
-              JOIN assets a ON a.id = seed."assetId"
-              WHERE seed."personId" = candidate."personId"
-                ${deviceOnly
-                  ? Prisma.sql`AND a."deletedAt" IS NULL AND a."isDeviceOnly" = true`
-                  : MAIN_LIBRARY_ASSET_SQL}
-                AND seed."deletedAt" IS NULL
-                AND seed.embedding IS NOT NULL
-              ORDER BY seed."createdAt" ASC
-              LIMIT 1
-            )
-          ) AS centroid
-        FROM candidate_people candidate
-        JOIN people p ON p.id = candidate."personId"
+        ORDER BY "assetId", distance
       )
-      SELECT
-        ranked."personId",
-        ranked.distance,
-        (centroids.centroid <=> ${vector}::vector) AS "centroidDistance"
-      FROM ranked
-      JOIN centroids ON centroids."personId" = ranked."personId" AND centroids.centroid IS NOT NULL
-      WHERE ranked.rank <= 3
-      ORDER BY ranked.distance
+      SELECT "faceId", "personId", "assetId", distance
+      FROM nearest_per_asset
+      WHERE distance <= ${maxDistance}
+      ORDER BY distance
     `;
-
-    // Appearance is a blunter signal than face geometry, so pets need to look
-    // markedly more alike before they are called the same animal.
-    const threshold =
-      kind === SubjectKind.PET
-        ? this.petThreshold
-        : Math.max(this.threshold, this.relaxedFaceThreshold);
-    const withinThreshold = neighbours.filter((n) => n.distance <= threshold);
-    if (withinThreshold.length === 0) return null;
-
-    // Vote by count, breaking ties on the closest single face.
-    const tally = new Map<string, { votes: number; best: number; centroid: number }>();
-    for (const neighbour of withinThreshold) {
-      const entry = tally.get(neighbour.personId) ?? {
-        votes: 0,
-        best: Number.POSITIVE_INFINITY,
-        centroid: neighbour.centroidDistance,
-      };
-      entry.votes += 1;
-      entry.best = Math.min(entry.best, neighbour.distance);
-      entry.centroid = Math.min(entry.centroid, neighbour.centroidDistance);
-      tally.set(neighbour.personId, entry);
-    }
-
-    const eligible = [...tally.entries()].filter(([, candidate]) =>
-      kind === SubjectKind.PET || candidate.centroid <= this.threshold,
-    );
-    if (eligible.length === 0) return null;
-
-    const score = ({ best, centroid }: { best: number; centroid: number }) =>
-      (best + centroid) / 2;
-    const ranked = eligible.sort(
-      (a, b) => score(a[1]) - score(b[1]) || b[1].votes - a[1].votes,
-    );
-    const [personId, winner] = ranked[0];
-
-    if (kind === SubjectKind.PERSON) {
-      // A relaxed match needs agreement from separate photos; one borderline
-      // crop is deliberately split because a false split is easy to merge and
-      // a false merge silently corrupts an established person.
-      if (winner.best > this.threshold && winner.votes < 2) return null;
-
-      const runnerUp = ranked[1]?.[1];
-      if (runnerUp && score(runnerUp) - score(winner) < 0.04) return null;
-    }
-
-    return { personId, distance: winner.best };
   }
 
   /**
@@ -243,6 +244,50 @@ export class FaceClusteringService {
     for (const face of faces) {
       const embedding = this.parseVector(face.embedding);
       if (embedding.length !== 512) continue;
+
+      if (face.kind === SubjectKind.PERSON) {
+        const neighbours = await this.findNeighbours(
+          ownerId,
+          embedding,
+          face.kind,
+          asset.isDeviceOnly,
+        );
+        const decision = decideHumanCluster(
+          neighbours,
+          this.threshold,
+          this.relaxedFaceThreshold,
+          this.minFaces,
+        );
+
+        // Outliers stay unassigned. A later upload can turn them into a dense
+        // group without manufacturing hundreds of one-photo people meanwhile.
+        if (decision.ambiguous || (!decision.personId && !decision.isCore)) continue;
+
+        const personId =
+          decision.personId ??
+          (
+            await this.prisma.person.create({
+              data: {
+                ownerId,
+                name: '',
+                faceAssetId: assetId,
+                kind: face.kind,
+                species: face.species,
+              },
+              select: { id: true },
+            })
+          ).id;
+
+        const faceIds = decision.isCore
+          ? [...new Set([face.id, ...decision.unassignedFaceIds])]
+          : [face.id];
+        await this.prisma.assetFace.updateMany({
+          where: { id: { in: faceIds }, personId: null, isPinned: false },
+          data: { personId },
+        });
+        touched.add(personId);
+        continue;
+      }
 
       const match = await this.findPerson(ownerId, embedding, face.kind, asset.isDeviceOnly);
 

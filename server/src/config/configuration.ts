@@ -167,14 +167,15 @@ export const configuration = () => {
       // SFace keeps the same person close across photos, but a 0.50 limit
       // fragmented ordinary changes of angle and lighting into new people.
       faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),
-      // Borderline matches are accepted only when the nearest subject is
-      // unambiguous. This remains below SFace's published 0.637 distance.
-      faceClusterRelaxedDistance: num(process.env.ML_FACE_CLUSTER_RELAXED_DISTANCE, 0.6),
+      // SFace's published LFW cosine threshold is 0.363 similarity, equivalent
+      // to 0.637 cosine distance. Relaxed edges are allowed only inside a dense
+      // group, so isolated lookalikes cannot grow an identity through chaining.
+      faceClusterRelaxedDistance: num(process.env.ML_FACE_CLUSTER_RELAXED_DISTANCE, 0.637),
       // Tighter than faces on purpose. Pets are matched on how they look rather
       // than on facial geometry, so a loose threshold folds every black cat in
       // the library into one animal.
       petClusterDistance: num(process.env.ML_PET_CLUSTER_DISTANCE, 0.12),
-      /// A person is only surfaced in the UI once it has this many faces.
+      /// Distinct media items needed to establish a person as a dense group.
       faceMinCount: int(process.env.ML_FACE_MIN_COUNT, 3),
     },
 
