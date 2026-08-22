@@ -33,6 +33,24 @@ describe('session refresh', () => {
     await expect(ensureFreshBrowserSession(0)).rejects.toBe(interrupted);
   });
 
+  it('keeps a valid access session when another tab already rotated the refresh token', async () => {
+    const rejected = new AxiosError('Forbidden', AxiosError.ERR_BAD_REQUEST, undefined, undefined, {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: {},
+      config: {} as never,
+      data: { message: 'Session expired' },
+    });
+    vi.spyOn(axios, 'post').mockRejectedValue(rejected);
+    const accessProbe = vi.spyOn(axios, 'get').mockResolvedValue({ data: { id: 'user-1' } });
+
+    await expect(ensureFreshBrowserSession(0)).resolves.toBeUndefined();
+
+    expect(accessProbe).toHaveBeenCalledWith('/api/users/me', expect.objectContaining({
+      withCredentials: true,
+    }));
+  });
+
   it('refreshes an expired access cookie during the startup session probe', async () => {
     let attempts = 0;
     api.defaults.adapter = (async (config) => {

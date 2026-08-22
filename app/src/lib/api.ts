@@ -43,6 +43,18 @@ function refreshSessionWasRejected(error: unknown) {
   return status === 401 || status === 403;
 }
 
+async function browserAccessSessionIsValid() {
+  try {
+    await axios.get('/api/users/me', {
+      withCredentials: true,
+      headers: { 'X-Imadeo-Client': 'web' },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function expireBrowserSession() {
   clearLegacyTokens();
   window.location.href = '/login';
@@ -57,7 +69,17 @@ export async function ensureFreshBrowserSession(maxAgeMs = UPLOAD_SESSION_FRESHN
     // Losing Wi-Fi, changing server addresses, or a temporary 5xx must keep
     // the signed-in state intact. Only the server rejecting the refresh token
     // proves that the session has actually ended.
-    if (refreshSessionWasRejected(error)) expireBrowserSession();
+    if (refreshSessionWasRejected(error)) {
+      // Refresh tokens rotate. Two tabs can submit the same old token at once:
+      // one rotates it successfully while the other receives 403. Do not turn
+      // that harmless race into a login loop while the access cookie still
+      // proves that this browser is signed in.
+      if (await browserAccessSessionIsValid()) {
+        lastSuccessfulRefresh = Date.now();
+        return;
+      }
+      expireBrowserSession();
+    }
     throw error;
   }
 }
