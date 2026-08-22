@@ -44,6 +44,11 @@ interface VideoFaceQuality {
 
 interface VideoPetQuality extends VideoFaceQuality {}
 
+interface PhotoFaceQuality {
+  minScore: number;
+  minSize: number;
+}
+
 /** NanoDet occasionally labels a person as a cat or dog. A strong YuNet face
  * centred in that box is better evidence that the object is actually human. */
 export function isHumanMisclassifiedAsPet(
@@ -88,6 +93,19 @@ export function isUsableVideoFace(
     y1 > marginY &&
     x2 < imageWidth - marginX &&
     y2 < imageHeight - marginY
+  );
+}
+
+/** Rejects weak face-like patterns and tiny background detections in photos. */
+export function isUsablePhotoFace(
+  face: Pick<DetectedFace, 'boundingBox' | 'score'>,
+  quality: PhotoFaceQuality,
+) {
+  const { x1, y1, x2, y2 } = face.boundingBox;
+  return (
+    face.score >= quality.minScore &&
+    x2 - x1 >= quality.minSize &&
+    y2 - y1 >= quality.minSize
   );
 }
 
@@ -425,7 +443,7 @@ export class FaceDetectionProcessor extends WorkerHost {
       pets.push(pet);
     }
     const isInsidePet = (face: DetectedFace) =>
-      detectedPets.some((pet) => {
+      pets.some((pet) => {
         const centerX = (face.boundingBox.x1 + face.boundingBox.x2) / 2;
         const centerY = (face.boundingBox.y1 + face.boundingBox.y2) / 2;
         return (
@@ -471,6 +489,13 @@ export class FaceDetectionProcessor extends WorkerHost {
           },
         );
         if (!usable) continue;
+      } else if (
+        !isUsablePhotoFace(face, {
+          minScore: this.config.get('machineLearning.photoFaceMinScore', { infer: true }),
+          minSize: this.config.get('machineLearning.photoFaceMinSize', { infer: true }),
+        })
+      ) {
+        continue;
       }
       humanFaces.push(face);
     }

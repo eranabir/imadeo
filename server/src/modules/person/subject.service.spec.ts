@@ -235,3 +235,39 @@ describe('SubjectService classification corrections', () => {
     expect(faceCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('SubjectService.resetRecognition', () => {
+  it('removes only recognition data for the owner and preserves media', async () => {
+    const assetFaceDeleteMany = vi.fn().mockResolvedValue({ count: 12 });
+    const personDeleteMany = vi.fn().mockResolvedValue({ count: 3 });
+    const statusUpdateMany = vi.fn().mockResolvedValue({ count: 5 });
+    const removeMany = vi.fn().mockResolvedValue(undefined);
+    const transaction = vi.fn(async (operations) => Promise.all(operations));
+    const service = new SubjectService(
+      {
+        person: {
+          findMany: vi.fn().mockResolvedValue([{ thumbnailPath: '/people/one.jpg' }]),
+          deleteMany: personDeleteMany,
+        },
+        assetFace: { deleteMany: assetFaceDeleteMany },
+        assetJobStatus: { updateMany: statusUpdateMany },
+        $transaction: transaction,
+      } as never,
+      { removeMany } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.resetRecognition('owner-id')).resolves.toEqual({
+      removedDetections: 12,
+      removedSubjects: 3,
+    });
+    expect(assetFaceDeleteMany).toHaveBeenCalledWith({ where: { asset: { ownerId: 'owner-id' } } });
+    expect(personDeleteMany).toHaveBeenCalledWith({ where: { ownerId: 'owner-id' } });
+    expect(statusUpdateMany).toHaveBeenCalledWith({
+      where: { asset: { ownerId: 'owner-id' } },
+      data: { facesRecognizedAt: null, petsRecognizedAt: null },
+    });
+    expect(removeMany).toHaveBeenCalledWith(['/people/one.jpg']);
+  });
+});

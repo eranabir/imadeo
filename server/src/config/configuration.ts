@@ -152,6 +152,10 @@ export const configuration = () => {
       clipModel: process.env.ML_CLIP_MODEL ?? 'clip-ViT-B-32',
       faceModel: process.env.ML_FACE_MODEL ?? 'yunet+sface',
       faceMinScore: num(process.env.ML_FACE_MIN_SCORE, 0.7),
+      // Keep YuNet's detector floor low enough for the animal-face fallback,
+      // then apply a stricter human-only gate to still photos.
+      photoFaceMinScore: num(process.env.ML_PHOTO_FACE_MIN_SCORE, 0.9),
+      photoFaceMinSize: int(process.env.ML_PHOTO_FACE_MIN_SIZE, 40),
       videoRecognitionEnabled: bool(process.env.ML_VIDEO_RECOGNITION_ENABLED, true),
       videoSampleIntervalSeconds: int(process.env.ML_VIDEO_SAMPLE_INTERVAL_SECONDS, 30),
       videoMaxFrames: int(process.env.ML_VIDEO_MAX_FRAMES, 20),
@@ -164,13 +168,10 @@ export const configuration = () => {
       // YuNet is extremely confident on real human faces. Only its weaker,
       // animal-shaped candidates should be allowed through the CLIP pet fallback.
       petCandidateMaxFaceScore: num(process.env.ML_PET_CANDIDATE_MAX_FACE_SCORE, 0.88),
-      // SFace keeps the same person close across photos, but a 0.50 limit
-      // fragmented ordinary changes of angle and lighting into new people.
-      faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.55),
-      // SFace's published LFW cosine threshold is 0.363 similarity, equivalent
-      // to 0.637 cosine distance. Relaxed edges are allowed only inside a dense
-      // group, so isolated lookalikes cannot grow an identity through chaining.
-      faceClusterRelaxedDistance: num(process.env.ML_FACE_CLUSTER_RELAXED_DISTANCE, 0.637),
+      // New identities use only close SFace neighbours. Existing identities may
+      // accept relaxed votes, but only when several independent photos agree.
+      faceClusterDistance: num(process.env.ML_FACE_CLUSTER_DISTANCE, 0.45),
+      faceClusterRelaxedDistance: num(process.env.ML_FACE_CLUSTER_RELAXED_DISTANCE, 0.55),
       // Tighter than faces on purpose. Pets are matched on how they look rather
       // than on facial geometry, so a loose threshold folds every black cat in
       // the library into one animal.

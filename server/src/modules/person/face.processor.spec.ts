@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isHumanMisclassifiedAsPet,
+  isUsablePhotoFace,
   isUsableVideoFace,
   isUsableVideoPet,
   redundantVideoDetectionIds,
@@ -68,6 +69,30 @@ describe('isUsableVideoFace', () => {
         3840,
         2160,
         0.7,
+        quality,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('isUsablePhotoFace', () => {
+  const quality = { minScore: 0.9, minSize: 40 };
+
+  it('accepts a confident face large enough to identify', () => {
+    expect(
+      isUsablePhotoFace(
+        { boundingBox: { x1: 100, y1: 100, x2: 180, y2: 190 }, score: 0.94 },
+        quality,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects weak and tiny photo detections', () => {
+    const box = { x1: 100, y1: 100, x2: 180, y2: 190 };
+    expect(isUsablePhotoFace({ boundingBox: box, score: 0.8 }, quality)).toBe(false);
+    expect(
+      isUsablePhotoFace(
+        { boundingBox: { x1: 100, y1: 100, x2: 130, y2: 130 }, score: 0.95 },
         quality,
       ),
     ).toBe(false);

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { exiftool } from 'exiftool-vendored';
 import ffmpeg from 'fluent-ffmpeg';
 import { dirname } from 'node:path';
 import sharp, { type Sharp } from 'sharp';
@@ -176,6 +177,22 @@ export class MediaService {
    */
   async extractToJpeg(source: string, destination: string) {
     await this.storage.ensureDir(dirname(destination));
+
+    // Most RAW files carry a camera-rendered JPEG. Prefer that portable,
+    // full-colour preview before ffmpeg: recent Apple DNGs use tiled 10-bit RAW
+    // data that ffmpeg cannot decode, while ExifTool exposes their 4032×3024
+    // PreviewImage directly without changing the original file.
+    for (const extract of [exiftool.extractPreview, exiftool.extractJpgFromRaw]) {
+      try {
+        await extract.call(exiftool, source, destination);
+        const metadata = await sharp(destination, { failOn: 'none' }).metadata();
+        if (metadata.width && metadata.height) return destination;
+      } catch {
+        // Not every RAW format carries every preview tag. Try the next source.
+      }
+      await this.storage.remove(destination);
+    }
+
     return new Promise<string>((resolve, reject) => {
       ffmpeg(source)
         .outputOptions(['-frames:v 1', '-q:v 2'])

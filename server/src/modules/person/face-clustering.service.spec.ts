@@ -4,8 +4,8 @@ import { decideHumanCluster, FaceClusteringService } from './face-clustering.ser
 
 const config = {
   get: vi.fn((key: string) => {
-    if (key === 'machineLearning.faceClusterDistance') return 0.55;
-    if (key === 'machineLearning.faceClusterRelaxedDistance') return 0.637;
+    if (key === 'machineLearning.faceClusterDistance') return 0.45;
+    if (key === 'machineLearning.faceClusterRelaxedDistance') return 0.55;
     if (key === 'machineLearning.petClusterDistance') return 0.12;
     if (key === 'machineLearning.faceMinCount') return 3;
     throw new Error(`Unexpected config key ${key}`);
@@ -24,28 +24,29 @@ describe('decideHumanCluster', () => {
     const decision = decideHumanCluster(
       [
         neighbour('current', 0),
-        neighbour('older-angle', 0.6, 'same-person'),
-        neighbour('different-light', 0.62, 'same-person'),
+        neighbour('front', 0.47, 'same-person'),
+        neighbour('older-angle', 0.49, 'same-person'),
+        neighbour('different-light', 0.51, 'same-person'),
       ],
+      0.45,
       0.55,
-      0.637,
       3,
     );
 
-    expect(decision).toMatchObject({ personId: 'same-person', distance: 0.6, isCore: true });
+    expect(decision).toMatchObject({ personId: 'same-person', distance: 0.47, isCore: false });
   });
 
   it('establishes a new identity only from a dense group', () => {
     const dense = decideHumanCluster(
-      [neighbour('one', 0), neighbour('two', 0.59), neighbour('three', 0.61)],
+      [neighbour('one', 0), neighbour('two', 0.4), neighbour('three', 0.44)],
+      0.45,
       0.55,
-      0.637,
       3,
     );
     const isolated = decideHumanCluster(
-      [neighbour('one', 0), neighbour('two', 0.59)],
+      [neighbour('one', 0), neighbour('two', 0.4)],
+      0.45,
       0.55,
-      0.637,
       3,
     );
 
@@ -54,37 +55,49 @@ describe('decideHumanCluster', () => {
     expect(isolated).toMatchObject({ personId: null, isCore: false });
   });
 
-  it('lets an isolated face join only through the strict distance', () => {
-    const strict = decideHumanCluster(
-      [neighbour('current', 0), neighbour('known', 0.5, 'known-person')],
+  it('lets an isolated face join only through an exceptionally close match', () => {
+    const veryClose = decideHumanCluster(
+      [neighbour('current', 0), neighbour('known', 0.3, 'known-person')],
+      0.45,
       0.55,
-      0.637,
       3,
     );
-    const relaxed = decideHumanCluster(
-      [neighbour('current', 0), neighbour('known', 0.59, 'known-person')],
+    const unsupported = decideHumanCluster(
+      [neighbour('current', 0), neighbour('known', 0.4, 'known-person')],
+      0.45,
       0.55,
-      0.637,
       3,
     );
 
-    expect(strict.personId).toBe('known-person');
-    expect(relaxed.personId).toBeNull();
+    expect(veryClose.personId).toBe('known-person');
+    expect(unsupported.personId).toBeNull();
   });
 
   it('does not guess between two equally plausible existing people', () => {
     const decision = decideHumanCluster(
       [
         neighbour('current', 0),
-        neighbour('first', 0.51, 'first-person'),
-        neighbour('second', 0.53, 'second-person'),
+        neighbour('first', 0.3, 'first-person'),
+        neighbour('second', 0.32, 'second-person'),
       ],
+      0.45,
       0.55,
-      0.637,
       3,
     );
 
-    expect(decision).toMatchObject({ personId: null, isCore: true, ambiguous: true });
+    expect(decision).toMatchObject({ personId: null, isCore: false, ambiguous: true });
+  });
+
+  it('does not bulk-merge a relaxed cloud of unassigned faces', () => {
+    const decision = decideHumanCluster(
+      [neighbour('current', 0), neighbour('nearby-one', 0.5), neighbour('nearby-two', 0.52)],
+      0.45,
+      0.55,
+      3,
+    );
+
+    expect(decision).toMatchObject({ personId: null, isCore: false });
+    expect(decision.unassignedFaceIds).toEqual(['current']);
   });
 });
 
@@ -92,18 +105,39 @@ describe('FaceClusteringService', () => {
   it('counts distinct media and excludes explicitly detached faces', async () => {
     const queryRaw = vi.fn().mockResolvedValue([
       neighbour('current', 0),
-      neighbour('known', 0.5, 'known-person'),
+      neighbour('known', 0.3, 'known-person'),
     ]);
     const service = new FaceClusteringService({ $queryRaw: queryRaw } as never, config as never);
 
     await expect(service.findPerson('owner', [1], SubjectKind.PERSON)).resolves.toEqual({
       personId: 'known-person',
-      distance: 0.5,
+      distance: 0.3,
     });
 
     const sql = (queryRaw.mock.calls[0][0] as TemplateStringsArray).join(' ');
     expect(sql).toContain('DISTINCT ON ("assetId")');
     expect(sql).toContain('(f."personId" IS NOT NULL OR f."isPinned" = false)');
+  });
+
+  it('never matches a cat detection into a dog group', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    const service = new FaceClusteringService({ $queryRaw: queryRaw } as never, config as never);
+
+    await expect(
+      service.findPerson('owner', [1], SubjectKind.PET, false, 'cat'),
+    ).resolves.toBeNull();
+
+    const speciesFilter = queryRaw.mock.calls[0].find(
+      (value) =>
+        value &&
+        typeof value === 'object' &&
+        'strings' in value &&
+        Array.from((value as { strings: string[] }).strings).join(' ').includes('pet_group'),
+    ) as { strings: string[]; values: unknown[] };
+    const sql = Array.from(speciesFilter.strings).join(' ');
+    expect(sql).toContain('f.species =');
+    expect(sql).toContain('pet_group.species =');
+    expect(speciesFilter.values).toEqual(['cat', 'cat']);
   });
 
   it('creates one person and assigns every unassigned face in a dense group', async () => {
@@ -128,8 +162,8 @@ describe('FaceClusteringService', () => {
         }
         return [
           neighbour('current', 0),
-          neighbour('same-one', 0.59),
-          neighbour('same-two', 0.62),
+          neighbour('same-one', 0.4),
+          neighbour('same-two', 0.44),
         ];
       }),
     };
@@ -144,6 +178,37 @@ describe('FaceClusteringService', () => {
         isPinned: false,
       },
       data: { personId: 'new-person' },
+    });
+  });
+
+  it('assigns only the current face when an existing identity wins', async () => {
+    const embedding = `[${Array.from({ length: 512 }, () => 0).join(',')}]`;
+    const prisma = {
+      asset: {
+        findFirst: vi.fn().mockResolvedValue({ isDeviceOnly: false, visibility: 'TIMELINE' }),
+      },
+      assetFace: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      person: { create: vi.fn() },
+      $queryRaw: vi.fn(async (strings: TemplateStringsArray) =>
+        strings.join('').includes('SELECT id, embedding::text')
+          ? [{ id: 'current', embedding, kind: SubjectKind.PERSON, species: null }]
+          : [
+              neighbour('current', 0),
+              neighbour('known-one', 0.38, 'known-person'),
+              neighbour('known-two', 0.42, 'known-person'),
+              neighbour('unassigned-neighbour', 0.4),
+            ],
+      ),
+    };
+    const service = new FaceClusteringService(prisma as never, config as never);
+
+    await expect(service.assignFacesForAsset('asset-a', 'owner')).resolves.toEqual([
+      'known-person',
+    ]);
+    expect(prisma.person.create).not.toHaveBeenCalled();
+    expect(prisma.assetFace.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['current'] }, personId: null, isPinned: false },
+      data: { personId: 'known-person' },
     });
   });
 

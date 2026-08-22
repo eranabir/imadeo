@@ -413,6 +413,33 @@ export class SubjectService {
   }
 
   /**
+   * Removes every recognition result for one account while leaving its media
+   * untouched. The caller queues a full scan immediately afterwards.
+   */
+  async resetRecognition(userId: string) {
+    const people = await this.prisma.person.findMany({
+      where: { ownerId: userId },
+      select: { thumbnailPath: true },
+    });
+
+    const [detections, subjects] = await this.prisma.$transaction([
+      this.prisma.assetFace.deleteMany({ where: { asset: { ownerId: userId } } }),
+      this.prisma.person.deleteMany({ where: { ownerId: userId } }),
+      this.prisma.assetJobStatus.updateMany({
+        where: { asset: { ownerId: userId } },
+        data: { facesRecognizedAt: null, petsRecognizedAt: null },
+      }),
+    ]);
+
+    await this.storage.removeMany(people.map((person) => person.thumbnailPath || null));
+
+    return {
+      removedDetections: detections.count,
+      removedSubjects: subjects.count,
+    };
+  }
+
+  /**
    * Picks which of this person's photos their avatar is cropped from.
    *
    * Rejects an asset the person does not actually appear in — otherwise the

@@ -81,9 +81,12 @@ class PetEngine:
         # close to someone. YuNet then often finds the cat's face, so use CLIP
         # as a narrow second opinion for those face-sized candidate crops.
         for label, prompt in {
-            "cat": "a close-up photo of a cat",
-            "dog": "a close-up photo of a dog",
-            "person": "a close-up photo of a human face",
+            "cat": "a photo of a cat",
+            "dog": "a photo of a dog",
+            "person": "a photo of a person",
+            "vehicle": "a photo of a vehicle",
+            "object": "a photo of an object",
+            "landscape": "a photo of a landscape",
         }.items():
             tokens = self._tokenizer([prompt])
             with torch.no_grad():
@@ -113,7 +116,18 @@ class PetEngine:
             if bbox[2] - bbox[0] < 48 or bbox[3] - bbox[1] < 48:
                 continue
             crop = image.crop(tuple(float(value) for value in bbox))
-            found.append(DetectedPet(bbox=bbox, score=float(score), label=label, embedding=self._embed(crop)))
+            embedding = self._embed(crop)
+            species = self._classify_pet(embedding)
+            if species is None:
+                continue
+            found.append(
+                DetectedPet(
+                    bbox=bbox,
+                    score=float(score),
+                    label=species,
+                    embedding=embedding,
+                )
+            )
 
         return found
 
@@ -128,17 +142,17 @@ class PetEngine:
             raise RuntimeError("The pet models are not loaded")
 
         embedding = self._embed(image)
-        scores = {
-            label: float(np.dot(embedding, prototype))
-            for label, prototype in self._candidate_text_embeddings.items()
-        }
+        scores = self._pet_scores(embedding)
         label = max(("cat", "dog"), key=scores.__getitem__)
+        strongest_non_pet = max(
+            score for candidate, score in scores.items() if candidate not in {"cat", "dog"}
+        )
 
         # Require both a meaningful match and a clear win over a human face.
         # The values are cosine similarities from the same normalised CLIP
         # space; 0.015 keeps close-up cats from becoming people while leaving
         # actual people comfortably on the human side of the boundary.
-        if scores[label] < 0.24 or scores[label] - scores["person"] < 0.015:
+        if scores[label] < 0.24 or scores[label] - strongest_non_pet < 0.015:
             return None
 
         width, height = image.size
@@ -148,6 +162,31 @@ class PetEngine:
             label=label,
             embedding=embedding,
         )
+
+    def _pet_scores(self, embedding: np.ndarray) -> dict[str, float]:
+        return {
+            label: float(np.dot(embedding, prototype))
+            for label, prototype in self._candidate_text_embeddings.items()
+        }
+
+    def _classify_pet(self, embedding: np.ndarray) -> str | None:
+        """Verify NanoDet's crop and classify only unambiguous cats or dogs.
+
+        NanoDet proposes the box; CLIP must still prefer a pet over people,
+        vehicles and generic scenery. Ambiguous cat/dog crops remain a generic
+        pet instead of displaying a confidently wrong species badge.
+        """
+        scores = self._pet_scores(embedding)
+        winner = max(("cat", "dog"), key=scores.__getitem__)
+        loser = "dog" if winner == "cat" else "cat"
+        strongest_non_pet = max(
+            score for label, score in scores.items() if label not in {"cat", "dog"}
+        )
+        if scores[winner] < 0.23 or scores[winner] - strongest_non_pet < 0.015:
+            return None
+        if scores[winner] - scores[loser] < 0.02:
+            return "pet"
+        return winner
 
     @staticmethod
     def _letterbox(image: np.ndarray) -> tuple[np.ndarray, tuple[int, int, int, int]]:
@@ -223,10 +262,11 @@ class PetEngine:
             return np.empty((0, 6), dtype=np.float32)
 
         candidate_boxes = boxes[candidate_indices]
-        keep = cv2.dnn.NMSBoxesBatched(
+        # Cat and dog predictions often overlap on the same animal. Suppress
+        # across both classes, then let CLIP classify the surviving pet crop.
+        keep = cv2.dnn.NMSBoxes(
             np.column_stack((candidate_boxes[:, :2], candidate_boxes[:, 2:] - candidate_boxes[:, :2])).tolist(),
             confidences[candidate_indices].tolist(),
-            class_ids[candidate_indices].tolist(),
             self.min_score,
             0.6,
         )

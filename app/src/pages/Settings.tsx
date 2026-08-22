@@ -642,6 +642,7 @@ interface PeopleAndPetsRecognitionStatus {
 
 function PeopleAndPetsRecognition() {
   const queryClient = useQueryClient();
+  const [resetOpen, setResetOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'people-and-pets-recognition'],
     queryFn: async () =>
@@ -678,6 +679,22 @@ function PeopleAndPetsRecognition() {
       })).data,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['subjects'] });
+    },
+  });
+
+  const reset = useMutation({
+    mutationFn: async () =>
+      (
+        await api.post<{
+          queued: number;
+          removedSubjects: number;
+          removedDetections: number;
+        }>('/people-and-pets/reset')
+      ).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['subjects'] });
+      void queryClient.invalidateQueries({ queryKey: ['subjects', 'status'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'processing'] });
     },
   });
 
@@ -733,6 +750,20 @@ function PeopleAndPetsRecognition() {
           {rescan.isPending ? 'Starting…' : recognitionQueued ? 'Queued' : 'Scan again'}
         </Button>
       </Row>
+      <Row
+        label="Reset recognition"
+        hint="Remove every People & Pets result, then recognise the complete library from scratch."
+      >
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<Trash2 size={14} />}
+          disabled={!data?.enabled || !status?.ready || reset.isPending || recognitionQueued}
+          onClick={() => setResetOpen(true)}
+        >
+          {reset.isPending ? 'Starting…' : 'Wipe and rescan'}
+        </Button>
+      </Row>
       {recognitionQueued && (
         <div className="mt-3 flex items-start gap-2 rounded-control bg-primary-soft px-3 py-2.5 text-xs text-primary">
           <Activity className="mt-0.5 shrink-0 animate-pulse" size={14} />
@@ -749,12 +780,28 @@ function PeopleAndPetsRecognition() {
         </p>
       )}
       {rescan.isError && <p className="mt-3 text-xs text-danger">{errorMessage(rescan.error)}</p>}
+      {reset.isSuccess && (
+        <p className="mt-3 text-xs text-success">
+          Removed {reset.data.removedSubjects.toLocaleString()} groups and queued{' '}
+          {reset.data.queued.toLocaleString()} media items for a clean scan.
+        </p>
+      )}
+      {reset.isError && <p className="mt-3 text-xs text-danger">{errorMessage(reset.error)}</p>}
       {data?.fromEnv && (
         <p className="mt-3 text-xs text-content-muted">
           Currently using the server’s startup default. Changing this saves a server setting.
         </p>
       )}
       {save.isError && <p className="mt-3 text-xs text-danger">{errorMessage(save.error)}</p>}
+      <ConfirmDialog
+        open={resetOpen}
+        title="Wipe all People & Pets results?"
+        description="This permanently removes every recognised person and pet for your account, including names, merges and manual corrections. Your photos and videos stay untouched, and the complete library is scanned again."
+        confirmLabel="Wipe and rescan"
+        destructive
+        onConfirm={() => reset.mutate()}
+        onClose={() => setResetOpen(false)}
+      />
     </Card>
   );
 }

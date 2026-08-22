@@ -25,15 +25,23 @@ interface HumanClusterDecision {
   unassignedFaceIds: string[];
 }
 
+interface PersonVotes {
+  personId: string;
+  strictVotes: number;
+  totalVotes: number;
+  bestDistance: number;
+  averageDistance: number;
+}
+
 /**
  * Density-based identity decision, kept pure so its precision/recall rules are
  * covered without a database fixture.
  *
- * A relaxed edge can grow an identity only when the face sits inside a dense
- * neighbourhood. An isolated face may still join through the stricter distance,
- * but cannot become a bridge between two people. This is the useful part of
- * DBSCAN for a photo library: repeated appearances establish identity, while a
- * stranger in one background photo remains an outlier.
+ * Existing identities grow only when several independent photos agree, or one
+ * face is exceptionally close. New identities are seeded exclusively from
+ * strict neighbours. Relaxed neighbours may vote for an established identity,
+ * but are never bulk-assigned; that prevents a single bridge face from folding
+ * two families into one group.
  */
 export function decideHumanCluster(
   neighbours: Neighbour[],
@@ -44,34 +52,63 @@ export function decideHumanCluster(
   const nearby = neighbours.filter(
     (neighbour) => Number.isFinite(neighbour.distance) && neighbour.distance <= maxDistance,
   );
-  const isCore = nearby.length >= Math.max(1, minFaces);
+  const requiredVotes = Math.max(1, minFaces);
+  const strictUnassigned = nearby.filter(
+    (neighbour) => neighbour.personId === null && neighbour.distance <= strictDistance,
+  );
+  const isCore = strictUnassigned.length >= requiredVotes;
 
-  const closestByPerson = new Map<string, number>();
+  const votesByPerson = new Map<string, number[]>();
   for (const neighbour of nearby) {
     if (!neighbour.personId) continue;
-    const previous = closestByPerson.get(neighbour.personId) ?? Number.POSITIVE_INFINITY;
-    closestByPerson.set(neighbour.personId, Math.min(previous, neighbour.distance));
+    const distances = votesByPerson.get(neighbour.personId) ?? [];
+    distances.push(neighbour.distance);
+    votesByPerson.set(neighbour.personId, distances);
   }
 
-  const candidates = [...closestByPerson.entries()]
-    .filter(([, distance]) => isCore || distance <= strictDistance)
-    .sort((a, b) => a[1] - b[1]);
+  const veryCloseDistance = strictDistance * 0.75;
+  const relaxedAverageLimit = (strictDistance + maxDistance) / 2;
+  const candidates: PersonVotes[] = [...votesByPerson.entries()]
+    .map(([personId, distances]) => ({
+      personId,
+      strictVotes: distances.filter((distance) => distance <= strictDistance).length,
+      totalVotes: distances.length,
+      bestDistance: Math.min(...distances),
+      averageDistance: distances.reduce((sum, distance) => sum + distance, 0) / distances.length,
+    }))
+    .filter(
+      (candidate) =>
+        candidate.bestDistance <= veryCloseDistance ||
+        candidate.strictVotes >= 2 ||
+        (candidate.totalVotes >= requiredVotes &&
+          candidate.averageDistance <= relaxedAverageLimit),
+    )
+    .sort(
+      (a, b) =>
+        b.strictVotes - a.strictVotes ||
+        b.totalVotes - a.totalVotes ||
+        a.averageDistance - b.averageDistance ||
+        a.bestDistance - b.bestDistance,
+    );
   const winner = candidates[0];
   const runnerUp = candidates[1];
 
-  // Two existing identities at virtually the same distance are not enough
-  // evidence to choose one. Leaving the face unassigned is recoverable; a
-  // silent wrong merge is not.
-  const ambiguous = winner && runnerUp && runnerUp[1] - winner[1] < 0.04;
+  // Matching evidence that is effectively tied is deliberately left
+  // unassigned. A later photo can resolve it; a silent merge is destructive.
+  const ambiguous = Boolean(
+    winner &&
+      runnerUp &&
+      winner.strictVotes === runnerUp.strictVotes &&
+      winner.totalVotes === runnerUp.totalVotes &&
+      Math.abs(winner.averageDistance - runnerUp.averageDistance) < 0.04,
+  );
 
   return {
-    personId: winner && !ambiguous ? winner[0] : null,
-    distance: winner && !ambiguous ? winner[1] : null,
+    personId: winner && !ambiguous ? winner.personId : null,
+    distance: winner && !ambiguous ? winner.bestDistance : null,
     isCore,
-    ambiguous: Boolean(ambiguous),
-    unassignedFaceIds: nearby
-      .filter((neighbour) => neighbour.personId === null)
-      .map((neighbour) => neighbour.faceId),
+    ambiguous,
+    unassignedFaceIds: strictUnassigned.map((neighbour) => neighbour.faceId),
   };
 }
 
@@ -124,8 +161,10 @@ export class FaceClusteringService {
     embedding: number[],
     kind: SubjectKind = SubjectKind.PERSON,
     deviceOnly = false,
+    species: string | null = null,
   ): Promise<Candidate | null> {
-    const neighbours = await this.findNeighbours(ownerId, embedding, kind, deviceOnly);
+    if (kind === SubjectKind.PET && !species) return null;
+    const neighbours = await this.findNeighbours(ownerId, embedding, kind, deviceOnly, species);
 
     // Appearance is a blunter signal than face geometry, so pets need to look
     // markedly more alike before they are called the same animal.
@@ -169,6 +208,7 @@ export class FaceClusteringService {
     embedding: number[],
     kind: SubjectKind,
     deviceOnly: boolean,
+    species: string | null = null,
   ) {
     const vector = `[${embedding.join(',')}]`;
     const maxDistance =
@@ -191,6 +231,20 @@ export class FaceClusteringService {
           AND f."deletedAt" IS NULL
           AND f.embedding IS NOT NULL
           AND f.kind = ${kind}::"SubjectKind"
+          ${kind === SubjectKind.PET
+            ? Prisma.sql`
+                AND f.species = ${species}
+                AND (
+                  f."personId" IS NULL
+                  OR EXISTS (
+                    SELECT 1
+                    FROM people pet_group
+                    WHERE pet_group.id = f."personId"
+                      AND pet_group.species = ${species}
+                  )
+                )
+              `
+            : Prisma.empty}
           -- A face explicitly detached by the user is pinned with no person.
           -- It must not seed or extend another automatic group.
           AND (f."personId" IS NOT NULL OR f."isPinned" = false)
@@ -278,9 +332,11 @@ export class FaceClusteringService {
             })
           ).id;
 
-        const faceIds = decision.isCore
-          ? [...new Set([face.id, ...decision.unassignedFaceIds])]
-          : [face.id];
+        // Existing identities receive only the face being evaluated. Bulk
+        // assignment is safe solely while creating a new strict core.
+        const faceIds = decision.personId
+          ? [face.id]
+          : [...new Set([face.id, ...decision.unassignedFaceIds])];
         await this.prisma.assetFace.updateMany({
           where: { id: { in: faceIds }, personId: null, isPinned: false },
           data: { personId },
@@ -289,7 +345,13 @@ export class FaceClusteringService {
         continue;
       }
 
-      const match = await this.findPerson(ownerId, embedding, face.kind, asset.isDeviceOnly);
+      const match = await this.findPerson(
+        ownerId,
+        embedding,
+        face.kind,
+        asset.isDeviceOnly,
+        face.species,
+      );
 
       const personId =
         match?.personId ??

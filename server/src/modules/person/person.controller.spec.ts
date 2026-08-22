@@ -24,8 +24,11 @@ function createController() {
   const backgroundTasks = {
     getStatus: vi.fn().mockReturnValue({ activeQueues: {} }),
   };
+  const subjects = {
+    resetRecognition: vi.fn().mockResolvedValue({ removedDetections: 12, removedSubjects: 3 }),
+  };
   const controller = new PeopleAndPetsController(
-    {} as never,
+    subjects as never,
     {} as never,
     ml as never,
     jobs as never,
@@ -37,7 +40,7 @@ function createController() {
     {} as never,
     backgroundTasks as never,
   );
-  return { controller, count, findMany, jobs, ml, recognitionBatch, backgroundTasks };
+  return { controller, count, findMany, jobs, ml, recognitionBatch, backgroundTasks, subjects };
 }
 
 const expectedScope = {
@@ -124,5 +127,28 @@ describe('PeopleAndPetsController discovery scope', () => {
     expect(jobs.enqueue).toHaveBeenCalledWith('face-cluster', 'cluster-faces', {
       userId: 'owner-id',
     });
+  });
+
+  it('wipes recognition data and queues a complete scan when no recognition job is active', async () => {
+    const { controller, findMany, subjects } = createController();
+    findMany.mockResolvedValue([{ id: 'photo-id', type: AssetType.IMAGE }]);
+
+    await expect(controller.reset('owner-id')).resolves.toMatchObject({
+      removedDetections: 12,
+      removedSubjects: 3,
+      queued: 1,
+      forced: true,
+    });
+    expect(subjects.resetRecognition).toHaveBeenCalledWith('owner-id');
+  });
+
+  it('does not wipe results while recognition jobs are still running', async () => {
+    const { controller, jobs, subjects } = createController();
+    jobs.getQueueStatistics.mockResolvedValueOnce({ active: 1, waiting: 0, delayed: 0 });
+
+    await expect(controller.reset('owner-id')).rejects.toThrow(
+      'Wait for the current recognition scan to finish first.',
+    );
+    expect(subjects.resetRecognition).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -160,8 +161,43 @@ export class PeopleAndPetsController {
       );
     }
 
+    return this.queueScan(userId, force === 'true');
+  }
+
+  @Post('reset')
+  @ApiOperation({
+    summary: 'Delete every people and pet result for this account and rescan all media',
+    description: 'Photos and videos are untouched. Names, merges and manual corrections are removed.',
+  })
+  async reset(@AuthedUserId() userId: string) {
+    if (!(await this.ml.isFaceRecognitionReady())) {
+      throw new ServiceUnavailableException(
+        'The machine-learning service is not ready yet. Try again in a minute.',
+      );
+    }
+
+    const [detectionQueue, clusterQueue] = await Promise.all([
+      this.jobs.getQueueStatistics(QUEUE.FACE_DETECTION),
+      this.jobs.getQueueStatistics(QUEUE.FACE_CLUSTER),
+    ]);
+    const queued =
+      detectionQueue.active +
+      detectionQueue.waiting +
+      detectionQueue.delayed +
+      clusterQueue.active +
+      clusterQueue.waiting +
+      clusterQueue.delayed;
+    if (queued > 0) {
+      throw new ConflictException('Wait for the current recognition scan to finish first.');
+    }
+
+    const removed = await this.subjects.resetRecognition(userId);
+    const scan = await this.queueScan(userId, true);
+    return { ...removed, ...scan };
+  }
+
+  private async queueScan(userId: string, scanEverything: boolean) {
     const petsReady = await this.ml.hasPets();
-    const scanEverything = force === 'true';
     const assets = await this.prisma.asset.findMany({
       where: {
         ...mainLibraryAssetWhere(userId),
