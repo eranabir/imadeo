@@ -279,14 +279,56 @@ function RotatedMedia({ asset, rotation }: { asset: Asset; rotation: number }) {
           loop={user?.preferences.loopVideos}
         />
       ) : (
-        <img
+        <ProgressiveOriginalImage
           key={asset.id}
-          src={mediaUrl(asset.id, 'preview')}
+          assetId={asset.id}
           alt={asset.originalFileName}
           style={style}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Paints the quick server preview immediately, then replaces it with the
+ * untouched upload once the browser has decoded it. Formats the browser cannot
+ * display (for example HEIC in some browsers) quietly keep the preview.
+ */
+export function ProgressiveOriginalImage({
+  assetId,
+  alt,
+  style,
+}: {
+  assetId: string;
+  alt: string;
+  style: CSSProperties;
+}) {
+  const [originalLoaded, setOriginalLoaded] = useState(false);
+  const [originalFailed, setOriginalFailed] = useState(false);
+
+  return (
+    <>
+      <img
+        src={mediaUrl(assetId, 'preview')}
+        alt=""
+        aria-hidden="true"
+        style={{ ...style, opacity: originalLoaded ? 0 : 1 }}
+      />
+      {!originalFailed && (
+        <img
+          src={mediaUrl(assetId, 'original')}
+          alt={alt}
+          style={{
+            ...style,
+            opacity: originalLoaded ? 1 : 0,
+            transition: 'opacity 180ms ease-out',
+          }}
+          onLoad={() => setOriginalLoaded(true)}
+          onError={() => setOriginalFailed(true)}
+        />
+      )}
+    </>
   );
 }
 
