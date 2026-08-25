@@ -6,7 +6,10 @@
   "scripts": {
     "build": "prisma generate && nest build",
     "dev": "prisma generate && nest start --watch",
+    "dev:api": "nest start --watch",
+    "dev:worker": "nest start --watch --entryFile worker",
     "start": "node dist/main",
+    "start:worker": "node dist/worker",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

@@ -20,7 +20,7 @@ HTTPS reverse proxy for remote access.
 - A timeline with albums, folders, places, people and pets, and favourites.
 - Local visual search, people and pet grouping (cats and dogs), duplicate detection and EXIF-aware dates.
 - Private album and link sharing without handing over the whole library.
-- Separate web and API containers, with one public port for both.
+- Separate web, API and background-processing containers, so a busy library cannot block browsing.
 
 ## Install
 
@@ -111,6 +111,14 @@ a first installation; the most common adjustments are:
 | `SMTP_*` | Email invitations; optional, with share links as the fallback |
 | `GOOGLE_*` / `APPLE_*` | Optional social sign-in |
 | `ML_*` | Visual-search plus people and pet-recognition worker behaviour |
+| `API_*` / `WORKER_*` | CPU and memory reserved for responsive requests and bounded background work |
+
+Uploads store the untouched original first. Web uploads also provide a small
+temporary browser preview, then Redis starts durable metadata and thumbnail
+jobs after the batch and foreground activity become quiet. The dedicated
+worker processes one media task at a time; video optimisation, search and
+People & Pets share a separate one-at-a-time heavy lane and never overlap
+thumbnail generation. Restarting a container does not lose queued work.
 
 Back up `UPLOAD_LOCATION` and `DB_DATA_LOCATION`. Application containers are
 replaceable; these two paths are the parts that cannot be recreated.

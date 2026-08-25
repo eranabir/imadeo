@@ -154,9 +154,13 @@ export class JobService {
     ];
     let removed = 0;
 
-    await Promise.all(
-      stages.flatMap(([queue, name]) =>
-        assetIds.map(async (assetId) => {
+    // A folder can contain tens of thousands of files. Bound Redis fan-out so
+    // deleting it does not become another source of API pressure.
+    const uniqueIds = [...new Set(assetIds)];
+    for (const [queue, name] of stages) {
+      for (let index = 0; index < uniqueIds.length; index += 100) {
+        const batch = uniqueIds.slice(index, index + 100);
+        await Promise.all(batch.map(async (assetId) => {
           const job = await this.queues[queue].getJob(JobService.jobIdFor(name, assetId));
           if (!job || (await job.getState()) === 'active') return;
 
@@ -169,9 +173,9 @@ export class JobService {
               `Asset job ${job.id ?? `${name}/${assetId}`} became active before cancellation: ${String(error)}`,
             );
           }
-        }),
-      ),
-    );
+        }));
+      }
+    }
 
     return removed;
   }

@@ -5,7 +5,12 @@ import type { Job } from 'bullmq';
 import { DateTime } from 'luxon';
 import type { AppConfig } from '../../../config/configuration';
 import { AssetType, type Asset } from '../../../db';
-import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import {
+  JOB,
+  PROCESSORS_AUTORUN,
+  QUEUE,
+  type AssetJobData,
+} from '../../../infra/job/job.constants';
 import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import { GeocodingService } from '../../../infra/geo/geocoding.service';
 import { JobService } from '../../../infra/job/job.service';
@@ -17,7 +22,7 @@ import { PrismaService } from '../../../infra/prisma/prisma.service';
  * First stage of the pipeline. Reads EXIF, works out the true capture time in
  * the photo's own timezone, then hands off to thumbnail generation.
  */
-@Processor(QUEUE.METADATA, { concurrency: 5 })
+@Processor(QUEUE.METADATA, { concurrency: 5, autorun: PROCESSORS_AUTORUN })
 export class MetadataProcessor extends WorkerHost {
   private readonly logger = new Logger(MetadataProcessor.name);
 
@@ -176,12 +181,16 @@ export class MetadataProcessor extends WorkerHost {
       }),
     ]);
 
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
+
     // Preserve the shared identifier, but keep both source files visible. The
     // application is a backup: processing must never turn two stored files into
     // one visible item without an explicit grouping UI.
     if (tags.livePhotoCID) {
       await this.recordLivePhotoIdentifier(asset.id, tags.livePhotoCID);
     }
+
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     // Poster extraction can keep ffmpeg busy on a large video. Put it on the
     // single video worker so image thumbnails retain all image-worker slots.

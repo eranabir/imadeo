@@ -22,7 +22,7 @@ function createController() {
     hasPets: vi.fn().mockResolvedValue(true),
   };
   const backgroundTasks = {
-    getStatus: vi.fn().mockReturnValue({ activeQueues: {} }),
+    getSharedStatus: vi.fn().mockResolvedValue({ activeQueues: {} }),
   };
   const subjects = {
     resetRecognition: vi.fn().mockResolvedValue({ removedDetections: 12, removedSubjects: 3 }),
@@ -65,7 +65,7 @@ describe('PeopleAndPetsController discovery scope', () => {
   it('reports progress for the active upload instead of the lifetime library', async () => {
     const { controller, count, ml, recognitionBatch, backgroundTasks } = createController();
     ml.videoRecognitionEnabled = true;
-    backgroundTasks.getStatus.mockReturnValue({ activeQueues: { 'face-detection': 1 } });
+    backgroundTasks.getSharedStatus.mockResolvedValue({ activeQueues: { 'face-detection': 1 } });
     recognitionBatch.findFirst.mockResolvedValue({ id: 'new-upload' });
     count
       .mockResolvedValueOnce(4_428)
@@ -85,7 +85,7 @@ describe('PeopleAndPetsController discovery scope', () => {
 
   it('does not report recognition as running while video processing owns the server', async () => {
     const { controller, backgroundTasks } = createController();
-    backgroundTasks.getStatus.mockReturnValue({ activeQueues: { 'video-transcode': 1 } });
+    backgroundTasks.getSharedStatus.mockResolvedValue({ activeQueues: { 'video-transcode': 1 } });
 
     await expect(controller.status('owner-id')).resolves.toMatchObject({
       processingAssets: 0,

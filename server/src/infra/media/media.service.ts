@@ -33,6 +33,15 @@ export interface VideoProbe {
   container: string;
 }
 
+export class MediaProcessingCancelledError extends Error {
+  constructor() {
+    super('Media processing cancelled');
+    this.name = MediaProcessingCancelledError.name;
+  }
+}
+
+type ProcessingContinuation = () => boolean | Promise<boolean>;
+
 // sharp handles these directly. Anything else goes through ffmpeg first.
 const SHARP_FORMATS = new Set([
   'jpeg', 'jpg', 'png', 'webp', 'gif', 'avif', 'tiff', 'tif', 'heif', 'heic', 'jp2', 'svg',
@@ -47,7 +56,7 @@ export class MediaService {
     private readonly storage: StorageService,
   ) {
     // Large panoramas and scanned TIFFs blow past sharp's default guard.
-    sharp.cache({ files: 0 });
+    sharp.cache({ memory: 32, files: 0, items: 50 });
     sharp.concurrency(1);
   }
 
@@ -66,7 +75,12 @@ export class MediaService {
    * Writes the grid thumbnail and the larger viewer preview from one decode.
    * Returns the paths actually written.
    */
-  async generateImageThumbnails(source: string, ownerId: string, assetId: string) {
+  async generateImageThumbnails(
+    source: string,
+    ownerId: string,
+    assetId: string,
+    shouldContinue?: ProcessingContinuation,
+  ) {
     const { thumbnailSize, previewSize, quality, format } = this.config.get('thumbnail', {
       infer: true,
     });
@@ -87,10 +101,19 @@ export class MediaService {
         ? instance.jpeg({ quality, mozjpeg: true })
         : instance.webp({ quality, effort: 4 });
 
-    await Promise.all([
-      encode(pipelineFor(thumbnailSize)).toFile(thumbPath),
-      encode(pipelineFor(previewSize)).toFile(previewPath),
-    ]);
+    // Sequential writes cap libvips at one decode/encode allocation. On NAS
+    // hardware two parallel derivatives can double memory and file pressure
+    // for no user-visible gain; the grid thumbnail is deliberately first.
+    try {
+      await this.assertProcessingContinues(shouldContinue);
+      await encode(pipelineFor(thumbnailSize)).toFile(thumbPath);
+      await this.assertProcessingContinues(shouldContinue);
+      await encode(pipelineFor(previewSize)).toFile(previewPath);
+      await this.assertProcessingContinues(shouldContinue);
+    } catch (error) {
+      await this.storage.removeMany([thumbPath, previewPath]);
+      throw error;
+    }
 
     return { thumbnailPath: thumbPath, previewPath };
   }
@@ -239,19 +262,24 @@ export class MediaService {
   }
 
   /** Grabs a still to use as the video's thumbnail source. */
-  async extractPosterFrame(source: string, destination: string, atSeconds = 0) {
+  async extractPosterFrame(
+    source: string,
+    destination: string,
+    atSeconds = 0,
+    shouldContinue?: ProcessingContinuation,
+  ) {
     await this.storage.ensureDir(dirname(destination));
-    return new Promise<string>((resolve, reject) => {
+    await this.assertProcessingContinues(shouldContinue);
+    return this.runFfmpeg(
       ffmpeg(source)
         // Seeking before the input is far faster on long files.
         .inputOptions([`-ss ${atSeconds.toFixed(2)}`])
         // `-update 1` explicitly tells image2 this is one still rather than a
         // filename pattern. It also avoids FFmpeg 8's deprecated `-vsync` path.
-        .outputOptions(['-frames:v 1', '-q:v 2', '-update 1'])
-        .on('error', reject)
-        .on('end', () => resolve(destination))
-        .save(destination);
-    });
+        .outputOptions(['-frames:v 1', '-q:v 2', '-update 1']),
+      destination,
+      shouldContinue,
+    );
   }
 
   /**
@@ -271,7 +299,12 @@ export class MediaService {
     return !(webSafeVideo && webSafeAudio && container && withinTarget);
   }
 
-  async transcodeVideo(source: string, destination: string, probe: VideoProbe) {
+  async transcodeVideo(
+    source: string,
+    destination: string,
+    probe: VideoProbe,
+    shouldContinue?: ProcessingContinuation,
+  ) {
     const cfg = this.config.get('ffmpeg', { infer: true });
     await this.storage.ensureDir(dirname(destination));
 
@@ -282,7 +315,8 @@ export class MediaService {
       ? `scale=${cfg.targetResolution}:-2`
       : `scale=-2:${cfg.targetResolution}`;
 
-    return new Promise<string>((resolve, reject) => {
+    await this.assertProcessingContinues(shouldContinue);
+    return this.runFfmpeg(
       ffmpeg(source)
         .videoCodec(cfg.targetVideoCodec === 'hevc' ? 'libx265' : 'libx264')
         .audioCodec(cfg.targetAudioCodec === 'opus' ? 'libopus' : 'aac')
@@ -290,6 +324,7 @@ export class MediaService {
         .outputOptions([
           `-crf ${cfg.crf}`,
           `-preset ${cfg.preset}`,
+          `-threads ${cfg.threads}`,
           `-vf ${scale}`,
           '-pix_fmt yuv420p',
           // Put the index at the front so playback can start before the whole
@@ -297,9 +332,55 @@ export class MediaService {
           '-movflags +faststart',
           '-max_muxing_queue_size 1024',
         ])
-        .on('start', (cmd) => this.logger.debug(`ffmpeg: ${cmd}`))
-        .on('error', reject)
-        .on('end', () => resolve(destination))
+        .on('start', (cmd) => this.logger.debug(`ffmpeg: ${cmd}`)),
+      destination,
+      shouldContinue,
+    );
+  }
+
+  private async assertProcessingContinues(shouldContinue?: ProcessingContinuation) {
+    if (shouldContinue && !(await shouldContinue())) throw new MediaProcessingCancelledError();
+  }
+
+  /** Stops a long FFmpeg child promptly when its asset enters Trash. */
+  private runFfmpeg(
+    command: ReturnType<typeof ffmpeg>,
+    destination: string,
+    shouldContinue?: ProcessingContinuation,
+  ) {
+    return new Promise<string>((resolve, reject) => {
+      let settled = false;
+      let cancelled = false;
+      let checking = false;
+      const timer = shouldContinue
+        ? setInterval(() => {
+            if (settled || checking) return;
+            checking = true;
+            Promise.resolve(shouldContinue())
+              .then((active) => {
+                if (!active && !settled) {
+                  cancelled = true;
+                  command.kill('SIGKILL');
+                }
+              })
+              .catch((error) => this.logger.warn(`Cancellation check failed: ${String(error)}`))
+              .finally(() => {
+                checking = false;
+              });
+          }, 500)
+        : null;
+      const finish = (operation: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearInterval(timer);
+        operation();
+      };
+
+      command
+        .on('error', (error) =>
+          finish(() => reject(cancelled ? new MediaProcessingCancelledError() : error)),
+        )
+        .on('end', () => finish(() => resolve(destination)))
         .save(destination);
     });
   }

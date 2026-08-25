@@ -2,9 +2,17 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import type { Asset } from '../../../db';
-import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import {
+  JOB,
+  PROCESSORS_AUTORUN,
+  QUEUE,
+  type AssetJobData,
+} from '../../../infra/job/job.constants';
 import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
-import { MediaService } from '../../../infra/media/media.service';
+import {
+  MediaProcessingCancelledError,
+  MediaService,
+} from '../../../infra/media/media.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { StorageService } from '../../../infra/storage/storage.service';
 import { ThumbnailProcessor } from './thumbnail.processor';
@@ -15,7 +23,7 @@ import { ThumbnailProcessor } from './thumbnail.processor';
  * Concurrency is 1 on purpose: ffmpeg already saturates the available cores, so
  * running several at once just makes every one of them slower.
  */
-@Processor(QUEUE.VIDEO, { concurrency: 1 })
+@Processor(QUEUE.VIDEO, { concurrency: 1, autorun: PROCESSORS_AUTORUN })
 export class VideoProcessor extends WorkerHost {
   private readonly logger = new Logger(VideoProcessor.name);
 
@@ -60,10 +68,21 @@ export class VideoProcessor extends WorkerHost {
     const destination = this.storage.buildDerivativePath('video', asset.ownerId, asset.id);
 
     try {
-      await this.media.transcodeVideo(asset.originalPath, destination, probe);
+      await this.media.transcodeVideo(
+        asset.originalPath,
+        destination,
+        probe,
+        () => this.assetStillActive(asset.id),
+      );
     } catch (error) {
       // A half-written mp4 would be served to players as a broken file.
       await this.storage.remove(destination);
+      if (
+        error instanceof MediaProcessingCancelledError ||
+        !(await this.assetStillActive(asset.id))
+      ) {
+        return { skipped: 'asset deleted' };
+      }
       throw error;
     }
 

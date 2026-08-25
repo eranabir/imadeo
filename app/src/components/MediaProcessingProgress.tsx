@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { LoaderCircle } from 'lucide-react';
+import { Clock3, LoaderCircle, Upload } from 'lucide-react';
 import { api } from '../lib/api';
 import { Progress } from '../ui';
 
@@ -11,6 +11,50 @@ interface ProcessingStatus {
   progressReady: number;
   previewsPending: number;
   videosPending: number;
+}
+
+export interface ProcessingSchedulerStatus {
+  workerOnline: boolean;
+  mode: 'uploading' | 'interactive' | 'idle';
+  activeUploads: number;
+  media: { active: number; waiting: number; limit: number };
+  heavy: { active: number };
+}
+
+export function mediaProcessingState(scheduler?: ProcessingSchedulerStatus) {
+  if (scheduler?.workerOnline === false) {
+    return {
+      title: 'Processing worker is offline',
+      description: 'Your originals are safe. Preparation will resume automatically when the worker returns.',
+      icon: 'waiting' as const,
+    };
+  }
+  if (scheduler?.mode === 'uploading') {
+    return {
+      title: 'Waiting for uploads to finish',
+      description: 'Media preparation starts after every upload is stored and the server is quiet.',
+      icon: 'upload' as const,
+    };
+  }
+  if (scheduler?.mode === 'interactive' && scheduler.media.limit === 0) {
+    return {
+      title: 'Waiting until Imadeo is idle',
+      description: 'Media preparation resumes after you stop interacting with the app.',
+      icon: 'waiting' as const,
+    };
+  }
+  if ((scheduler?.media.active ?? 0) === 0 && (scheduler?.heavy.active ?? 0) === 0) {
+    return {
+      title: 'Media queued',
+      description: 'The originals are safe. Preparation will start when the server is idle.',
+      icon: 'waiting' as const,
+    };
+  }
+  return {
+    title: 'Preparing media',
+    description: 'Your originals are safe. Imadeo is creating previews and preparing videos.',
+    icon: 'processing' as const,
+  };
 }
 
 export function MediaProcessingProgress({
@@ -30,6 +74,13 @@ export function MediaProcessingProgress({
       return status && status.pending > 0 ? 2_500 : false;
     },
   });
+  const { data: scheduler } = useQuery({
+    queryKey: ['processing', 'status'],
+    queryFn: async () =>
+      (await api.get<ProcessingSchedulerStatus>('/processing/status')).data,
+    enabled: Boolean(data?.pending),
+    refetchInterval: 2_500,
+  });
 
   if (!data || data.total === 0 || data.pending === 0) return null;
 
@@ -44,6 +95,7 @@ export function MediaProcessingProgress({
       ? `${data.videosPending.toLocaleString()} ${data.videosPending === 1 ? 'video' : 'videos'}`
       : null,
   ].filter(Boolean).join(' · ');
+  const state = mediaProcessingState(scheduler);
 
   return (
     <section
@@ -52,11 +104,17 @@ export function MediaProcessingProgress({
     >
       <div className="flex items-start gap-3">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
-          <LoaderCircle size={18} className="animate-spin" />
+          {state.icon === 'processing' ? (
+            <LoaderCircle size={18} className="animate-spin" />
+          ) : state.icon === 'upload' ? (
+            <Upload size={18} />
+          ) : (
+            <Clock3 size={18} />
+          )}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
-            <strong className="text-sm font-semibold">Preparing media</strong>
+            <strong className="text-sm font-semibold">{state.title}</strong>
             <span className="shrink-0 text-xs tabular-nums text-content-muted">{percent}%</span>
           </span>
           <p className="mt-0.5 text-xs tabular-nums text-content-muted">
@@ -64,7 +122,7 @@ export function MediaProcessingProgress({
           </p>
           <Progress value={progress} label={`${percent}% media processing complete`} className="mt-2.5" />
           <p className="mt-2 text-[11px] text-content-muted">
-            Your originals are already backed up. Imadeo is creating previews and preparing videos in the background.
+            {state.description}
           </p>
         </span>
       </div>

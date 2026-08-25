@@ -5,6 +5,52 @@ const immediateBackgroundTasks = () => ({
   runMediaProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()),
 }) as never;
 
+const processingLifecycle = () => ({
+  stop: vi.fn().mockResolvedValue({ removedJobs: 0 }),
+  resume: vi.fn().mockResolvedValue(0),
+  uploadReceiptIsCancelled: vi.fn().mockResolvedValue(false),
+}) as never;
+
+describe('AssetLifecycleService.moveToTrash', () => {
+  it('trashes the original and Live Photo companion without removing their locations', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const processing = processingLifecycle() as unknown as {
+      stop: ReturnType<typeof vi.fn>;
+    };
+    const service = new AssetLifecycleService(
+      {
+        asset: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: 'still-id', livePhotoVideoId: 'motion-id' },
+          ]),
+          updateMany,
+        },
+      } as never,
+      {} as never,
+      { refreshThumbnailsForAssets: refresh } as never,
+      immediateBackgroundTasks(),
+      processing as never,
+    );
+
+    await expect(service.moveToTrash('owner-id', ['still-id'])).resolves.toEqual({
+      trashed: 2,
+      assetIds: ['still-id', 'motion-id'],
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['still-id', 'motion-id'] },
+        ownerId: 'owner-id',
+        deletedAt: null,
+      },
+      data: { deletedAt: expect.any(Date), status: 'TRASHED' },
+    });
+    expect(updateMany.mock.calls[0][0].data).not.toHaveProperty('folderId');
+    expect(processing.stop).toHaveBeenCalledWith('owner-id', ['still-id', 'motion-id']);
+    expect(refresh).toHaveBeenCalledWith(['still-id', 'motion-id']);
+  });
+});
+
 describe('AssetLifecycleService.deletePermanently', () => {
   it('removes only trashed owned assets, their files and their quota usage', async () => {
     const deleteMany = vi.fn().mockResolvedValue({ count: 1 });
@@ -33,6 +79,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       { removeMany } as never,
       { refreshThumbnailsForAssets: refresh } as never,
       immediateBackgroundTasks(),
+      processingLifecycle(),
     );
 
     await expect(service.deletePermanently('owner-id', ['asset-id'])).resolves.toEqual({
@@ -89,6 +136,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       { removeMany } as never,
       { refreshThumbnailsForAssets: vi.fn() } as never,
       immediateBackgroundTasks(),
+      processingLifecycle(),
     );
 
     await expect(service.deletePermanently('owner-id', ['asset-id'])).rejects.toThrow(
@@ -120,6 +168,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       { removeMany: vi.fn().mockResolvedValue(undefined) } as never,
       { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
       immediateBackgroundTasks(),
+      processingLifecycle(),
     );
 
     await expect(service.deletePermanently('owner-id', assets.map(({ id }) => id))).resolves.toEqual({
@@ -150,6 +199,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       { removeMany: vi.fn().mockResolvedValue(undefined) } as never,
       { refreshThumbnailsForAssets: vi.fn().mockRejectedValue(new Error('cover failed')) } as never,
       immediateBackgroundTasks(),
+      processingLifecycle(),
     );
 
     await expect(service.deletePermanently('owner-id', ['asset-id'])).resolves.toEqual({
@@ -190,6 +240,7 @@ describe('AssetLifecycleService.deletePermanently', () => {
       { removeMany } as never,
       { refreshThumbnailsForAssets: vi.fn().mockResolvedValue(undefined) } as never,
       immediateBackgroundTasks(),
+      processingLifecycle(),
     );
 
     await expect(service.deletePermanently('owner-id', ['still-id'])).resolves.toEqual({

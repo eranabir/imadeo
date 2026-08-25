@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { AppState } from 'react-native';
 import { restore as restoreAutoBackup } from './lib/autobackup';
 import { ensureFreshToken, onSessionExpired, signOut, storedToken } from './lib/auth';
-import { beginServerCheck, libraryChanged, request } from './lib/api';
+import { beginServerCheck, libraryChanged, markServerReachable, request } from './lib/api';
 import { restorePreferences } from './lib/preferences';
 import {
   forget,
@@ -119,7 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const activateServerAddress = async (address: string) => {
-    if (!server || !server.addresses.includes(address) || server.url === address) return;
+    if (!server || server.url === address) return;
     const next = {
       ...server,
       url: address,
@@ -139,7 +139,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setServer(nextServer);
     },
     signedInNow: () => {
-      beginServerCheck();
+      // The login response itself proved both the address and credentials.
+      // Re-probing here added two serial network trips before showing the app.
+      markServerReachable();
       setSignedIn(true);
     },
     addServerAddress: async (address) => {

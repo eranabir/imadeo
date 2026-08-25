@@ -119,6 +119,9 @@ export const configuration = () => {
     ffmpeg: {
       crf: int(process.env.FFMPEG_CRF, 23),
       preset: process.env.FFMPEG_PRESET ?? 'veryfast',
+      // A background encode may still be finishing when a user returns. Keep
+      // one core busy rather than starving the API on small NAS hardware.
+      threads: Math.max(1, int(process.env.FFMPEG_THREADS, 1)),
       targetResolution: int(process.env.FFMPEG_TARGET_RESOLUTION, 720),
       targetVideoCodec: process.env.FFMPEG_VIDEO_CODEC ?? 'h264',
       targetAudioCodec: process.env.FFMPEG_AUDIO_CODEC ?? 'aac',
@@ -189,9 +192,12 @@ export const configuration = () => {
     jobs: {
       processingConcurrency: int(
         process.env.JOB_BACKGROUND_CONCURRENCY ?? process.env.JOB_THUMBNAIL_CONCURRENCY,
-        3,
+        1,
       ),
-      activeUserConcurrency: int(process.env.JOB_ACTIVE_USER_CONCURRENCY, 1),
+      // Foreground use always wins. Derivative work starts only after the app
+      // becomes idle; this is deliberately not operator-overridable because a
+      // single transcoding slot can make small NAS hardware unreachable.
+      activeUserConcurrency: 0,
       mlConcurrency: int(process.env.JOB_ML_CONCURRENCY, 1),
       uploadIdleMs: int(process.env.JOB_UPLOAD_IDLE_MS, 10_000),
       userIdleMs: int(process.env.JOB_USER_IDLE_MS, 15_000),

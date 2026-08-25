@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   DarkTheme,
@@ -13,7 +13,13 @@ import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { ConnectionErrorScreen } from '../src/screens/ConnectionErrorScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
-import { beginServerCheck, ping, request, useServerReachability } from '../src/lib/api';
+import {
+  beginServerCheck,
+  markServerReachable,
+  ping,
+  request,
+  useServerReachability,
+} from '../src/lib/api';
 import { findReachable } from '../src/lib/server';
 import { SelectionProvider } from '../src/selection';
 import { SessionProvider, useSession } from '../src/session';
@@ -95,6 +101,7 @@ function Gate() {
   const [verifiedServer, setVerifiedServer] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const justSignedIn = useRef(false);
 
   // Check the selected server before mounting any route. Signed-in sessions
   // use an authenticated endpoint so an expired JWT is resolved here, at the
@@ -105,6 +112,14 @@ function Gate() {
       return;
     }
 
+    // The successful login request already proved this exact address and the
+    // new token. Do not follow it with a root probe plus /users/me before the
+    // first screen can mount.
+    if (signedIn && justSignedIn.current && verifiedServer === server.url) {
+      justSignedIn.current = false;
+      return;
+    }
+
     let active = true;
     // An alternate address is another route to the workspace we have already
     // authenticated, not a different workspace. Keep the mounted native tabs
@@ -112,44 +127,46 @@ function Gate() {
     // a harmless address update flash the opening screen and reset the tab.
     if (!signedIn) setVerifiedServer(null);
     setVerificationFailed(false);
+
+    // A saved server without a token can show its sign-in form immediately.
+    // Connect and Login are themselves the authoritative network checks.
+    if (!signedIn) {
+      markServerReachable();
+      return;
+    }
+
     beginServerCheck();
 
     const check = async () => {
-      const address = await findReachable(server);
-      if (!active) return;
-      if (!address) {
-        await ping(server.url);
-        if (active && signedIn) setVerificationFailed(true);
+      // The authenticated request proves the session and the common address in
+      // one round trip. Only scan alternate routes when that address fails.
+      try {
+        await request(server.url, '/users/me');
+        if (active) {
+          setVerificationFailed(false);
+          setVerifiedServer(server.url);
+        }
         return;
-      }
-      if (address !== server.url) {
-        await activateServerAddress(address);
-        return;
+      } catch {
+        if (!active) return;
       }
 
-      if (signedIn) {
-        await request(server.url, '/users/me')
-          .then(() => {
-            if (active) {
-              setVerificationFailed(false);
-              setVerifiedServer(server.url);
-            }
-          })
-          .catch(() => {
-            if (active) setVerificationFailed(true);
-          });
+      const address = await findReachable(server);
+      if (!active) return;
+      if (address !== server.url) {
+        if (address) await activateServerAddress(address);
+        else {
+          await ping(server.url);
+          if (active) setVerificationFailed(true);
+        }
         return;
       }
-      await ping(server.url);
+      setVerificationFailed(true);
     };
 
     void check();
-    // This is authenticated while signed in: it refreshes an expired access
-    // token, detects an expired refresh token, and detects an offline server.
-    const interval = setInterval(() => void check(), 20_000);
     return () => {
       active = false;
-      clearInterval(interval);
     };
   }, [server, signedIn]);
 
@@ -179,7 +196,7 @@ function Gate() {
         setVerificationFailed(true);
       }
     } else {
-      await ping(server.url);
+      markServerReachable();
     }
     setRetrying(false);
   };
@@ -217,7 +234,12 @@ function Gate() {
     return (
       <SignInScreen
         serverUrl={server.url}
-        onSignedIn={signedInNow}
+        onSignedIn={() => {
+          justSignedIn.current = true;
+          setVerificationFailed(false);
+          setVerifiedServer(server.url);
+          signedInNow();
+        }}
         onChangeServer={changeServer}
       />
     );

@@ -175,6 +175,10 @@ export class AssetService implements OnModuleInit {
   async createFromUpload(userId: string, file: UploadedFile, dto: UploadAssetDto) {
     if (dto.uploadId) {
       return this.withUploadLock(`receipt:${userId}:${dto.uploadId}`, async () => {
+        if (await this.lifecycle.uploadReceiptIsCancelled(userId, dto.uploadId!)) {
+          await this.storage.remove(file.path);
+          throw new ConflictException('Upload stopped because this media was moved to Trash');
+        }
         const receipt = await this.findUploadReceipt(
           userId,
           dto.uploadId!,
@@ -342,7 +346,7 @@ export class AssetService implements OnModuleInit {
           if (dto.deferProcessing && dto.uploadBatchId) {
             this.deferAssetProcessing(userId, dto.uploadBatchId, existing.id);
           } else {
-            await this.resumeAssetProcessing(userId, [existing.id]);
+            await this.lifecycle.resumeProcessingForAssets(userId, [existing.id]);
           }
           return { id: existing.id, status: 'restored' as const };
         }
@@ -688,99 +692,6 @@ export class AssetService implements OnModuleInit {
     return pendingIds.length;
   }
 
-  /** Restarts only the incomplete stages of assets brought back from Trash. */
-  private async resumeAssetProcessing(userId: string, assetIds: string[]) {
-    const assets = await this.prisma.asset.findMany({
-      where: { id: { in: [...new Set(assetIds)] }, ownerId: userId, deletedAt: null },
-      select: {
-        id: true,
-        type: true,
-        visibility: true,
-        jobStatus: true,
-      },
-    });
-    const metadata = assets.filter(({ jobStatus }) => !jobStatus?.metadataExtractedAt);
-    const thumbnails = assets.filter(
-      ({ jobStatus }) => jobStatus?.metadataExtractedAt && !jobStatus.thumbnailAt,
-    );
-    const ready = assets.filter(({ jobStatus }) => Boolean(jobStatus?.thumbnailAt));
-
-    await this.enqueueMissingStage(
-      QUEUE.METADATA,
-      JOB.EXTRACT_METADATA,
-      metadata.map(({ id }) => id),
-    );
-    await this.enqueueMissingStage(
-      QUEUE.THUMBNAIL,
-      JOB.GENERATE_THUMBNAILS,
-      thumbnails.filter(({ type }) => type !== AssetType.VIDEO).map(({ id }) => id),
-    );
-    await this.enqueueMissingStage(
-      QUEUE.VIDEO,
-      JOB.GENERATE_THUMBNAILS,
-      thumbnails.filter(({ type }) => type === AssetType.VIDEO).map(({ id }) => id),
-    );
-    await this.enqueueMissingStage(
-      QUEUE.VIDEO,
-      JOB.TRANSCODE_VIDEO,
-      ready
-        .filter(({ type, jobStatus }) => type === AssetType.VIDEO && !jobStatus?.videoEncodedAt)
-        .map(({ id }) => id),
-    );
-
-    if (this.config.get('duplicates.enabled', { infer: true })) {
-      await this.enqueueMissingStage(
-        QUEUE.DUPLICATE,
-        JOB.DETECT_DUPLICATES,
-        ready.filter(({ jobStatus }) => !jobStatus?.duplicatesDetectedAt).map(({ id }) => id),
-      );
-    }
-    if (this.config.get('machineLearning.enabled', { infer: true })) {
-      await this.enqueueMissingStage(
-        QUEUE.SMART_SEARCH,
-        JOB.ENCODE_CLIP,
-        ready
-          .filter(
-            ({ visibility, jobStatus }) =>
-              visibility !== AssetVisibility.LOCKED &&
-              visibility !== AssetVisibility.HIDDEN &&
-              !jobStatus?.smartSearchAt,
-          )
-          .map(({ id }) => id),
-      );
-    }
-    if (this.ml.faceRecognitionEnabled) {
-      const recognition = ready.filter(
-        ({ type, visibility, jobStatus }) =>
-          visibility !== AssetVisibility.LOCKED &&
-          visibility !== AssetVisibility.HIDDEN &&
-          (type !== AssetType.VIDEO || this.ml.videoRecognitionEnabled) &&
-          (!jobStatus?.facesRecognizedAt || !jobStatus.petsRecognizedAt),
-      );
-      await this.enqueueMissingStage(
-        QUEUE.FACE_DETECTION,
-        JOB.DETECT_FACES,
-        recognition.map(({ id }) => id),
-      );
-    }
-  }
-
-  private async enqueueMissingStage(
-    queue: (typeof QUEUE)[keyof typeof QUEUE],
-    job: string,
-    assetIds: string[],
-  ) {
-    for (let index = 0; index < assetIds.length; index += AssetService.PROCESSING_QUEUE_BATCH_SIZE) {
-      const batch = assetIds.slice(index, index + AssetService.PROCESSING_QUEUE_BATCH_SIZE);
-      await this.jobs.releaseJobIds(queue, job, batch);
-      await this.jobs.enqueueMany(
-        queue,
-        job,
-        batch.map((assetId) => ({ assetId })),
-      );
-    }
-  }
-
   private forgetDeferredAssetProcessing(assetIds: string[]) {
     const removed = new Set(assetIds);
     for (const [key, deferred] of this.deferredUploadBatches) {
@@ -794,6 +705,10 @@ export class AssetService implements OnModuleInit {
   /** Recovers browser batches that vanished before sending upload-complete. */
   @Interval(60_000)
   async resumeInterruptedUploadBatches() {
+    // The HTTP process owns upload receipts and their in-memory completion
+    // timers. Running this scheduler in the worker as well only duplicates DB
+    // scans; BullMQ job ids would hide the mistake but not its cost.
+    if (process.env.IMADEO_ROLE === 'worker') return;
     if (this.deferredRecoveryRunning) return;
     this.deferredRecoveryRunning = true;
     try {
@@ -1628,7 +1543,7 @@ export class AssetService implements OnModuleInit {
       }),
     ], BULK_MUTATION_TRANSACTION);
     this.forgetDeferredAssetProcessing(affectedIds);
-    await this.jobs.cancelAssetProcessing(affectedIds).catch((error) =>
+    await this.lifecycle.stopProcessingForAssets(userId, affectedIds).catch((error) =>
       this.logger.warn(`Could not cancel processing for trashed assets: ${String(error)}`),
     );
     // Cover regeneration is cleanup, not part of moving the asset to Trash.
@@ -1673,7 +1588,7 @@ export class AssetService implements OnModuleInit {
       where: { id: { in: affectedIds }, deletedAt: { not: null } },
       data: { deletedAt: null, status: 'ACTIVE' },
     });
-    await this.resumeAssetProcessing(userId, affectedIds);
+    await this.lifecycle.resumeProcessingForAssets(userId, affectedIds);
     this.lifecycle.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }
@@ -1697,7 +1612,7 @@ export class AssetService implements OnModuleInit {
       data: { deletedAt: null, status: 'ACTIVE' },
     });
     const affectedIds = assets.map((asset) => asset.id);
-    await this.resumeAssetProcessing(userId, affectedIds);
+    await this.lifecycle.resumeProcessingForAssets(userId, affectedIds);
     this.lifecycle.refreshThumbnailsForAssets(affectedIds);
     return { restored: affectedIds.length };
   }

@@ -5,6 +5,8 @@ import type { Request, Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { AuthDto } from '../../common/auth.types';
 import { Auth, Authed } from '../../common/decorators';
 import { AssetService } from './asset.service';
@@ -27,6 +29,39 @@ export const mimeFor = (path: string, originalFileName?: string) => {
   return MIME_TYPES[extension] ?? 'application/octet-stream';
 };
 
+/**
+ * Finished derivatives are immutable during normal browsing and safe to keep
+ * in the private browser cache. A provisional browser thumbnail, or a smaller
+ * derivative used as a temporary fallback, must be fetched again after the
+ * processing worker replaces it.
+ */
+export const thumbnailCacheControl = (path: string, expectedPath: string | null) =>
+  path === expectedPath && !path.endsWith('-browser.jpg')
+    ? 'private, max-age=86400'
+    : 'private, no-store';
+
+/** Close the source immediately when a browser abandons a thumbnail or video. */
+export async function pipeMediaStream(source: Readable, req: Request, res: Response) {
+  const abortController = new AbortController();
+  const abort = () => {
+    if (!res.writableFinished) abortController.abort();
+  };
+  req.once('aborted', abort);
+  res.once('close', abort);
+
+  try {
+    await pipeline(source, res, { signal: abortController.signal });
+  } catch (error) {
+    // Closing a tab or scrolling a virtual grid recycles image requests. That
+    // is a normal cancellation, not a server error.
+    if (!abortController.signal.aborted && !req.destroyed && !res.destroyed) throw error;
+  } finally {
+    req.off('aborted', abort);
+    res.off('close', abort);
+    source.destroy();
+  }
+}
+
 @ApiTags('Media')
 @Controller('assets')
 export class MediaController {
@@ -35,9 +70,6 @@ export class MediaController {
   @Auth({ sharedLink: true })
   @Get(':id/thumbnail')
   @ApiOperation({ summary: 'Grid thumbnail. Falls back to the original until one is generated.' })
-  // A derivative may not exist on the first request immediately after upload.
-  // Revalidation prevents that temporary response becoming permanent.
-  @Header('Cache-Control', 'private, no-cache')
   async thumbnail(
     @Authed() auth: AuthDto,
     @Param('id') id: string,
@@ -45,10 +77,18 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    const requestedSize = size === 'preview' ? 'preview' : 'thumbnail';
     const { path, asset } = await this.assetService.resolveMediaPath(
       auth,
       id,
-      size === 'preview' ? 'preview' : 'thumbnail',
+      requestedSize,
+    );
+    res.setHeader(
+      'Cache-Control',
+      thumbnailCacheControl(
+        path,
+        requestedSize === 'preview' ? asset.previewPath : asset.thumbnailPath,
+      ),
     );
     return this.send(path, req, res, asset.originalFileName);
   }
@@ -163,8 +203,7 @@ export class MediaController {
 
     if (!range) {
       res.setHeader('Content-Length', info.size);
-      createReadStream(path).pipe(res);
-      return;
+      return pipeMediaStream(createReadStream(path), req, res);
     }
 
     const match = /bytes=(\d*)-(\d*)/.exec(range);
@@ -185,6 +224,6 @@ export class MediaController {
     res.status(206);
     res.setHeader('Content-Range', `bytes ${start}-${end}/${info.size}`);
     res.setHeader('Content-Length', end - start + 1);
-    createReadStream(path, { start, end }).pipe(res);
+    return pipeMediaStream(createReadStream(path, { start, end }), req, res);
   }
 }

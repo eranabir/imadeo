@@ -128,7 +128,7 @@ export class PeopleAndPetsController {
     }
 
     const processingAssets =
-      this.backgroundTasks.getStatus().activeQueues[QUEUE.FACE_DETECTION] ?? 0;
+      (await this.backgroundTasks.getSharedStatus()).activeQueues[QUEUE.FACE_DETECTION] ?? 0;
     const queuedAssets = queue.active + queue.waiting + queue.delayed;
 
     return {

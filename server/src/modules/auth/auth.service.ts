@@ -14,6 +14,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import type { AuthDto } from '../../common/auth.types';
 import type { AppConfig } from '../../config/configuration';
+import { DEFAULT_PREFERENCES } from '../user/user.service';
 
 const SALT_ROUNDS = 12;
 
@@ -27,6 +28,11 @@ export interface LoginResult {
     isAdmin: boolean;
     shouldChangePassword: boolean;
     profileImagePath: string;
+    quotaSizeInBytes: bigint | null;
+    quotaUsageInBytes: bigint;
+    oauthProvider: string | null;
+    hasPassword: boolean;
+    preferences: typeof DEFAULT_PREFERENCES;
   };
 }
 
@@ -187,6 +193,14 @@ export class AuthService {
         isAdmin: user.isAdmin,
         shouldChangePassword: user.shouldChangePassword,
         profileImagePath: user.profileImagePath,
+        quotaSizeInBytes: user.quotaSizeInBytes,
+        quotaUsageInBytes: user.quotaUsageInBytes,
+        oauthProvider: user.oauthProvider,
+        hasPassword: user.password.length > 0,
+        preferences: {
+          ...DEFAULT_PREFERENCES,
+          ...(user.preferences as Partial<typeof DEFAULT_PREFERENCES>),
+        },
       },
     };
   }

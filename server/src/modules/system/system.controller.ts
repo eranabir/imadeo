@@ -91,12 +91,20 @@ export class SystemController {
     this.backgroundTasks.noteUserActivity();
   }
 
+  @Auth()
+  @Get('processing/status')
+  @ApiOperation({ summary: 'Whether background media work is running or waiting' })
+  async processingStatus() {
+    const { mode, activeUploads, media, heavy } = await this.backgroundTasks.getSharedStatus();
+    return { mode, activeUploads, media, heavy };
+  }
+
   @Auth({ admin: true })
   @Get('admin/processing')
   @ApiOperation({ summary: 'Live file-processing jobs and queue depth' })
   async processing() {
     const snapshot = await this.jobs.getAssetProcessingSnapshot();
-    const scheduler = this.backgroundTasks.getStatus();
+    const scheduler = await this.backgroundTasks.getSharedStatus();
     const activeSlots = new Map(Object.entries(scheduler.activeQueues));
     const activeJobs = snapshot.activeJobs.filter(({ queue }) => {
       const available = activeSlots.get(queue) ?? 0;

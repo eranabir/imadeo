@@ -5,6 +5,7 @@ import type { AppConfig } from '../../config/configuration';
 import { ALL_QUEUES } from './job.constants';
 import { BackgroundTaskGate } from './background-task-gate.service';
 import { JobService } from './job.service';
+import { ProcessingSignalService } from './processing-signal.service';
 
 @Global()
 @Module({
@@ -25,7 +26,7 @@ import { JobService } from './job.service';
     }),
     ...ALL_QUEUES.map((name) => BullModule.registerQueue({ name })),
   ],
-  providers: [JobService, BackgroundTaskGate],
-  exports: [JobService, BackgroundTaskGate, BullModule],
+  providers: [JobService, ProcessingSignalService, BackgroundTaskGate],
+  exports: [JobService, ProcessingSignalService, BackgroundTaskGate, BullModule],
 })
 export class JobModule {}

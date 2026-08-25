@@ -16,7 +16,7 @@ import type {
   UpdateUserDto,
 } from './user.dto';
 
-const DEFAULT_PREFERENCES = {
+export const DEFAULT_PREFERENCES = {
   theme: 'system',
   tileSize: 235,
   showAssetsInSubfolders: true,

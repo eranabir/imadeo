@@ -182,10 +182,45 @@ describe('AlbumService.processingStatus', () => {
 });
 
 describe('AlbumService Trash lifecycle', () => {
+  it('moves selected owned media to Trash while preserving album membership', async () => {
+    const moveToTrash = vi.fn().mockResolvedValue({ trashed: 1, assetIds: ['photo-id'] });
+    const deleteMany = vi.fn();
+    const service = new AlbumService(
+      {
+        album: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({ thumbnailAssetId: null }),
+        },
+        albumAsset: {
+          findMany: vi.fn().mockResolvedValue([{ assetId: 'photo-id' }]),
+          deleteMany,
+        },
+        asset: { findMany: vi.fn().mockResolvedValue([{ id: 'photo-id' }]) },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { moveToTrash } as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await expect(
+      service.removeAssets(
+        { user: { id: 'owner-id' } } as never,
+        'album-id',
+        ['photo-id'],
+      ),
+    ).resolves.toEqual([
+      { id: 'photo-id', success: true, error: undefined, trashed: true },
+    ]);
+    expect(moveToTrash).toHaveBeenCalledWith('owner-id', ['photo-id']);
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+
   it('moves the album and every live photo inside it to the same Trash batch', async () => {
     const updateAssets = vi.fn().mockResolvedValue({ count: 2 });
     const updateAlbum = vi.fn().mockResolvedValue({});
     const refresh = vi.fn().mockResolvedValue(undefined);
+    const stopProcessing = vi.fn().mockResolvedValue({ removedJobs: 0 });
     const transaction = {
       albumAsset: {
         findMany: vi.fn().mockResolvedValue([{ assetId: 'photo-1' }, { assetId: 'photo-2' }]),
@@ -198,7 +233,10 @@ describe('AlbumService Trash lifecycle', () => {
       {} as never,
       {} as never,
       {} as never,
-      { refreshThumbnailsForAssets: refresh } as never,
+      {
+        refreshThumbnailsForAssets: refresh,
+        stopProcessingForAssets: stopProcessing,
+      } as never,
     );
     vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
 
@@ -211,6 +249,7 @@ describe('AlbumService Trash lifecycle', () => {
       data: { deletedAt, status: 'TRASHED' },
     });
     expect(refresh).toHaveBeenCalledWith(['photo-1', 'photo-2']);
+    expect(stopProcessing).toHaveBeenCalledWith('owner-id', ['photo-1', 'photo-2']);
   });
 
   it('permanently removes only photos from the album Trash batch', async () => {

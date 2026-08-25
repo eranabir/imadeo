@@ -169,6 +169,7 @@ export class FolderController {
   }
 
   @Delete(':id/assets')
+  @ApiOperation({ summary: 'Move media in this folder to Trash' })
   removeAssets(
     @AuthedUserId() userId: string,
     @Param('id') id: string,

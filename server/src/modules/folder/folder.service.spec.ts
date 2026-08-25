@@ -10,6 +10,8 @@ function serviceWith(transaction: Record<string, unknown>) {
   return new FolderService(prisma, {
     refreshThumbnailsForAssets: vi.fn(),
     deletePermanently: vi.fn(),
+    stopProcessingForAssets: vi.fn().mockResolvedValue({ removedJobs: 0 }),
+    resumeProcessingForAssets: vi.fn().mockResolvedValue(0),
   } as never);
 }
 
@@ -215,6 +217,31 @@ describe('FolderService.create', () => {
 });
 
 describe('FolderService Trash round-trip', () => {
+  it('moves selected media to Trash without detaching it from the folder', async () => {
+    const updateMany = vi.fn();
+    const moveToTrash = vi.fn().mockResolvedValue({ trashed: 1, assetIds: ['photo-id'] });
+    const prisma = {
+      folder: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'folder-id',
+          ownerId: 'owner-id',
+          path: '/folder-id/',
+        }),
+      },
+      asset: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'photo-id' }]),
+        updateMany,
+      },
+    } as unknown as PrismaService;
+    const service = new FolderService(prisma, { moveToTrash } as never);
+
+    await expect(
+      service.removeAssets('owner-id', 'folder-id', ['photo-id']),
+    ).resolves.toEqual({ removed: 1, trashed: 1 });
+    expect(moveToTrash).toHaveBeenCalledWith('owner-id', ['photo-id']);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('refuses to restore a folder beside an active folder with the same name', async () => {
     const deletedAt = new Date('2026-08-14T00:00:00Z');
     const deletedFolder = {
@@ -279,6 +306,7 @@ describe('FolderService Trash round-trip', () => {
     const service = new FolderService(prisma, {
       refreshThumbnailsForAssets: vi.fn(),
       deletePermanently: vi.fn(),
+      stopProcessingForAssets: vi.fn().mockResolvedValue({ removedJobs: 0 }),
     } as never);
 
     await service.remove('owner-id', 'folder-id');

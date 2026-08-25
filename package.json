@@ -9,9 +9,10 @@
     "mobile"
   ],
   "scripts": {
-    "dev": "yarn infra:up && concurrently -n server,web -c cyan,magenta \"yarn dev:server\" \"yarn dev:app\"",
+    "dev": "yarn infra:up && yarn db:generate && concurrently -n api,worker,web -c cyan,yellow,magenta \"yarn dev:server\" \"yarn dev:worker\" \"yarn dev:app\"",
     "dev:cert": "node scripts/dev-cert.mjs",
-    "dev:server": "yarn workspace @imadeo/server dev",
+    "dev:server": "node scripts/run-role.mjs api yarn workspace @imadeo/server dev:api",
+    "dev:worker": "node scripts/run-role.mjs worker yarn workspace @imadeo/server dev:worker",
     "dev:app": "yarn workspace @imadeo/app dev",
     "docs": "npx serve docs",
     "build": "yarn workspace @imadeo/server build && yarn workspace @imadeo/app build",

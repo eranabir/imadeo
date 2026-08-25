@@ -9,16 +9,28 @@ describe('BackgroundTaskGate', () => {
     idleMs = 10_000,
     userIdleMs = 15_000,
     processingConcurrency = 3,
-    activeUserConcurrency = 1,
+    activeUserConcurrency = 0,
   ) =>
-    new BackgroundTaskGate({
-      get: vi.fn((key: string) => {
-        if (key === 'jobs.userIdleMs') return userIdleMs;
-        if (key === 'jobs.processingConcurrency') return processingConcurrency;
-        if (key === 'jobs.activeUserConcurrency') return activeUserConcurrency;
-        return idleMs;
-      }),
-    } as never);
+    new BackgroundTaskGate(
+      {
+        get: vi.fn((key: string) => {
+          if (key === 'jobs.userIdleMs') return userIdleMs;
+          if (key === 'jobs.processingConcurrency') return processingConcurrency;
+          if (key === 'jobs.activeUserConcurrency') return activeUserConcurrency;
+          return idleMs;
+        }),
+      } as never,
+      {
+        beginUpload: vi.fn(() => vi.fn()),
+        noteUserActivity: vi.fn(),
+        waitForBackgroundWindow: vi.fn().mockResolvedValue(undefined),
+        backgroundWindowIsOpen: vi.fn().mockResolvedValue(true),
+        activeUploadCount: vi.fn().mockResolvedValue(0),
+        userIsActive: vi.fn().mockResolvedValue(false),
+        publishWorkerStatus: vi.fn().mockResolvedValue(undefined),
+        readWorkerStatus: vi.fn().mockResolvedValue(null),
+      } as never,
+    );
 
   it('holds background work until the upload idle grace period ends', async () => {
     const gate = createGate();
@@ -78,39 +90,25 @@ describe('BackgroundTaskGate', () => {
     expect(started).toBe(true);
   });
 
-  it('keeps one media slot moving during activity while heavy work waits', async () => {
+  it('holds media and heavy processing until the app becomes idle', async () => {
     const gate = createGate(0, 2_000);
     gate.noteUserActivity();
     const events: string[] = [];
-    let releaseFirst: () => void = () => undefined;
-    const firstHold = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
-    const first = gate.runMediaProcessing(async () => {
-      events.push('media-1-start');
-      await firstHold;
-      events.push('media-1-end');
-    });
-    const second = gate.runMediaProcessing(async () => events.push('media-2'));
+    const media = gate.runMediaProcessing(async () => events.push('media'));
     const heavy = gate.runHeavyProcessing(async () => events.push('heavy'));
 
-    expect(events).toEqual(['media-1-start']);
+    expect(events).toEqual([]);
     expect(gate.getStatus()).toMatchObject({
       mode: 'interactive',
-      media: { active: 1, waiting: 1, limit: 1 },
+      media: { active: 0, waiting: 1, limit: 0 },
       heavy: { active: 0 },
     });
     await vi.advanceTimersByTimeAsync(1_999);
-    expect(events).toEqual(['media-1-start']);
-
-    releaseFirst();
-    await first;
-    await second;
-    expect(events).toEqual(['media-1-start', 'media-1-end', 'media-2']);
+    expect(events).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(1);
-    await heavy;
-    expect(events).toEqual(['media-1-start', 'media-1-end', 'media-2', 'heavy']);
+    await Promise.all([media, heavy]);
+    expect(events).toEqual(['media', 'heavy']);
   });
 
   it('finishes active ML, runs waiting thumbnails first, and never overlaps them', async () => {
@@ -130,6 +128,7 @@ describe('BackgroundTaskGate', () => {
       await machineLearningHold;
       events.push('ml-1-end');
     });
+    await vi.advanceTimersByTimeAsync(0);
     const thumbnail = gate.runThumbnail(async () => {
       events.push('thumbnail-start');
       await thumbnailHold;
@@ -142,6 +141,7 @@ describe('BackgroundTaskGate', () => {
     expect(events).toEqual(['ml-1-start']);
     finishMachineLearning();
     await firstMachineLearning;
+    await vi.advanceTimersByTimeAsync(0);
     expect(events).toEqual(['ml-1-start', 'ml-1-end', 'thumbnail-start']);
 
     finishThumbnail();
@@ -163,6 +163,7 @@ describe('BackgroundTaskGate', () => {
     });
 
     const processing = gate.runMachineLearning(async () => hold, 'face-detection');
+    await vi.advanceTimersByTimeAsync(0);
     expect(gate.getStatus().activeQueues).toEqual({ 'face-detection': 1 });
 
     finish();

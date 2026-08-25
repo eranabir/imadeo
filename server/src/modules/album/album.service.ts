@@ -496,6 +496,7 @@ export class AlbumService {
       await tx.album.update({ where: { id: albumId }, data: { deletedAt } });
       return ids;
     }, BULK_MUTATION_TRANSACTION);
+    await this.assetLifecycle.stopProcessingForAssets(auth.user.id, assetIds);
     await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
     return { successful: true, trashedAssets: assetIds.length };
   }
@@ -521,6 +522,7 @@ export class AlbumService {
         data: { deletedAt: null, status: 'ACTIVE' },
       }),
     ], BULK_MUTATION_TRANSACTION);
+    await this.assetLifecycle.resumeProcessingForAssets(userId, assetIds);
     await this.assetLifecycle.refreshThumbnailsForAssets(assetIds);
     return { ...restored, restoredAssets: assetIds.length };
   }
@@ -608,25 +610,32 @@ export class AlbumService {
 
   async removeAssets(auth: AuthDto, albumId: string, assetIds: string[]) {
     const access = await this.assertCanEdit(auth, albumId);
+    const requested = [...new Set(assetIds)];
 
-    // An editor may only pull out what they themselves contributed.
-    const removable =
-      access === 'owner'
-        ? assetIds
-        : (
-            await this.prisma.albumAsset.findMany({
-              where: { albumId, assetId: { in: assetIds }, addedById: auth.user.id },
-              select: { assetId: true },
-            })
-          ).map((r) => r.assetId);
+    // Album membership is intentionally preserved: restoring the media from
+    // Trash must put it back in the same album. Editors may only delete media
+    // they contributed, and nobody can trash another account's original.
+    const memberships = await this.prisma.albumAsset.findMany({
+      where: {
+        albumId,
+        assetId: { in: requested },
+        ...(access === 'editor' ? { addedById: auth.user.id } : {}),
+      },
+      select: { assetId: true },
+    });
+    const memberIds = memberships.map(({ assetId }) => assetId);
+    const owned = await this.prisma.asset.findMany({
+      where: { id: { in: memberIds }, ownerId: auth.user.id, deletedAt: null },
+      select: { id: true },
+    });
+    const ownedIds = owned.map(({ id }) => id);
+    await this.assetLifecycle.moveToTrash(auth.user.id, ownedIds);
 
-    await this.prisma.albumAsset.deleteMany({ where: { albumId, assetId: { in: removable } } });
-
-    // Repoint the cover if it just left the album.
+    // Repoint the cover if it just entered Trash.
     const album = await this.prisma.album.findUniqueOrThrow({ where: { id: albumId } });
-    if (album.thumbnailAssetId && removable.includes(album.thumbnailAssetId)) {
+    if (album.thumbnailAssetId && ownedIds.includes(album.thumbnailAssetId)) {
       const next = await this.prisma.albumAsset.findFirst({
-        where: { albumId },
+        where: { albumId, asset: ACTIVE_ALBUM_ASSET },
         orderBy: { createdAt: 'asc' },
       });
       await this.prisma.album.update({
@@ -635,10 +644,11 @@ export class AlbumService {
       });
     }
 
-    return assetIds.map((id) => ({
+    return requested.map((id) => ({
       id,
-      success: removable.includes(id),
-      error: removable.includes(id) ? undefined : 'no_permission',
+      success: ownedIds.includes(id),
+      error: ownedIds.includes(id) ? undefined : 'no_permission',
+      trashed: ownedIds.includes(id),
     }));
   }
 

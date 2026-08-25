@@ -705,6 +705,7 @@ export class FolderService {
 
       return { deletedFolders: ids.length, trashedAssetIds: content.map((asset) => asset.id) };
     }, BULK_MUTATION_TRANSACTION);
+    await this.assetLifecycle.stopProcessingForAssets(userId, result.trashedAssetIds);
     await this.assetLifecycle.refreshThumbnailsForAssets(result.trashedAssetIds);
     return { deletedFolders: result.deletedFolders, trashedAssets: result.trashedAssetIds.length };
   }
@@ -784,6 +785,10 @@ export class FolderService {
         data: { deletedAt: null },
       }),
     ], BULK_MUTATION_TRANSACTION);
+    await this.assetLifecycle.resumeProcessingForAssets(
+      userId,
+      assetRows.map((asset) => asset.id),
+    );
     await this.assetLifecycle.refreshThumbnailsForAssets(assetRows.map((asset) => asset.id));
 
     const restored = await this.prisma.folder.findUniqueOrThrow({ where: { id: root.id } });
@@ -925,11 +930,16 @@ export class FolderService {
   }
 
   async removeAssets(userId: string, folderId: string, assetIds: string[]) {
-    const { count } = await this.prisma.asset.updateMany({
-      where: { id: { in: assetIds }, ownerId: userId, folderId },
-      data: { folderId: null },
+    await this.getOwnedById(userId, folderId);
+    const assets = await this.prisma.asset.findMany({
+      where: { id: { in: [...new Set(assetIds)] }, ownerId: userId, folderId, deletedAt: null },
+      select: { id: true },
     });
-    return { removed: count };
+    const result = await this.assetLifecycle.moveToTrash(
+      userId,
+      assets.map((asset) => asset.id),
+    );
+    return { removed: result.trashed, trashed: result.trashed };
   }
 
   async getAssetIds(userId: string, folderId: string) {

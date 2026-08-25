@@ -62,6 +62,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
   const [viewing, setViewing] = useState<Asset | null>(null);
   const { selected, toggle, selectRange, setAnchor, clear, setSelected } = useSelection<Asset>();
   const [dialog, setDialog] = useState<'rename' | 'delete' | 'share' | null>(null);
+  const [trashingAssets, setTrashingAssets] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() =>
     localStorage.getItem('imadeo-album-content-view') === 'list' ? 'list' : 'grid',
@@ -125,6 +126,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
       (await api.delete(`/albums/${albumId}/assets`, { data: { assetIds } })).data,
     onSuccess: () => {
       clear();
+      setTrashingAssets(null);
       return invalidate();
     },
     onError,
@@ -282,9 +284,10 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
                 size="sm"
                 variant="danger"
                 icon={<Trash2 size={14} />}
-                onClick={() => removeAssets.mutate([...selected])}
+                disabled={removeAssets.isPending}
+                onClick={() => setTrashingAssets([...selected])}
               >
-                Remove {selected.size} from album
+                Move {selected.size} to trash
               </Button>
             )}
 
@@ -405,6 +408,20 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
         album={album}
         open={dialog === 'share'}
         onClose={() => setDialog(null)}
+      />
+
+      <ConfirmDialog
+        open={trashingAssets !== null}
+        title={
+          trashingAssets?.length === 1
+            ? 'Move this media item to Trash?'
+            : `Move these ${trashingAssets?.length ?? 0} media items to Trash?`
+        }
+        description="The media remains linked to this album and returns here if restored within 30 days."
+        confirmLabel="Move to trash"
+        destructive
+        onConfirm={() => trashingAssets && removeAssets.mutate(trashingAssets)}
+        onClose={() => setTrashingAssets(null)}
       />
 
       <ConfirmDialog

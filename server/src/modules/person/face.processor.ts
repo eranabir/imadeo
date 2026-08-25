@@ -8,6 +8,7 @@ import { BackgroundTaskGate } from '../../infra/job/background-task-gate.service
 import {
   JOB,
   ML_JOB_CONCURRENCY,
+  PROCESSORS_AUTORUN,
   QUEUE,
   type AssetJobData,
 } from '../../infra/job/job.constants';
@@ -192,7 +193,10 @@ export function redundantVideoDetectionIds(
  * Concurrency is low on purpose: the model is CPU-bound and the ML service runs
  * a single worker, so queuing more requests than it can serve only adds latency.
  */
-@Processor(QUEUE.FACE_DETECTION, { concurrency: ML_JOB_CONCURRENCY })
+@Processor(QUEUE.FACE_DETECTION, {
+  concurrency: ML_JOB_CONCURRENCY,
+  autorun: PROCESSORS_AUTORUN,
+})
 export class FaceDetectionProcessor extends WorkerHost {
   private readonly logger = new Logger(FaceDetectionProcessor.name);
   private readonly assetLocks = new Map<string, Promise<void>>();
@@ -212,7 +216,12 @@ export class FaceDetectionProcessor extends WorkerHost {
   }
 
   async process(job: Job<AssetJobData>) {
-    return this.withAssetLock(job.data.assetId, () => this.processAsset(job));
+    return this.withAssetLock(job.data.assetId, () =>
+      this.backgroundTasks.runMachineLearning(
+        () => this.processAsset(job),
+        QUEUE.FACE_DETECTION,
+      ),
+    );
   }
 
   private async processAsset(job: Job<AssetJobData>) {
@@ -236,11 +245,11 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     if (!this.ml.faceRecognitionEnabled) return { skipped: 'face recognition disabled' };
 
-    await this.jobs.waitForMediaProcessingIdle();
     if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     const frames = await this.framesFor(asset);
     if (frames.length === 0) {
+      if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
       // A corrupt or audio-only video must not leave library progress stuck
       // forever. Nothing was replaced, so a previous successful scan is safe.
       const recognisedAt = new Date();
@@ -261,7 +270,9 @@ export class FaceDetectionProcessor extends WorkerHost {
 
     try {
       for (const frame of frames) {
+        if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
         const analysed = await this.analyseFrame(frame);
+        if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
         detections.push(...analysed.detections);
         petsRecognised &&= analysed.petsRecognised;
       }
@@ -274,16 +285,21 @@ export class FaceDetectionProcessor extends WorkerHost {
         where: { assetId: asset.id, sourceType: SourceType.MACHINE_LEARNING, isPinned: false },
       });
 
-      for (const detection of detections) await this.insertDetection(asset.id, detection);
+      for (const detection of detections) {
+        if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
+        await this.insertDetection(asset.id, detection);
+      }
     } finally {
       await this.storage.removeMany(
         frames.filter((frame) => frame.temporary).map((frame) => frame.path),
       );
     }
 
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
     const subjects = await this.runRecognition(() =>
       this.clustering.assignFacesForAsset(asset.id, asset.ownerId),
     );
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
     if (asset.type === AssetType.VIDEO) {
       await this.removeRedundantVideoDetections(asset.id, frames.length > 1 ? 2 : 1);
     }
@@ -292,6 +308,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     // upload is visible immediately. A cover deliberately chosen by the user
     // remains untouched.
     for (const subjectId of subjects) {
+      if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
       const subject = await this.prisma.person.findUnique({
         where: { id: subjectId },
         select: { thumbnailPath: true, thumbnailIsCustom: true },
@@ -302,6 +319,8 @@ export class FaceDetectionProcessor extends WorkerHost {
         );
       }
     }
+
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
 
     const recognisedAt = new Date();
     await this.prisma.assetJobStatus.upsert({
@@ -347,8 +366,10 @@ export class FaceDetectionProcessor extends WorkerHost {
   }
 
   private async runRecognition<T>(operation: () => Promise<T>) {
-    await this.jobs.waitForMediaProcessingIdle();
-    return this.backgroundTasks.runMachineLearning(operation, QUEUE.FACE_DETECTION);
+    // The complete asset scan already owns the heavy lane, including frame
+    // extraction and thumbnail refreshes. Re-entering the lane here would
+    // deadlock on itself.
+    return operation();
   }
 
   private async framesFor(asset: {
@@ -375,6 +396,7 @@ export class FaceDetectionProcessor extends WorkerHost {
     const frames: RecognitionFrame[] = [];
 
     for (const [index, seconds] of timestamps.entries()) {
+      if (!(await this.assetStillActive(asset.id))) break;
       const path = this.storage.buildIncomingPath(
         asset.ownerId,
         `${asset.id}-recognition-${String(index).padStart(3, '0')}.jpg`,
@@ -382,11 +404,17 @@ export class FaceDetectionProcessor extends WorkerHost {
       try {
         await this.storage.remove(path);
         await this.runRecognition(() =>
-          this.media.extractPosterFrame(source, path, seconds),
+          this.media.extractPosterFrame(
+            source,
+            path,
+            seconds,
+            () => this.assetStillActive(asset.id),
+          ),
         );
         frames.push({ path, timecodeMs: Math.round(seconds * 1000), temporary: true });
       } catch (error) {
         await this.storage.remove(path);
+        if (!(await this.assetStillActive(asset.id))) break;
         this.logger.warn(
           `Skipping frame ${seconds.toFixed(2)}s in ${asset.originalPath}: ${(error as Error).message}`,
         );
@@ -601,7 +629,7 @@ export class FaceDetectionProcessor extends WorkerHost {
 }
 
 /** Library-wide re-clustering, triggered from the admin surface. */
-@Processor(QUEUE.FACE_CLUSTER, { concurrency: 1 })
+@Processor(QUEUE.FACE_CLUSTER, { concurrency: 1, autorun: PROCESSORS_AUTORUN })
 export class FaceClusterProcessor extends WorkerHost {
   constructor(
     private readonly clustering: FaceClusteringService,
@@ -622,7 +650,6 @@ export class FaceClusterProcessor extends WorkerHost {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
 
-    await this.jobs.waitForMediaProcessingIdle();
     const result = await this.backgroundTasks.runMachineLearning(
       () => this.clustering.recluster(job.data.userId),
       QUEUE.FACE_CLUSTER,

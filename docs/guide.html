@@ -162,8 +162,9 @@
     <section id="docker">
       <h2>Install with Docker</h2>
       <p>
-        Imadeo runs as five containers: web, API, Postgres, Redis, and a
-        machine-learning worker. They come up together from one compose file.
+        Imadeo runs as six containers: web, API, background processing,
+        Postgres, Redis, and machine learning. They come up together from one
+        compose file.
       </p>
 
       <p>
@@ -230,7 +231,9 @@ LOCAL_HTTP_ENABLED=true</code></pre>
       <h3>What each service does</h3>
       <table>
         <tr><th>Service</th><th>Purpose</th></tr>
-        <tr><td><code>server</code></td><td>The API, the background workers, and the web interface.</td></tr>
+        <tr><td><code>web</code></td><td>The browser interface and same-origin proxy to the API.</td></tr>
+        <tr><td><code>server</code></td><td>The API. It stores originals and remains responsive while background work runs elsewhere.</td></tr>
+        <tr><td><code>worker</code></td><td>Reads metadata, creates thumbnails, optimises videos and schedules local analysis with bounded resources.</td></tr>
         <tr><td><code>database</code></td><td>Postgres with pgvector, which stores both the metadata and the image embeddings that make search work.</td></tr>
         <tr><td><code>redis</code></td><td>The job queue. Thumbnails, metadata extraction, face detection and video transcoding all run through it.</td></tr>
         <tr><td><code>machine-learning</code></td><td>Face detection and the image/text model behind search. Runs locally; nothing is sent anywhere.</td></tr>
@@ -370,9 +373,20 @@ docker compose up -d</code></pre>
         keeps its original filename and gets its own entry.
       </p>
       <p>
-        Once a file lands, work is queued: metadata is read, thumbnails are
-        generated, video is transcoded, faces are detected, and the image is
-        embedded for search. Large uploads finish appearing gradually.
+        The untouched original is committed before an upload reports success.
+        The browser supplies a small temporary preview, so new photos can
+        appear without waiting for the server. After the upload batch and
+        recent foreground activity finish, durable jobs read metadata and
+        create canonical thumbnails. Video optimisation, search and People &amp;
+        Pets then use a one-at-a-time heavy lane; they never compete with
+        thumbnail creation. Restarting the worker does not lose queued work.
+      </p>
+      <p>
+        API and processing have separate CPU and memory limits. The defaults
+        suit a small NAS; larger servers can raise <code>WORKER_CPU_LIMIT</code>,
+        <code>WORKER_MEMORY_LIMIT</code> and
+        <code>JOB_BACKGROUND_CONCURRENCY</code>. Settings → Processing shows
+        whether the worker is active, waiting for uploads, or offline.
       </p>
     </section>
 

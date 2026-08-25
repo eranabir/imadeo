@@ -37,6 +37,14 @@ const positiveInteger = (value: string | undefined, fallback: number) => {
 /** Worker decorators run before Nest configuration is created, so read this limit once here. */
 export const ML_JOB_CONCURRENCY = positiveInteger(process.env.JOB_ML_CONCURRENCY, 1);
 
+/**
+ * The HTTP process registers queue providers so controllers can enqueue and
+ * inspect jobs, but it must never execute CPU or disk-heavy processors. The
+ * dedicated worker process sets IMADEO_ROLE=worker before loading this module.
+ * Keeping the default enabled preserves direct `yarn workspace ... dev` use.
+ */
+export const PROCESSORS_AUTORUN = process.env.IMADEO_ROLE !== 'api';
+
 export const JOB = {
   EXTRACT_METADATA: 'extract-metadata',
   /// Names the place of a photo that already has coordinates. Its own job so a

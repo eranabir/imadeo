@@ -27,6 +27,7 @@ interface ActiveProcessingJob {
 
 interface ProcessingSnapshot {
   scheduler: {
+    workerOnline: boolean;
     mode: 'uploading' | 'interactive' | 'idle';
     activeUploads: number;
     media: { active: number; waiting: number; limit: number };
@@ -65,11 +66,15 @@ const JOB_LABELS: Record<string, string> = {
 };
 
 const schedulerCopy = (snapshot: ProcessingSnapshot) => {
+  if (!snapshot.scheduler.workerOnline) {
+    return 'The processing worker is offline. Originals remain safe and queued work will resume when it returns.';
+  }
   if (snapshot.scheduler.mode === 'uploading') {
     return 'Uploads have priority. Background processing will continue when storage is quiet.';
   }
   if (snapshot.scheduler.mode === 'interactive') {
     const slots = snapshot.scheduler.media.limit;
+    if (slots === 0) return 'The web app is active. Background media preparation will resume when it is idle.';
     return `The web app is active, so processing can use ${slots} background ${slots === 1 ? 'slot' : 'slots'}.`;
   }
   return `The server is idle and can use up to ${snapshot.scheduler.media.limit} background slots.`;
@@ -120,7 +125,9 @@ export function ProcessingSettings() {
                     ? `${active} active file ${active === 1 ? 'task' : 'tasks'}`
                     : recognitionWaiting
                       ? 'Face recognition is queued'
-                    : 'Processing is idle'}
+                    : snapshot?.scheduler.workerOnline === false
+                      ? 'Processing worker is offline'
+                      : 'Processing is idle'}
                 </h2>
                 {snapshot && (
                   <p className="mt-1 text-xs text-content-muted">

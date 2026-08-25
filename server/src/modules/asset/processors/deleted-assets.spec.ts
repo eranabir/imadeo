@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { JOB, QUEUE } from '../../../infra/job/job.constants';
+import { MediaProcessingCancelledError } from '../../../infra/media/media.service';
 import { FaceDetectionProcessor } from '../../person/face.processor';
 import { ClipProcessor } from './clip.processor';
 import { DuplicateProcessor } from './duplicate.processor';
@@ -118,6 +119,47 @@ describe('deleted asset processing', () => {
     expect(probeVideo).not.toHaveBeenCalled();
   });
 
+  it('stops an active video transcode when the asset is deleted', async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const transcodeVideo = vi.fn().mockRejectedValue(new MediaProcessingCancelledError());
+    const processor = new VideoProcessor(
+      {
+        asset: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: 'active-id',
+            ownerId: 'owner-id',
+            originalPath: '/original.mov',
+            type: 'VIDEO',
+            deletedAt: null,
+          }),
+          findFirst: vi.fn().mockResolvedValue({ id: 'active-id' }),
+        },
+      } as never,
+      {
+        probeVideo: vi.fn().mockResolvedValue({ width: 100, height: 100 }),
+        needsTranscode: vi.fn().mockReturnValue(true),
+        transcodeVideo,
+      } as never,
+      {
+        buildDerivativePath: vi.fn().mockReturnValue('/encoded.mp4'),
+        remove,
+      } as never,
+      {} as never,
+      { runHeavyProcessing: vi.fn(async (operation: () => Promise<unknown>) => operation()) } as never,
+    );
+
+    await expect(
+      processor.process({ name: JOB.TRANSCODE_VIDEO, data: { assetId: 'active-id' } } as never),
+    ).resolves.toEqual({ skipped: 'asset deleted' });
+    expect(transcodeVideo).toHaveBeenCalledWith(
+      '/original.mov',
+      '/encoded.mp4',
+      expect.any(Object),
+      expect.any(Function),
+    );
+    expect(remove).toHaveBeenCalledWith('/encoded.mp4');
+  });
+
   it('runs video poster generation on the video worker', async () => {
     const processThumbnail = vi.fn().mockResolvedValue({ thumbnailPath: '/preview.webp' });
     const processor = new VideoProcessor(
@@ -204,7 +246,7 @@ describe('upload priority', () => {
 
     releaseUpload();
     await expect(processing).resolves.toEqual({ encoded: true });
-    expect(waitForMediaProcessingIdle).toHaveBeenCalledOnce();
+    expect(waitForMediaProcessingIdle).not.toHaveBeenCalled();
     expect(encodeImage).toHaveBeenCalledWith('/preview.webp');
   });
 });

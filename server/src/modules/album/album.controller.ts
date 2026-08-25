@@ -96,6 +96,7 @@ export class AlbumController {
   }
 
   @Delete(':id/assets')
+  @ApiOperation({ summary: 'Move owned media in this album to Trash' })
   removeAssets(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: AlbumAssetsDto) {
     return this.albumService.removeAssets(auth, id, dto.assetIds);
   }

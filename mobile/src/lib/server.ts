@@ -65,36 +65,47 @@ export function normalize(input: string): string {
  * The greeting is what identifies the server as ours.
  */
 export async function probe(input: string): Promise<ServerInfo> {
-  const url = normalize(input);
-  if (!url) throw new Error('Enter your server address.');
-  if (!__DEV__ && url.startsWith('http://') && !isPrivateNetworkAddress(url)) {
+  const candidates = [normalize(input)].filter(Boolean);
+  const enteredUrl = candidates[0];
+  if (!enteredUrl) throw new Error('Enter your server address.');
+  if (!__DEV__ && enteredUrl.startsWith('http://') && !isPrivateNetworkAddress(enteredUrl)) {
     throw new Error('Use HTTPS for a public server. HTTP is only allowed on a private LAN or VPN.');
   }
 
-  let response: Response;
-  try {
-    response = await fetchApiRoot(url, 8000);
-  } catch {
-    const help = isLocalAddress(url)
-      ? 'Check the address and that your phone is on the same network.'
-      : 'Check the public address and port forwarding.';
-    throw new Error(`Could not reach ${url}. ${help}`);
-  }
+  const result = await new Promise<ServerInfo | null>((resolve) => {
+    let remaining = candidates.length;
+    let settled = false;
+    for (const url of candidates) {
+      void fetchApiRoot(url, 8000)
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const body = await response.json().catch(() => null);
+          if (typeof body?.message !== 'string' || !body.message.includes('Imadeo')) return null;
+          return {
+            url,
+            version: typeof body.version === 'string' ? body.version : 'unknown',
+            addresses: [url],
+          } satisfies ServerInfo;
+        })
+        .catch(() => null)
+        .then((server) => {
+          if (settled) return;
+          if (server) {
+            settled = true;
+            resolve(server);
+            return;
+          }
+          remaining -= 1;
+          if (remaining === 0) resolve(null);
+        });
+    }
+  });
 
-  if (!response.ok) {
-    throw new Error(`${url} answered with ${response.status}. That does not look like an Imadeo server.`);
-  }
-
-  const body = await response.json().catch(() => null);
-  if (!body || typeof body.message !== 'string' || !body.message.includes('Imadeo')) {
-    throw new Error(`Something is running at ${url}, but it is not Imadeo.`);
-  }
-
-  return {
-    url,
-    version: typeof body.version === 'string' ? body.version : 'unknown',
-    addresses: [url],
-  };
+  if (result) return result;
+  const help = isLocalAddress(enteredUrl)
+    ? 'Check the address and that your phone is on the same network.'
+    : 'Check the public address and port forwarding.';
+  throw new Error(`Could not reach ${enteredUrl}. ${help}`);
 }
 
 async function fetchApiRoot(url: string, timeout: number): Promise<Response> {

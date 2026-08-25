@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import { SubjectService } from '../person/subject.service';
+import { AssetProcessingService } from './asset-processing.service';
 
 /** Shared asset cleanup used by photo, album and folder Trash operations. */
 @Injectable()
@@ -20,7 +21,20 @@ export class AssetLifecycleService {
     private readonly storage: StorageService,
     private readonly subjects: SubjectService,
     private readonly backgroundTasks: BackgroundTaskGate,
+    private readonly processing: AssetProcessingService,
   ) {}
+
+  stopProcessingForAssets(userId: string, assetIds: string[]) {
+    return this.processing.stop(userId, assetIds);
+  }
+
+  resumeProcessingForAssets(userId: string, assetIds: string[]) {
+    return this.processing.resume(userId, assetIds);
+  }
+
+  uploadReceiptIsCancelled(userId: string, uploadId: string) {
+    return this.processing.uploadReceiptIsCancelled(userId, uploadId);
+  }
 
   refreshThumbnailsForAssets(assetIds: string[]) {
     const uniqueIds = [...new Set(assetIds)];
@@ -33,6 +47,31 @@ export class AssetLifecycleService {
       .catch((error) =>
         this.logger.warn(`Could not refresh People & Pets covers: ${String(error)}`),
       );
+  }
+
+  /** Moves owned media to Trash without losing its folder or album location. */
+  async moveToTrash(userId: string, ids: string[]) {
+    const assets = await this.prisma.asset.findMany({
+      where: { id: { in: [...new Set(ids)] }, ownerId: userId, deletedAt: null },
+      select: { id: true, livePhotoVideoId: true },
+    });
+    const affectedIds = [
+      ...new Set(
+        assets.flatMap((asset) => [
+          asset.id,
+          ...(asset.livePhotoVideoId ? [asset.livePhotoVideoId] : []),
+        ]),
+      ),
+    ];
+    if (affectedIds.length === 0) return { trashed: 0, assetIds: [] };
+
+    const { count } = await this.prisma.asset.updateMany({
+      where: { id: { in: affectedIds }, ownerId: userId, deletedAt: null },
+      data: { deletedAt: new Date(), status: 'TRASHED' },
+    });
+    await this.stopProcessingForAssets(userId, affectedIds);
+    this.refreshThumbnailsForAssets(affectedIds);
+    return { trashed: count, assetIds: affectedIds };
   }
 
   /** Removes trashed database rows and every corresponding file on disk. */
@@ -93,6 +132,10 @@ export class AssetLifecycleService {
 
     const assetIds = allAssets.map((asset) => asset.id);
     let freedBytes = 0n;
+
+    // Remove queued work before deleting rows. Active workers re-check
+    // deletedAt between expensive stages and therefore stop cooperatively.
+    await this.stopProcessingForAssets(userId, assetIds);
 
     // Cascading thousands of face, album, job, and search rows can exceed
     // Prisma's five-second default on a busy NAS. Bounded transactions keep

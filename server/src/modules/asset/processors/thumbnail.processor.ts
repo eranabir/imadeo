@@ -6,9 +6,17 @@ import { extname } from 'node:path';
 import type { AppConfig } from '../../../config/configuration';
 import { AssetType, type Asset } from '../../../db';
 import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
-import { JOB, QUEUE, type AssetJobData } from '../../../infra/job/job.constants';
+import {
+  JOB,
+  PROCESSORS_AUTORUN,
+  QUEUE,
+  type AssetJobData,
+} from '../../../infra/job/job.constants';
 import { JobService } from '../../../infra/job/job.service';
-import { MediaService } from '../../../infra/media/media.service';
+import {
+  MediaProcessingCancelledError,
+  MediaService,
+} from '../../../infra/media/media.service';
 import { MachineLearningService } from '../../../infra/ml/ml.service';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { StorageService } from '../../../infra/storage/storage.service';
@@ -17,7 +25,7 @@ import { StorageService } from '../../../infra/storage/storage.service';
  * Produces the grid thumbnail, the viewer preview and the thumbhash placeholder.
  * Videos get a poster frame first, then go through the same image path.
  */
-@Processor(QUEUE.THUMBNAIL, { concurrency: 3 })
+@Processor(QUEUE.THUMBNAIL, { concurrency: 3, autorun: PROCESSORS_AUTORUN })
 export class ThumbnailProcessor extends WorkerHost {
   private readonly logger = new Logger(ThumbnailProcessor.name);
 
@@ -50,6 +58,8 @@ export class ThumbnailProcessor extends WorkerHost {
   }
 
   private async generateThumbnail(asset: Asset) {
+    if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
+
     // The file the image pipeline will actually read. For a video or a RAW this
     // is an intermediate JPEG rather than the original.
     let source = asset.originalPath;
@@ -61,7 +71,12 @@ export class ThumbnailProcessor extends WorkerHost {
         // One second in usually avoids a black or fading first frame.
         const probe = await this.media.probeVideo(asset.originalPath).catch(() => null);
         const seek = probe && probe.durationSeconds > 2 ? 1 : 0;
-        source = await this.media.extractPosterFrame(asset.originalPath, temporary, seek);
+        source = await this.media.extractPosterFrame(
+          asset.originalPath,
+          temporary,
+          seek,
+          () => this.assetStillActive(asset.id),
+        );
       } else if (!this.media.canSharpDecode(extname(asset.originalPath))) {
         temporary = this.storage.buildIncomingPath(asset.ownerId, `${asset.id}-decoded.jpg`);
         source = await this.media.extractToJpeg(asset.originalPath, temporary);
@@ -81,8 +96,19 @@ export class ThumbnailProcessor extends WorkerHost {
        */
       let rendered: { thumbnailPath: string; previewPath: string };
       try {
-        rendered = await this.media.generateImageThumbnails(source, asset.ownerId, asset.id);
+        rendered = await this.media.generateImageThumbnails(
+          source,
+          asset.ownerId,
+          asset.id,
+          () => this.assetStillActive(asset.id),
+        );
       } catch (error) {
+        if (
+          error instanceof MediaProcessingCancelledError ||
+          !(await this.assetStillActive(asset.id))
+        ) {
+          throw error;
+        }
         if (temporary) throw error; // Already came through ffmpeg; nothing left to try.
 
         this.logger.warn(
@@ -93,7 +119,12 @@ export class ThumbnailProcessor extends WorkerHost {
 
         temporary = this.storage.buildIncomingPath(asset.ownerId, `${asset.id}-decoded.jpg`);
         source = await this.media.extractToJpeg(asset.originalPath, temporary);
-        rendered = await this.media.generateImageThumbnails(source, asset.ownerId, asset.id);
+        rendered = await this.media.generateImageThumbnails(
+          source,
+          asset.ownerId,
+          asset.id,
+          () => this.assetStillActive(asset.id),
+        );
       }
 
       const { thumbnailPath, previewPath } = rendered;
@@ -132,6 +163,11 @@ export class ThumbnailProcessor extends WorkerHost {
         await this.storage.remove(provisionalThumbnailPath);
       }
 
+      if (!(await this.assetStillActive(asset.id))) {
+        await this.storage.removeMany([thumbnailPath, previewPath]);
+        return { skipped: 'asset deleted' };
+      }
+
       // Downstream stages only make sense once a preview exists: the ML service
       // reads the preview rather than a 60 MB original.
       if (asset.type === AssetType.VIDEO) {
@@ -155,6 +191,14 @@ export class ThumbnailProcessor extends WorkerHost {
       }
 
       return { thumbnailPath, previewPath };
+    } catch (error) {
+      if (
+        error instanceof MediaProcessingCancelledError ||
+        !(await this.assetStillActive(asset.id))
+      ) {
+        return { skipped: 'asset deleted' };
+      }
+      throw error;
     } finally {
       if (temporary) await this.storage.remove(temporary);
     }

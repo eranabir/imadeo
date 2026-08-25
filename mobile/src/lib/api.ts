@@ -109,6 +109,8 @@ export interface Subject {
 export type ServerReachability = 'checking' | 'reachable' | 'unreachable';
 
 let reachability: ServerReachability = 'checking';
+let reachabilityEpoch = 0;
+let confirmingReachability: { url: string; promise: Promise<boolean> } | null = null;
 const watchers = new Set<(state: ServerReachability) => void>();
 
 function setReachability(next: ServerReachability) {
@@ -119,7 +121,16 @@ function setReachability(next: ServerReachability) {
 
 /** Hides authenticated routes while a newly selected server is being checked. */
 export function beginServerCheck() {
+  reachabilityEpoch += 1;
   setReachability('checking');
+}
+
+/** A successful probe or login is enough to keep the authenticated UI mounted. */
+export function markServerReachable() {
+  // Invalidate an older failed probe even when the visible state is already
+  // reachable. This matters while switching between workspace addresses.
+  reachabilityEpoch += 1;
+  setReachability('reachable');
 }
 
 /** Re-renders when the selected server is checked, reachable or unreachable. */
@@ -138,18 +149,29 @@ export function useServerReachability() {
 
 /** Asks the server whether it is there, without caring what it says. */
 export async function ping(serverUrl: string) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
-  try {
-    await fetch(`${serverUrl}/api`, { signal: controller.signal });
-    setReachability('reachable');
-    return true;
-  } catch {
-    setReachability('unreachable');
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
+  if (confirmingReachability?.url === serverUrl) return confirmingReachability.promise;
+
+  const probeEpoch = reachabilityEpoch;
+  const promise = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    try {
+      await fetch(`${serverUrl}/api`, { signal: controller.signal });
+      markServerReachable();
+      return true;
+    } catch {
+      // A later successful request or address switch wins over this stale
+      // probe; never let the old route replace a working app with an error.
+      if (reachabilityEpoch === probeEpoch) setReachability('unreachable');
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  })().finally(() => {
+    if (confirmingReachability?.promise === promise) confirmingReachability = null;
+  });
+  confirmingReachability = { url: serverUrl, promise };
+  return promise;
 }
 
 /**
@@ -187,8 +209,10 @@ export async function request<T>(
         },
       });
     } catch {
-      // Only a thrown fetch means unreachable. A 500 is the server answering.
-      setReachability('unreachable');
+      // A busy media endpoint can time out while the lightweight server root
+      // still answers. Confirm the connection before replacing the entire app
+      // with the reconnect screen; simultaneous failures share one probe.
+      void ping(serverUrl);
       throw new Error('Could not reach your server. Check your connection.');
     } finally {
       clearTimeout(timer);
@@ -205,9 +229,8 @@ export async function request<T>(
     try {
       response = await send(await refreshToken(serverUrl));
     } catch (cause) {
-      setReachability(
-        cause instanceof SessionRefreshError && cause.unreachable ? 'unreachable' : 'reachable',
-      );
+      if (cause instanceof SessionRefreshError && cause.unreachable) void ping(serverUrl);
+      else markServerReachable();
       throw cause;
     }
   }
@@ -216,12 +239,12 @@ export async function request<T>(
   // one global signed-out state. Never leave a single tab to render a local
   // "Authentication required" error over data from the old session.
   if (response.status === 401) {
-    setReachability('reachable');
+    markServerReachable();
     await expireSession();
     throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
   }
 
-  setReachability('reachable');
+  markServerReachable();
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -232,6 +255,16 @@ export async function request<T>(
   // 204s carry nothing, and asking an empty body for JSON throws.
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+let lastActivitySignal = 0;
+
+/** Pauses server-side media work while a person is actively using a native tab. */
+export async function signalActivity(serverUrl: string) {
+  const now = Date.now();
+  if (now - lastActivitySignal < 5_000) return;
+  lastActivitySignal = now;
+  await request<void>(serverUrl, '/activity', { method: 'POST' });
 }
 
 /**

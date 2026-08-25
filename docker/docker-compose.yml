@@ -48,6 +48,7 @@ services:
     env_file:
       - .env
     environment:
+      IMADEO_ROLE: api
       NODE_ENV: production
       DATABASE_URL: postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOSTNAME}:5432/${DB_DATABASE_NAME}
       # Overrides the .env value, which points at localhost for host-run
@@ -59,6 +60,8 @@ services:
     volumes:
       - ${UPLOAD_LOCATION}:/data
       - /etc/localtime:/etc/localtime:ro
+    cpus: ${API_CPU_LIMIT:-1.0}
+    mem_limit: ${API_MEMORY_LIMIT:-1g}
     expose:
       - "6666"
     ports:
@@ -76,6 +79,29 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  worker:
+    container_name: imadeo_worker
+    image: ghcr.io/eranabir/imadeo/server:${IMADEO_VERSION:-latest}
+    restart: unless-stopped
+    command: ['node', 'dist/worker']
+    env_file:
+      - .env
+    environment:
+      IMADEO_ROLE: worker
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOSTNAME}:5432/${DB_DATABASE_NAME}
+      ML_URL: http://machine-learning:3003
+      REDIS_PORT: 6379
+      MEDIA_LOCATION: /data
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    cpus: ${WORKER_CPU_LIMIT:-1.0}
+    mem_limit: ${WORKER_MEMORY_LIMIT:-2g}
+    depends_on:
+      server:
+        condition: service_healthy
 
   web:
     container_name: imadeo_web
@@ -97,6 +123,7 @@ services:
     restart: unless-stopped
     # Recognition is background work; reserve CPU for uploads, the API and web UI.
     cpus: ${ML_CPU_LIMIT:-1.5}
+    mem_limit: ${ML_MEMORY_LIMIT:-2g}
     env_file:
       - .env
     environment:

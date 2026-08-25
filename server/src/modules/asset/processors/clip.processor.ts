@@ -4,6 +4,7 @@ import type { Job } from 'bullmq';
 import { BackgroundTaskGate } from '../../../infra/job/background-task-gate.service';
 import {
   ML_JOB_CONCURRENCY,
+  PROCESSORS_AUTORUN,
   QUEUE,
   type AssetJobData,
 } from '../../../infra/job/job.constants';
@@ -17,7 +18,10 @@ import { PrismaService } from '../../../infra/prisma/prisma.service';
  * Runs from the preview rather than the original: CLIP works at 224px, so
  * sending a 60 MB raw file would cost a great deal and change nothing.
  */
-@Processor(QUEUE.SMART_SEARCH, { concurrency: ML_JOB_CONCURRENCY })
+@Processor(QUEUE.SMART_SEARCH, {
+  concurrency: ML_JOB_CONCURRENCY,
+  autorun: PROCESSORS_AUTORUN,
+})
 export class ClipProcessor extends WorkerHost {
   private readonly logger = new Logger(ClipProcessor.name);
 
@@ -41,7 +45,6 @@ export class ClipProcessor extends WorkerHost {
     const source = asset.previewPath ?? asset.originalPath;
     if (!source) return { skipped: 'no preview yet' };
 
-    await this.jobs.waitForMediaProcessingIdle();
     if (!(await this.assetStillActive(asset.id))) return { skipped: 'asset deleted' };
     const embedding = await this.backgroundTasks.runMachineLearning(
       () => this.ml.encodeImage(source),

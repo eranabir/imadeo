@@ -8,6 +8,7 @@ import { extname, join } from 'node:path';
 import type { Request } from 'express';
 import type { AuthDto } from '../../common/auth.types';
 import type { AppConfig } from '../../config/configuration';
+import { PROCESSORS_AUTORUN } from '../../infra/job/job.constants';
 import { FolderModule } from '../folder/folder.module';
 import { DeviceModule } from '../device/device.module';
 import { PeopleAndPetsModule } from '../person/people-and-pets.module';
@@ -62,11 +63,15 @@ import { UploadPriorityInterceptor } from './upload-priority.interceptor';
   providers: [
     AssetService,
     DuplicateService,
-    MetadataProcessor,
-    ThumbnailProcessor,
-    VideoProcessor,
-    DuplicateProcessor,
-    ClipProcessor,
+    ...(PROCESSORS_AUTORUN
+      ? [
+          MetadataProcessor,
+          ThumbnailProcessor,
+          VideoProcessor,
+          DuplicateProcessor,
+          ClipProcessor,
+        ]
+      : []),
     UploadPriorityInterceptor,
   ],
   exports: [AssetService, DuplicateService],

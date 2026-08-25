@@ -42,9 +42,13 @@ export const useAuth = create<AuthState>((set) => ({
   status: 'unknown',
 
   async login(email, password) {
-    await api.post('/auth/login', { email, password });
-    const { data: user } = await api.get<CurrentUser>('/users/me');
-    set({ user, status: 'authenticated' });
+    const { data } = await api.post<{ user: CurrentUser }>('/auth/login', { email, password });
+    set({ user: data.user, status: 'authenticated' });
+    // Releases before the complete login profile still returned the identity
+    // fields. Keep mixed-version Docker upgrades usable without delaying login.
+    if (!data.user.preferences) {
+      void api.get<CurrentUser>('/users/me').then(({ data: user }) => set({ user }));
+    }
   },
 
   async logout() {
