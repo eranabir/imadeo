@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.8",
     "@maplibre/maplibre-react-native": "^11.3.6",
+    "@react-native-community/netinfo": "12.0.1",
     "expo": "^57.0.0",
     "expo-background-task": "~57.0.8",
     "expo-blur": "~57.0.2",
@@ -15,6 +16,7 @@
     "expo-image": "~57.0.2",
     "expo-linear-gradient": "~57.0.1",
     "expo-linking": "~57.0.5",
+    "expo-location": "~57.0.13",
     "expo-media-library": "~57.0.3",
     "expo-network": "~57.0.1",
     "expo-router": "~57.0.11",

@@ -1,217 +1,211 @@
 import { getItem, removeItem, setItem } from './storage';
 
-const KEY = 'imadeo.server';
+const LEGACY_KEY = 'imadeo.server';
+const SERVERS_KEY = 'imadeo.servers.v2';
+const ACTIVE_KEY = 'imadeo.server.active';
 
-export interface ServerInfo {
-  url: string;
+/** A saved Imadeo installation, independent of the network currently in use. */
+export interface ServerProfile {
+  id: string;
+  name: string;
+  /** A URL which works everywhere, normally the public HTTPS address. */
+  externalUrl: string;
+  /** A faster LAN URL, used only while the phone is on one of `ssids`. */
+  internalUrl?: string;
+  ssids: string[];
   version: string;
-  /** Every route to this one workspace, with the currently working one first. */
-  addresses: string[];
 }
 
-function uniqueAddresses(values: string[]): string[] {
-  return [...new Set(values.map(normalize).filter(Boolean))];
+/** A saved server plus the address selected for the phone's current network. */
+export interface ServerInfo extends ServerProfile {
+  url: string;
+  connectedVia: 'internal' | 'external';
 }
 
-function hostOf(value: string): string {
-  return value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').replace(/:\d+$/, '');
-}
-
-function isLocalAddress(value: string): boolean {
-  const host = hostOf(value);
+export function isLocalAddress(value: string): boolean {
+  const host = value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
   return (
-    /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ||
-    /^localhost$/i.test(host) ||
-    /\.local$/i.test(host)
+    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) ||
+    /^localhost(:\d+)?$/i.test(host) ||
+    /\.local(:\d+)?$/i.test(host)
   );
 }
 
-/** RFC 1918, loopback, and CGNAT addresses used by LANs and common VPNs. */
-function isPrivateNetworkAddress(value: string): boolean {
-  const parts = hostOf(value).split('.').map(Number);
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
-    return /^localhost$/i.test(hostOf(value)) || /\.local$/i.test(hostOf(value));
-  }
-
-  const [first, second] = parts;
-  return (
-    first === 10 ||
-    first === 127 ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168) ||
-    (first === 100 && second >= 64 && second <= 127)
-  );
-}
-
-/**
- * Fills in what someone typing an address on a phone will leave out.
- *
- * A bare host is not something `fetch` accepts. Private LAN/VPN addresses use
- * HTTP by default; public hosts use HTTPS so private media is never sent over
- * an unencrypted internet connection.
- */
+/** Fills in the scheme people commonly leave out when typing an address. */
 export function normalize(input: string): string {
   const trimmed = input.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `${isPrivateNetworkAddress(trimmed) ? 'http' : 'https'}://${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+function hostName(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url.replace(/^https?:\/\//, '').split('/')[0];
+  }
+}
+
+function makeId(): string {
+  return `server-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
- * Confirms an Imadeo server is actually there.
+ * Confirms an Imadeo server is actually there before it is offered to someone.
  *
- * Checks the body rather than the status code: a 200 only proves *something*
- * answered, and a router login page or an unrelated service would sail through.
- * The greeting is what identifies the server as ours.
+ * A LAN address may intentionally use HTTP behind a trusted home network. A
+ * public address must stay HTTPS so private media is never sent in the clear.
  */
-export async function probe(input: string): Promise<ServerInfo> {
-  const candidates = [normalize(input)].filter(Boolean);
-  const enteredUrl = candidates[0];
-  if (!enteredUrl) throw new Error('Enter your server address.');
-  if (!__DEV__ && enteredUrl.startsWith('http://') && !isPrivateNetworkAddress(enteredUrl)) {
-    throw new Error('Use HTTPS for a public server. HTTP is only allowed on a private LAN or VPN.');
+export async function probe(input: string): Promise<Pick<ServerProfile, 'externalUrl' | 'version'>> {
+  const externalUrl = normalize(input);
+  if (!externalUrl) throw new Error('Enter your server address.');
+  if (!__DEV__ && externalUrl.startsWith('http://') && !isLocalAddress(externalUrl)) {
+    throw new Error('Public Imadeo addresses must use HTTPS.');
   }
 
-  const result = await new Promise<ServerInfo | null>((resolve) => {
-    let remaining = candidates.length;
-    let settled = false;
-    for (const url of candidates) {
-      void fetchApiRoot(url, 8000)
-        .then(async (response) => {
-          if (!response.ok) return null;
-          const body = await response.json().catch(() => null);
-          if (typeof body?.message !== 'string' || !body.message.includes('Imadeo')) return null;
-          return {
-            url,
-            version: typeof body.version === 'string' ? body.version : 'unknown',
-            addresses: [url],
-          } satisfies ServerInfo;
-        })
-        .catch(() => null)
-        .then((server) => {
-          if (settled) return;
-          if (server) {
-            settled = true;
-            resolve(server);
-            return;
-          }
-          remaining -= 1;
-          if (remaining === 0) resolve(null);
-        });
-    }
-  });
-
-  if (result) return result;
-  const help = isLocalAddress(enteredUrl)
-    ? 'Check the address and that your phone is on the same network.'
-    : 'Check the public address and port forwarding.';
-  throw new Error(`Could not reach ${enteredUrl}. ${help}`);
-}
-
-async function fetchApiRoot(url: string, timeout: number): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    return await fetch(`${url}/api`, { signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function isImadeo(url: string, timeout: number): Promise<boolean> {
-  try {
-    const response = await fetchApiRoot(url, timeout);
-    if (!response.ok) return false;
-    const body = await response.json().catch(() => null);
-    return typeof body?.message === 'string' && body.message.includes('Imadeo');
-  } catch {
-    return false;
-  }
-}
-
-/** Finds the first route that currently reaches this workspace. */
-export async function findReachable(server: ServerInfo): Promise<string | null> {
-  const addresses = uniqueAddresses([server.url, ...server.addresses]);
-  if (addresses.length === 0) return null;
-
-  return new Promise((resolve) => {
-    let remaining = addresses.length;
-    let settled = false;
-    for (const address of addresses) {
-      void isImadeo(address, 4000).then((reachable) => {
-        if (settled) return;
-        if (reachable) {
-          settled = true;
-          resolve(address);
-          return;
-        }
-        remaining -= 1;
-        if (remaining === 0) resolve(null);
-      });
-    }
-  });
-}
-
-/** Proves that an added address reaches the signed-in user's same workspace. */
-export async function verifyWorkspaceAddress(
-  input: string,
-  accessToken: string,
-  expectedUserId: string,
-): Promise<ServerInfo> {
-  const candidate = await probe(input);
   let response: Response;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    response = await fetch(`${candidate.url}/api/users/me`, {
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'x-imadeo-client': 'native',
-      },
-    });
-  } catch {
-    throw new Error(`Could not verify ${candidate.url}.`);
-  } finally {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    response = await fetch(`${externalUrl}/api`, { signal: controller.signal });
     clearTimeout(timer);
+  } catch {
+    const help = isLocalAddress(externalUrl)
+      ? 'Check the address and that your phone is on the same network.'
+      : 'Check the public address and port forwarding.';
+    throw new Error(`Could not reach ${externalUrl}. ${help}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`${externalUrl} answered with ${response.status}. That does not look like an Imadeo server.`);
   }
 
   const body = await response.json().catch(() => null);
-  if (!response.ok || body?.id !== expectedUserId) {
-    throw new Error('That address does not belong to this signed-in workspace.');
+  if (!body || typeof body.message !== 'string' || !body.message.includes('Imadeo')) {
+    throw new Error(`Something is running at ${externalUrl}, but it is not Imadeo.`);
   }
-  return candidate;
+
+  return { externalUrl, version: typeof body.version === 'string' ? body.version : 'unknown' };
 }
 
-export async function save(server: ServerInfo) {
-  const addresses = uniqueAddresses([server.url, ...server.addresses]);
-  await setItem(KEY, JSON.stringify({ ...server, url: addresses[0], addresses }));
+export function createProfile(
+  values: Partial<Omit<ServerProfile, 'externalUrl' | 'version'>> & Pick<ServerProfile, 'externalUrl' | 'version'>,
+): ServerProfile {
+  return {
+    id: values.id ?? makeId(),
+    name: values.name?.trim() || hostName(values.externalUrl),
+    externalUrl: normalize(values.externalUrl),
+    internalUrl: values.internalUrl?.trim() ? normalize(values.internalUrl) : undefined,
+    ssids: [...new Set((values.ssids ?? []).map((ssid) => ssid.trim()).filter(Boolean))],
+    version: values.version,
+  };
 }
 
+export function resolveServer(profile: ServerProfile, ssid: string | null): ServerInfo {
+  const useInternal = Boolean(profile.internalUrl && ssid && profile.ssids.includes(ssid));
+  return {
+    ...profile,
+    url: useInternal ? profile.internalUrl! : profile.externalUrl,
+    connectedVia: useInternal ? 'internal' : 'external',
+  };
+}
+
+/** Finds a working route without changing which saved server is selected. */
+export async function findReachable(server: ServerInfo): Promise<string | null> {
+  const candidates = [...new Set([server.url, server.internalUrl, server.externalUrl].filter(Boolean) as string[])];
+  for (const address of candidates) {
+    try {
+      await probe(address);
+      return address;
+    } catch {
+      // Try the next route to this same installation.
+    }
+  }
+  return null;
+}
+
+async function readProfiles(): Promise<ServerProfile[]> {
+  const saved = await getItem(SERVERS_KEY);
+  if (saved) {
+    try {
+      const value = JSON.parse(saved);
+      if (Array.isArray(value)) {
+        return value.filter((profile): profile is ServerProfile =>
+          Boolean(profile?.id && profile?.externalUrl && profile?.name),
+        );
+      }
+    } catch {
+      // A malformed record should not prevent someone from adding a server.
+    }
+  }
+
+  // One-time migration from the original single-address release.
+  const legacyUrl = await getItem(LEGACY_KEY);
+  if (!legacyUrl) return [];
+  const profile = createProfile({ externalUrl: legacyUrl, version: 'unknown' });
+  await Promise.all([
+    setItem(SERVERS_KEY, JSON.stringify([profile])),
+    setItem(ACTIVE_KEY, profile.id),
+    removeItem(LEGACY_KEY),
+  ]);
+  return [profile];
+}
+
+export async function listServers(): Promise<ServerProfile[]> {
+  return readProfiles();
+}
+
+export async function activeServerId(): Promise<string | null> {
+  return getItem(ACTIVE_KEY);
+}
+
+export async function loadActiveServer(ssid: string | null): Promise<ServerInfo | null> {
+  const [profiles, activeId] = await Promise.all([readProfiles(), activeServerId()]);
+  const profile = profiles.find((item) => item.id === activeId) ?? profiles[0];
+  if (!profile) return null;
+  if (profile.id !== activeId) await setItem(ACTIVE_KEY, profile.id);
+  return resolveServer(profile, ssid);
+}
+
+export async function saveServer(profile: ServerProfile): Promise<void> {
+  const profiles = await readProfiles();
+  const next = [...profiles.filter((item) => item.id !== profile.id), profile];
+  await setItem(SERVERS_KEY, JSON.stringify(next));
+}
+
+export async function setActiveServer(id: string): Promise<void> {
+  await setItem(ACTIVE_KEY, id);
+}
+
+export async function removeServer(id: string): Promise<void> {
+  const profiles = await readProfiles();
+  const next = profiles.filter((profile) => profile.id !== id);
+  await setItem(SERVERS_KEY, JSON.stringify(next));
+  if ((await activeServerId()) === id) {
+    if (next[0]) await setItem(ACTIVE_KEY, next[0].id);
+    else await removeItem(ACTIVE_KEY);
+  }
+}
+
+/** The selected server for background work, using its external route by default. */
 export async function load(): Promise<ServerInfo | null> {
-  const raw = await getItem(KEY);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<ServerInfo>;
-    if (typeof parsed.url !== 'string') throw new Error('invalid server');
-    const addresses = uniqueAddresses([
-      parsed.url,
-      ...(Array.isArray(parsed.addresses) ? parsed.addresses : []),
-    ]);
-    if (addresses.length === 0) return null;
-    return {
-      url: addresses[0],
-      version: typeof parsed.version === 'string' ? parsed.version : 'unknown',
-      addresses,
-    };
-  } catch {
-    // Before workspaces supported alternate routes, this value was one URL.
-    const url = normalize(raw);
-    return url ? { url, version: 'unknown', addresses: [url] } : null;
-  }
+  return loadActiveServer(null);
 }
 
-export async function forget() {
-  await removeItem(KEY);
+/** Persists an updated active server while keeping the profile storage private. */
+export async function save(server: ServerInfo): Promise<void> {
+  await saveServer({
+    id: server.id,
+    name: server.name,
+    externalUrl: server.externalUrl,
+    internalUrl: server.internalUrl,
+    ssids: server.ssids,
+    version: server.version,
+  });
+}
+
+/** Kept for callers that explicitly remove every configured server. */
+export async function forget(): Promise<void> {
+  await Promise.all([removeItem(LEGACY_KEY), removeItem(SERVERS_KEY), removeItem(ACTIVE_KEY)]);
 }

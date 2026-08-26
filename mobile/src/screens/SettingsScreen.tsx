@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { Header, useHeaderClearance } from '../components/Header';
 import { Icon } from '../components/Icon';
 import { Action, Choice, Group, Row, StorageRow, SwitchRow } from '../components/settings';
-import { PromptSheet } from '../components/sheets';
-import { Touchable } from '../components/ui';
 import { useResource } from '../lib/api';
 import {
   setAppearance,
@@ -16,7 +13,6 @@ import {
   useCellularAllowed,
 } from '../lib/preferences';
 import { isAvailable, isEnabled, setEnabled } from '../lib/autobackup';
-import type { ServerInfo } from '../lib/server';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
 /**
@@ -61,11 +57,8 @@ function useAutoBackup() {
 }
 
 interface Props {
-  server: ServerInfo;
-  onAddServerAddress: (address: string) => Promise<void>;
-  onRemoveServerAddress: (address: string) => Promise<void>;
-  onActivateServerAddress: (address: string) => Promise<void>;
-  onChangeServer: () => void;
+  serverUrl: string;
+  onManageServers: () => void;
 }
 
 interface Statistics {
@@ -97,22 +90,13 @@ interface Me {
   quotaSizeInBytes?: string | number | null;
 }
 
-export function SettingsScreen({
-  server,
-  onAddServerAddress,
-  onRemoveServerAddress,
-  onActivateServerAddress,
-  onChangeServer,
-}: Props) {
-  const serverUrl = server.url;
+export function SettingsScreen({ serverUrl, onManageServers }: Props) {
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
   const me = useResource<Me>(serverUrl, '/users/me');
   const auto = useAutoBackup();
   const autoplay = useAutoplayVideos();
   const cellular = useCellularAllowed();
   const appearance = useAppearance();
-  const [addingAddress, setAddingAddress] = useState(false);
-  const [addressError, setAddressError] = useState<string | null>(null);
 
   /**
    * Room this library has, not the size of the disk.
@@ -129,16 +113,15 @@ export function SettingsScreen({
   const clearance = useHeaderClearance();
 
   return (
-    <View collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
-
-      <ScrollViewMarker style={{ flex: 1 }}>
-        <ScrollView
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <Header title="Settings" icon="settings" />
+      <ScrollView
         contentContainerStyle={{
           paddingTop: clearance + 16,
           paddingBottom: TAB_BAR_CLEARANCE,
           paddingHorizontal: 16,
         }}
-        >
+      >
         <Group>
           <Row
             icon="backup"
@@ -154,58 +137,6 @@ export function SettingsScreen({
             used={data ? Number(data.usageInBytes) : null}
             capacity={capacity}
           />
-        </Group>
-
-        <Group title="Server addresses">
-          <Text
-            style={{
-              color: colors.faint,
-              fontSize: 12.5,
-              lineHeight: 18,
-              paddingVertical: 12,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}
-          >
-            Add LAN, VPN, or public addresses for this workspace. Imadeo uses whichever one is reachable.
-          </Text>
-          {server.addresses.map((address) => (
-            <ServerAddressRow
-              key={address}
-              address={address}
-              active={address === server.url}
-              onActivate={() => void onActivateServerAddress(address)}
-              onRemove={() => void onRemoveServerAddress(address)}
-            />
-          ))}
-          <Touchable
-            label="Add server address"
-            onPress={() => {
-              setAddressError(null);
-              setAddingAddress(true);
-            }}
-            radius={radius.md}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingVertical: 13,
-              }}
-            >
-              <Icon name="plus" size={17} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 14.5, fontWeight: '700' }}>
-                Add address
-              </Text>
-            </View>
-          </Touchable>
-          {addressError ? (
-            <Text style={{ color: colors.danger, fontSize: 12.5, lineHeight: 18, paddingBottom: 12 }}>
-              {addressError}
-            </Text>
-          ) : null}
         </Group>
 
         <Group title="Backup">
@@ -243,7 +174,6 @@ export function SettingsScreen({
             label="Videos"
             hint="Use mobile data to back up videos"
             on={cellular.videos}
-            last
             onChange={(next) => void setCellularAllowed({ ...cellular, videos: next })}
           />
         </Group>
@@ -285,82 +215,8 @@ export function SettingsScreen({
           </View>
         </Group>
 
-        <Action label="Connect to a different server" onPress={onChangeServer} />
-        </ScrollView>
-      </ScrollViewMarker>
-
-      <Header title="Settings" icon="settings" />
-
-      <PromptSheet
-        open={addingAddress}
-        title="Add server address"
-        description="Enter another address that reaches this same Imadeo workspace."
-        placeholder="192.168.1.40:6666"
-        confirmLabel="Add address"
-        onSubmit={(address) => {
-          setAddressError(null);
-          void onAddServerAddress(address).catch((cause) => {
-            setAddressError(cause instanceof Error ? cause.message : 'Could not add this address.');
-          });
-        }}
-        onClose={() => setAddingAddress(false)}
-      />
-    </View>
-  );
-}
-
-function ServerAddressRow({
-  address,
-  active,
-  onActivate,
-  onRemove,
-}: {
-  address: string;
-  active: boolean;
-  onActivate: () => void;
-  onRemove: () => void;
-}) {
-  return (
-    <View
-      style={{
-        minHeight: 52,
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-      }}
-    >
-      <Touchable
-        label={`${active ? 'Active' : 'Use'} ${address}`}
-        onPress={active ? undefined : onActivate}
-        style={{ flex: 1 }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
-          <View
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: active ? colors.online : colors.faint,
-            }}
-          />
-          <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ color: colors.text, fontSize: 14.5, fontWeight: '600' }}>
-              {address.replace(/^https?:\/\//, '')}
-            </Text>
-            <Text style={{ color: colors.faint, fontSize: 11.5, marginTop: 2 }}>
-              {active ? 'Connected' : 'Fallback · tap to use now'}
-            </Text>
-          </View>
-        </View>
-      </Touchable>
-      {!active ? (
-        <Touchable label={`Remove ${address}`} onPress={onRemove} radius={radius.pill}>
-          <View style={{ padding: 10 }}>
-            <Icon name="close" size={16} color={colors.faint} />
-          </View>
-        </Touchable>
-      ) : null}
+        <Action label="Manage servers" onPress={onManageServers} />
+      </ScrollView>
     </View>
   );
 }

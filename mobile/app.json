@@ -16,12 +16,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.imadeo.mobile",
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSAppTransportSecurity": {
-          "NSAllowsLocalNetworking": true
-        },
-        "NSLocationWhenInUseUsageDescription": "Imadeo can show where you are on the map of the places your photos were taken. Your location is never sent anywhere."
+        "NSLocalNetworkUsageDescription": "Imadeo connects to the server you own on your home network.",
+        "NSLocationWhenInUseUsageDescription": "Imadeo uses your location while the app is open to show photo places and choose the right server address for your Wi-Fi network. Your location is never sent anywhere."
       }
     },
     "android": {
@@ -38,7 +39,9 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO"
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_WIFI_STATE"
       ],
       "package": "app.imadeo.mobile"
     },
@@ -64,6 +67,12 @@
       "@maplibre/maplibre-react-native",
       "expo-image",
       "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Imadeo uses your location while the app is open to show photo places and choose the right server address for your Wi-Fi network. Your location is never sent anywhere."
+        }
+      ],
       "expo-router"
     ]
   }

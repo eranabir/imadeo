@@ -1632,6 +1632,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@expo/image-utils@npm:^0.11.5":
+  version: 0.11.5
+  resolution: "@expo/image-utils@npm:0.11.5"
+  dependencies:
+    "@expo/require-utils": "npm:^57.0.5"
+    "@expo/spawn-async": "npm:^1.8.0"
+    chalk: "npm:^4.0.0"
+    getenv: "npm:^2.0.0"
+    jimp-compact: "npm:0.16.1"
+    parse-png: "npm:^2.1.0"
+    semver: "npm:^7.6.0"
+  checksum: 10c0/bca05d61164c88eafcbb01e82eea92679b9fcbc435ad50f0b8f7b0c74259ea50a7e7535d5403ea747be241c9560b04be66df8f3e0f926a6da1e5a1954a41a45d
+  languageName: node
+  linkType: hard
+
 "@expo/image-utils@npm:^0.7.6":
   version: 0.7.6
   resolution: "@expo/image-utils@npm:0.7.6"
@@ -2030,6 +2045,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@expo/require-utils@npm:^57.0.5":
+  version: 57.0.5
+  resolution: "@expo/require-utils@npm:57.0.5"
+  dependencies:
+    "@babel/code-frame": "npm:^7.20.0"
+    "@babel/core": "npm:^7.25.2"
+    "@babel/plugin-transform-modules-commonjs": "npm:^7.24.8"
+  peerDependencies:
+    typescript: ^5.0.0 || ^5.0.0-0 || ^6.0.0 || ^7.0.0
+  peerDependenciesMeta:
+    typescript:
+      optional: true
+  checksum: 10c0/42841b76d6540098b664bee633e6ef9825ac84041e7c91045bd15a84d6aed4f2ad1f5027da263755a1e2dc2190283e7b7d6c4fb9ec3335c7a87016606b443754
+  languageName: node
+  linkType: hard
+
 "@expo/results@npm:1.0.0":
   version: 1.0.0
   resolution: "@expo/results@npm:1.0.0"
@@ -2248,6 +2279,7 @@ __metadata:
   dependencies:
     "@expo/metro-runtime": "npm:~57.0.8"
     "@maplibre/maplibre-react-native": "npm:^11.3.6"
+    "@react-native-community/netinfo": "npm:12.0.1"
     "@types/react": "npm:~19.2.2"
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
@@ -2262,6 +2294,7 @@ __metadata:
     expo-image: "npm:~57.0.2"
     expo-linear-gradient: "npm:~57.0.1"
     expo-linking: "npm:~57.0.5"
+    expo-location: "npm:~57.0.13"
     expo-media-library: "npm:~57.0.3"
     expo-network: "npm:~57.0.1"
     expo-router: "npm:~57.0.11"
@@ -4373,6 +4406,16 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/427df10bb3c55de36afd6b9a749fb4b72b0f78840ae4abb5dda24aa09d653ede2d264c96a8030f58db353498f42b2bce929510c777004e250f7845b06c782bcf
+  languageName: node
+  linkType: hard
+
+"@react-native-community/netinfo@npm:12.0.1":
+  version: 12.0.1
+  resolution: "@react-native-community/netinfo@npm:12.0.1"
+  peerDependencies:
+    react: "*"
+    react-native: ">=0.59"
+  checksum: 10c0/66c5fab04ef3ffe9b1f2e3578e7d3052a8c3ae327d94fa41f7d95ec4db3de4dd4017bf486013f031cb1aa12909002492474f259ea6212471f730cca39239dd35
   languageName: node
   linkType: hard
 
@@ -8866,6 +8909,17 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/02f486e11b698ef855c86e15e1e42815885f73f03a9b3f773b8459faff1148cfc75c0d74e5f40b82d96d38dbdfe06195dba22af980c0c55bf4196182d8524694
+  languageName: node
+  linkType: hard
+
+"expo-location@npm:~57.0.13":
+  version: 57.0.13
+  resolution: "expo-location@npm:57.0.13"
+  dependencies:
+    "@expo/image-utils": "npm:^0.11.5"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/2d43a598b881f46a7c5fadda8a7654fcb6f1b723144fb40228ded445fee840b470a8a83991cb77c91ec0b77fe6f6b30f04aa96eb4252039f9f1f3a09c3c81a46
   languageName: node
   linkType: hard
 

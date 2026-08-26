@@ -1,7 +1,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { runBackup } from './backup';
-import { findReachable, load as loadServer, save as saveServer } from './server';
+import { findReachable, load as loadServer } from './server';
 import { getItem, removeItem, setItem } from './storage';
 
 const TASK = 'imadeo.autobackup';
@@ -50,9 +50,6 @@ TaskManager.defineTask(TASK, async () => {
      */
     const address = await findReachable(server);
     if (!address) return BackgroundTask.BackgroundTaskResult.Failed;
-    if (address !== server.url) {
-      await saveServer({ ...server, url: address, addresses: [address, ...server.addresses] });
-    }
     const progress = await runBackup(address, () => {}, () => false);
     await setItem(LAST_RUN, JSON.stringify({ at: Date.now(), sent: progress.done, failed: progress.failed }));
 
