@@ -21,12 +21,16 @@
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoadsInLocalNetworking": true
+        },
         "NSLocalNetworkUsageDescription": "Imadeo connects to the server you own on your home network.",
         "NSBonjourServices": ["_imadeo._tcp"],
         "NSLocationWhenInUseUsageDescription": "Imadeo uses your location while the app is open to show photo places and choose the right server address for your Wi-Fi network. Your location is never sent anywhere."
       }
     },
     "android": {
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
