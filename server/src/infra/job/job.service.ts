@@ -134,6 +134,35 @@ export class JobService {
   }
 
   /**
+   * Removes redundant queued copies of one asset stage after a coalesced job
+   * completed the work for the whole owner. The currently active job keeps its
+   * lock and is deliberately left for BullMQ to finish normally.
+   */
+  async removeQueuedAssetJobs(queue: QueueName, name: string, assetIds: string[]) {
+    const target = this.queues[queue];
+    let removed = 0;
+
+    for (let index = 0; index < assetIds.length; index += 100) {
+      const batch = assetIds.slice(index, index + 100);
+      await Promise.all(batch.map(async (assetId) => {
+        const job = await target.getJob(JobService.jobIdFor(name, assetId));
+        if (!job || (await job.getState()) === 'active') return;
+
+        try {
+          await job.remove();
+          removed++;
+        } catch (error) {
+          this.logger.debug(
+            `Asset job ${job.id ?? `${name}/${assetId}`} became active before coalescing: ${String(error)}`,
+          );
+        }
+      }));
+    }
+
+    return removed;
+  }
+
+  /**
    * Removes every queued processing stage for assets that entered Trash.
    *
    * BullMQ cannot remove a job while a worker owns its lock, so active jobs are

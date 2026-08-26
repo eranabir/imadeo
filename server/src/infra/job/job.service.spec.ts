@@ -57,6 +57,40 @@ describe('JobService', () => {
     expect(activeRemove).not.toHaveBeenCalled();
   });
 
+  it('removes redundant queued jobs after owner-wide processing finishes', async () => {
+    const waitingRemove = vi.fn().mockResolvedValue(undefined);
+    const activeRemove = vi.fn().mockResolvedValue(undefined);
+    const duplicateQueue = {
+      getJob: vi.fn(async (id: string) => ({
+        id,
+        getState: vi.fn().mockResolvedValue(id.endsWith('--active-id') ? 'active' : 'waiting'),
+        remove: id.endsWith('--active-id') ? activeRemove : waitingRemove,
+      })),
+    };
+    const emptyQueue = {};
+    const service = new JobService(
+      emptyQueue as never,
+      emptyQueue as never,
+      emptyQueue as never,
+      emptyQueue as never,
+      emptyQueue as never,
+      emptyQueue as never,
+      duplicateQueue as never,
+      emptyQueue as never,
+      emptyQueue as never,
+    );
+
+    await expect(
+      service.removeQueuedAssetJobs(
+        QUEUE.DUPLICATE,
+        JOB.DETECT_DUPLICATES,
+        ['waiting-id', 'active-id'],
+      ),
+    ).resolves.toBe(1);
+    expect(waitingRemove).toHaveBeenCalledOnce();
+    expect(activeRemove).not.toHaveBeenCalled();
+  });
+
   it('expands only active file jobs while keeping queue backlogs aggregated', async () => {
     const emptyQueue = () => ({
       getJobCounts: vi.fn().mockResolvedValue({ active: 0, waiting: 4, delayed: 0, failed: 0 }),

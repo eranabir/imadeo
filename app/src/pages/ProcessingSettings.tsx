@@ -100,9 +100,7 @@ export function ProcessingSettings() {
   const recognitionActive = recognition?.processingAssets ?? detectedRecognitionJobs;
   const mediaActive = activeJobs.filter((job) => job.name !== 'detect-faces').length;
   const active = mediaActive + recognitionActive;
-  const recognitionVisible =
-    recognitionActive > 0 || (recognition?.queuedAssets ?? 0) > 0;
-  const recognitionWaiting = recognitionVisible && recognitionActive === 0;
+  const recognitionVisible = recognitionActive > 0;
 
   return (
     <div className="space-y-6">
@@ -111,8 +109,6 @@ export function ProcessingSettings() {
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-soft text-primary">
             {active > 0 ? (
               <LoaderCircle size={19} className="animate-spin" />
-            ) : recognitionWaiting ? (
-              <Clock3 size={19} />
             ) : (
               <Gauge size={19} />
             )}
@@ -123,17 +119,13 @@ export function ProcessingSettings() {
                 <h2 className="text-sm font-semibold">
                   {active > 0
                     ? `${active} active file ${active === 1 ? 'task' : 'tasks'}`
-                    : recognitionWaiting
-                      ? 'Face recognition is queued'
                     : snapshot?.scheduler.workerOnline === false
                       ? 'Processing worker is offline'
                       : 'Processing is idle'}
                 </h2>
                 {snapshot && (
                   <p className="mt-1 text-xs text-content-muted">
-                    {recognitionWaiting
-                      ? 'Recognition will start automatically when media processing and recent activity are quiet.'
-                      : schedulerCopy(snapshot)}
+                    {schedulerCopy(snapshot)}
                   </p>
                 )}
               </div>
@@ -200,7 +192,6 @@ export function ProcessingSettings() {
             <StageStatus
               label="People & Pets recognition"
               active={recognitionActive}
-              waiting={recognition?.queuedAssets ?? 0}
             />
             <StageStatus label="Checking duplicates" active={countJobs(snapshot.activeJobs, ['detect-duplicates'])} />
           </div>

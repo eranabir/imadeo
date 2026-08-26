@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QUEUE } from './job.constants';
 import { BackgroundTaskGate } from './background-task-gate.service';
 
 describe('BackgroundTaskGate', () => {
@@ -169,5 +170,34 @@ describe('BackgroundTaskGate', () => {
     finish();
     await processing;
     expect(gate.getStatus().activeQueues).toEqual({});
+  });
+
+  it('runs face recognition before queued search and duplicate work', async () => {
+    const gate = createGate(0);
+    const events: string[] = [];
+    let finishVideo: () => void = () => undefined;
+    const videoHold = new Promise<void>((resolve) => {
+      finishVideo = resolve;
+    });
+
+    const video = gate.runHeavyProcessing(async () => {
+      events.push('video');
+      await videoHold;
+    }, QUEUE.VIDEO);
+    await vi.advanceTimersByTimeAsync(0);
+    const duplicate = gate.runHeavyProcessing(async () => {
+      events.push('duplicate');
+    }, QUEUE.DUPLICATE);
+    const search = gate.runHeavyProcessing(async () => {
+      events.push('search');
+    }, QUEUE.SMART_SEARCH);
+    const recognition = gate.runMachineLearning(async () => {
+      events.push('recognition');
+    }, QUEUE.FACE_DETECTION);
+    await vi.advanceTimersByTimeAsync(0);
+
+    finishVideo();
+    await Promise.all([video, duplicate, search, recognition]);
+    expect(events).toEqual(['video', 'recognition', 'search', 'duplicate']);
   });
 });

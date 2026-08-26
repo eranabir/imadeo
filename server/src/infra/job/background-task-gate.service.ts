@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../../config/configuration';
+import { QUEUE } from './job.constants';
 import {
   ProcessingSignalService,
   type ProcessingSchedulerStatus,
@@ -17,6 +18,13 @@ import {
  */
 @Injectable()
 export class BackgroundTaskGate implements OnModuleDestroy {
+  private static readonly HEAVY_QUEUE_PRIORITY: string[] = [
+    QUEUE.VIDEO,
+    QUEUE.FACE_DETECTION,
+    QUEUE.FACE_CLUSTER,
+    QUEUE.SMART_SEARCH,
+    QUEUE.DUPLICATE,
+  ];
   private readonly uploadIdleMs: number;
   private readonly userIdleMs: number;
   private readonly processingConcurrency: number;
@@ -26,6 +34,7 @@ export class BackgroundTaskGate implements OnModuleDestroy {
   private activeProcessing = 0;
   private waitingProcessing = 0;
   private activeHeavyProcessing = 0;
+  private readonly waitingHeavyQueues = new Map<string, number>();
   private readonly activeQueues = new Map<string, number>();
   private idleTimer: NodeJS.Timeout | null = null;
   private userIdleTimer: NodeJS.Timeout | null = null;
@@ -137,14 +146,20 @@ export class BackgroundTaskGate implements OnModuleDestroy {
 
   /** Runs transcoding, duplicate scans and inference only during quiet periods. */
   async runHeavyProcessing<T>(operation: () => Promise<T>, queue?: string): Promise<T> {
-    while (true) {
-      await this.signals.waitForBackgroundWindow();
-      while (!this.canStartHeavyProcessing()) await this.waitForStateChange();
-      if (await this.signals.backgroundWindowIsOpen()) break;
-    }
-    this.activeHeavyProcessing += 1;
-    this.markQueueStarted(queue);
+    this.markHeavyQueueWaiting(queue, 1);
     this.publishStatus();
+    try {
+      while (true) {
+        await this.signals.waitForBackgroundWindow();
+        while (!this.canStartHeavyProcessing(queue)) await this.waitForStateChange();
+        if (await this.signals.backgroundWindowIsOpen()) break;
+      }
+      this.activeHeavyProcessing += 1;
+      this.markQueueStarted(queue);
+    } finally {
+      this.markHeavyQueueWaiting(queue, -1);
+      this.publishStatus();
+    }
 
     try {
       return await operation();
@@ -221,18 +236,40 @@ export class BackgroundTaskGate implements OnModuleDestroy {
     this.waitingProcessing = 0;
     this.activeHeavyProcessing = 0;
     this.activeQueues.clear();
+    this.waitingHeavyQueues.clear();
     this.notifyStateChange();
   }
 
-  private canStartHeavyProcessing() {
+  private canStartHeavyProcessing(queue?: string) {
     return (
       this.activeUploads === 0 &&
       !this.idleTimer &&
       !this.userIdleTimer &&
       this.activeProcessing === 0 &&
       this.waitingProcessing === 0 &&
-      this.activeHeavyProcessing === 0
+      this.activeHeavyProcessing === 0 &&
+      !this.hasHigherPriorityHeavyWaiter(queue)
     );
+  }
+
+  private hasHigherPriorityHeavyWaiter(queue?: string) {
+    const priority = this.heavyQueuePriority(queue);
+    return [...this.waitingHeavyQueues].some(
+      ([waitingQueue, count]) =>
+        count > 0 && waitingQueue !== queue && this.heavyQueuePriority(waitingQueue) < priority,
+    );
+  }
+
+  private heavyQueuePriority(queue?: string) {
+    const index = queue ? BackgroundTaskGate.HEAVY_QUEUE_PRIORITY.indexOf(queue) : -1;
+    return index < 0 ? BackgroundTaskGate.HEAVY_QUEUE_PRIORITY.length : index;
+  }
+
+  private markHeavyQueueWaiting(queue: string | undefined, delta: number) {
+    const key = queue ?? 'unspecified';
+    const count = Math.max(0, (this.waitingHeavyQueues.get(key) ?? 0) + delta);
+    if (count === 0) this.waitingHeavyQueues.delete(key);
+    else this.waitingHeavyQueues.set(key, count);
   }
 
   private canStartMediaProcessing() {
