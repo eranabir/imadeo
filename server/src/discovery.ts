@@ -1,6 +1,6 @@
 import { Bonjour } from 'bonjour-service';
 
-const port = Number.parseInt(process.env.DISCOVERY_PORT ?? '6666', 10);
+const port = Number.parseInt(process.env.DISCOVERY_PORT ?? '1111', 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
   throw new Error('DISCOVERY_PORT must be a valid TCP port.');
 }

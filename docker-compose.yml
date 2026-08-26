@@ -64,10 +64,6 @@ services:
     mem_limit: ${API_MEMORY_LIMIT:-1g}
     expose:
       - "6666"
-    ports:
-      # Direct HTTP access for the LAN/VPN mode. A remote reverse proxy may
-      # forward HTTPS traffic here, but never expose this port directly.
-      - ${SERVER_HOST_PORT:-6666}:6666
     depends_on:
       database:
         condition: service_healthy
@@ -109,7 +105,7 @@ services:
     command: ['node', 'dist/discovery']
     network_mode: host
     environment:
-      DISCOVERY_PORT: ${SERVER_HOST_PORT:-6666}
+      DISCOVERY_PORT: ${WEB_HOST_PORT:-1111}
       IMADEO_DISCOVERY_NAME: ${IMADEO_DISCOVERY_NAME:-Imadeo}
       IMADEO_VERSION: ${IMADEO_VERSION:-latest}
     depends_on:
