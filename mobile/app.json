@@ -22,6 +22,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "Imadeo connects to the server you own on your home network.",
+        "NSBonjourServices": ["_imadeo._tcp"],
         "NSLocationWhenInUseUsageDescription": "Imadeo uses your location while the app is open to show photo places and choose the right server address for your Wi-Fi network. Your location is never sent anywhere."
       }
     },
@@ -41,7 +42,8 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_WIFI_STATE"
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE"
       ],
       "package": "app.imadeo.mobile"
     },

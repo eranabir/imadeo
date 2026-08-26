@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { LogoLockup } from '../components/Logo';
+import { discoverServers, type DiscoveredServer } from '../lib/discovery';
 import { requestCurrentSsid } from '../lib/network';
 import { createProfile, probe, type ServerProfile } from '../lib/server';
 import { colors, radius } from '../theme';
@@ -24,6 +25,7 @@ type Step = 'discover' | 'address' | 'details';
 export function ConnectScreen({ onConnected }: Props) {
   const [step, setStep] = useState<Step>('discover');
   const [searching, setSearching] = useState(true);
+  const [discovered, setDiscovered] = useState<DiscoveredServer[]>([]);
   const [address, setAddress] = useState('');
   const [name, setName] = useState('');
   const [internalUrl, setInternalUrl] = useState('');
@@ -37,7 +39,23 @@ export function ConnectScreen({ onConnected }: Props) {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(
+    () =>
+      discoverServers((server) => {
+        setDiscovered((current) =>
+          current.some((item) => item.url === server.url) ? current : [...current, server],
+        );
+      }),
+    [],
+  );
+
   const discoverOrContinue = () => setStep('address');
+
+  const chooseDiscovered = (server: DiscoveredServer) => {
+    setAddress(server.url);
+    setName(server.name);
+    setStep('address');
+  };
 
   const checkAddress = async () => {
     setChecking(true);
@@ -116,6 +134,16 @@ export function ConnectScreen({ onConnected }: Props) {
             <View style={{ height: 96, justifyContent: 'center' }}>
               {searching ? <ActivityIndicator size="large" color={colors.primary} /> : null}
             </View>
+            {discovered.map((server) => (
+              <Pressable
+                key={server.url}
+                onPress={() => chooseDiscovered(server)}
+                style={({ pressed }) => ({ width: '100%', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 15, marginBottom: 10, opacity: pressed ? 0.72 : 1 })}
+              >
+                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{server.name}</Text>
+                <Text style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>{server.url}</Text>
+              </Pressable>
+            ))}
             {!searching ? (
               <Text style={{ color: colors.faint, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
                 No server announced itself on this network.
