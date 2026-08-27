@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { Header, useHeaderClearance } from '../components/Header';
 import { Icon } from '../components/Icon';
-import { requestCurrentSsid } from '../lib/network';
-import { createProfile, listServers, probe, type ServerInfo, type ServerProfile } from '../lib/server';
+import { WifiNetworks } from '../components/WifiNetworks';
+import { createProfile, listServers, probeServerAddresses, type ServerInfo, type ServerProfile } from '../lib/server';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Props {
@@ -37,26 +37,17 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
   const refresh = useCallback(async () => setServers(await listServers()), []);
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const addCurrentWifi = async () => {
-    if (!draft) return;
-    setError(null);
-    const ssid = await requestCurrentSsid();
-    if (!ssid) {
-      setError('Imadeo could not read this Wi-Fi name. Allow location access, then try again.');
-      return;
-    }
-    setDraft({ ...draft, ssids: draft.ssids.includes(ssid) ? draft.ssids : [...draft.ssids, ssid] });
-  };
-
   const save = async () => {
     if (!draft) return;
     setBusy(true);
     setError(null);
     try {
-      const candidate = draft.internalUrl?.trim() || draft.externalUrl?.trim();
-      if (!candidate) throw new Error('Enter an internal or external server address.');
-      const checked = await probe(candidate);
-      const profile = createProfile({ ...draft, version: checked.version, id: draft.id || undefined });
+      let version = draft.version;
+      if (!draft.id) {
+        const checked = await probeServerAddresses(draft);
+        version = checked.version;
+      }
+      const profile = createProfile({ ...draft, version, id: draft.id || undefined });
       await onSave(profile);
       await refresh();
       setDraft(null);
@@ -92,15 +83,7 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
         <TextInput value={draft.externalUrl ?? ''} onChangeText={(externalUrl) => setDraft({ ...draft, externalUrl })} placeholder="https://photos.example.com" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
         <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>INTERNAL URL · OPTIONAL</Text>
         <TextInput value={draft.internalUrl ?? ''} onChangeText={(internalUrl) => setDraft({ ...draft, internalUrl })} placeholder="http://192.168.1.40:6666" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
-        <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 4 }}>WI-FI NETWORKS</Text>
-        <Text style={{ color: colors.faint, fontSize: 13, lineHeight: 18, marginBottom: 6 }}>Used to choose the internal address when both addresses are configured.</Text>
-        {draft.ssids.map((ssid) => (
-          <Pressable key={ssid} onPress={() => setDraft({ ...draft, ssids: draft.ssids.filter((item) => item !== ssid) })} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Text style={{ color: colors.text, fontSize: 16, flex: 1 }}>{ssid}</Text>
-            <Text style={{ color: colors.danger, fontWeight: '700' }}>Remove</Text>
-          </Pressable>
-        ))}
-        <Pressable onPress={() => void addCurrentWifi()} style={{ paddingVertical: 14 }}><Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Use current Wi-Fi</Text></Pressable>
+        <WifiNetworks value={draft.ssids} onChange={(ssids) => setDraft({ ...draft, ssids })} autoSelectCurrent={Boolean(draft.internalUrl?.trim())} />
         {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 8 }}>{error}</Text> : null}
         <Pressable onPress={save} disabled={busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim())} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim()) ? 0.45 : pressed ? 0.85 : 1 })}>
           {busy ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Save server</Text>}

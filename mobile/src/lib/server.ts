@@ -89,6 +89,31 @@ export async function probe(input: string): Promise<{ url: string; version: stri
   return { url, version: typeof body.version === 'string' ? body.version : 'unknown' };
 }
 
+/**
+ * Checks every supplied route concurrently and accepts the first working
+ * Imadeo server. An unavailable LAN route must not hide a working public one.
+ */
+export async function probeServerAddresses(values: {
+  externalUrl?: string;
+  internalUrl?: string;
+}): Promise<{ kind: 'external' | 'internal'; url: string; version: string }> {
+  const addresses = [
+    values.externalUrl?.trim() ? { kind: 'external' as const, value: values.externalUrl } : null,
+    values.internalUrl?.trim() ? { kind: 'internal' as const, value: values.internalUrl } : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  if (addresses.length === 0) throw new Error('Enter an internal or external server address.');
+  try {
+    return await Promise.any(addresses.map(async (address) => ({
+      kind: address.kind,
+      ...await probe(address.value),
+    })));
+  } catch (cause) {
+    if (cause instanceof AggregateError && cause.errors[0]) throw cause.errors[0];
+    throw cause;
+  }
+}
+
 export function createProfile(
   values: Partial<Omit<ServerProfile, 'version'>> & Pick<ServerProfile, 'version'>,
 ): ServerProfile {

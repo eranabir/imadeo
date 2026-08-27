@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,10 +10,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Icon } from '../components/Icon';
 import { LogoLockup } from '../components/Logo';
+import { WifiNetworks } from '../components/WifiNetworks';
 import { discoverServers, type DiscoveredServer } from '../lib/discovery';
-import { requestCurrentSsid } from '../lib/network';
-import { createProfile, probe, type ServerProfile } from '../lib/server';
+import { createProfile, probeServerAddresses, type ServerProfile } from '../lib/server';
 import { colors, radius } from '../theme';
 
 interface Props {
@@ -58,6 +60,16 @@ export function ConnectScreen({ onConnected }: Props) {
     };
   }, [discoveryAttempt]);
 
+  useEffect(() => {
+    if (step === 'discover') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setError(null);
+      setStep(step === 'details' ? 'address' : 'discover');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [step]);
+
   const discoverOrContinue = () => setStep('address');
 
   const searchAgain = () => {
@@ -75,10 +87,8 @@ export function ConnectScreen({ onConnected }: Props) {
     setChecking(true);
     setError(null);
     try {
-      const candidate = internalUrl.trim() || externalUrl.trim();
-      if (!candidate) throw new Error('Enter an internal or external server address.');
-      const result = await probe(candidate);
-      if (candidate === internalUrl.trim()) setInternalUrl(result.url);
+      const result = await probeServerAddresses({ externalUrl, internalUrl });
+      if (result.kind === 'internal') setInternalUrl(result.url);
       else setExternalUrl(result.url);
       setVersion(result.version);
       setStep('details');
@@ -89,14 +99,9 @@ export function ConnectScreen({ onConnected }: Props) {
     }
   };
 
-  const addCurrentWifi = async () => {
+  const goBack = () => {
     setError(null);
-    const ssid = await requestCurrentSsid();
-    if (!ssid) {
-      setError('Imadeo could not read this Wi-Fi name. Allow location access, then try again.');
-      return;
-    }
-    setSsids((current) => current.includes(ssid) ? current : [...current, ssid]);
+    setStep(step === 'details' ? 'address' : 'discover');
   };
 
   const save = async () => {
@@ -127,6 +132,18 @@ export function ConnectScreen({ onConnected }: Props) {
     color: colors.text,
     fontSize: 16,
   });
+
+  const backButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Go back"
+      onPress={goBack}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 4, paddingVertical: 10, paddingRight: 14, marginBottom: 18, opacity: pressed ? 0.62 : 1 })}
+    >
+      <Icon name="back" size={22} color={colors.primary} strong />
+      <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Back</Text>
+    </Pressable>
+  );
 
   return (
     <KeyboardAvoidingView
@@ -248,6 +265,7 @@ export function ConnectScreen({ onConnected }: Props) {
 
         {step === 'address' ? (
           <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            {backButton}
             <View style={{ marginBottom: 28 }}><LogoLockup /></View>
             <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
               Add your server
@@ -307,6 +325,7 @@ export function ConnectScreen({ onConnected }: Props) {
 
         {step === 'details' ? (
           <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            {backButton}
             <View style={{ marginBottom: 28 }}><LogoLockup /></View>
             <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
               Finish setup
@@ -316,16 +335,7 @@ export function ConnectScreen({ onConnected }: Props) {
             </Text>
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>NAME</Text>
             <TextInput value={name} onChangeText={setName} placeholder="Home" placeholderTextColor={colors.faint} style={field()} />
-            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>WI-FI NETWORKS</Text>
-            {ssids.map((ssid) => (
-              <Pressable key={ssid} onPress={() => setSsids((current) => current.filter((item) => item !== ssid))} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
-                <Text style={{ color: colors.text, fontSize: 16, flex: 1 }}>{ssid}</Text>
-                <Text style={{ color: colors.danger, fontSize: 14, fontWeight: '700' }}>Remove</Text>
-              </Pressable>
-            ))}
-            <Pressable onPress={() => void addCurrentWifi()} style={{ paddingVertical: 12 }}>
-              <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Use current Wi-Fi</Text>
-            </Pressable>
+            <WifiNetworks value={ssids} onChange={setSsids} autoSelectCurrent={Boolean(internalUrl.trim())} />
             {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 8 }}>{error}</Text> : null}
             <Pressable onPress={save} disabled={checking} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: checking ? 0.45 : pressed ? 0.85 : 1 })}>
               {checking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Connect</Text>}

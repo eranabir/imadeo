@@ -12,6 +12,7 @@ import { mkdir } from 'node:fs/promises';
 import { AppModule } from './app.module';
 import { AUTH_COOKIE } from './common/auth.types';
 import type { AppConfig } from './config/configuration';
+import { allowLongRunningUploads } from './config/http-server';
 import { PrismaService } from './infra/prisma/prisma.service';
 import { StorageService } from './infra/storage/storage.service';
 
@@ -144,7 +145,8 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swagger));
 
   const port = config.get('port', { infer: true });
-  await app.listen(port, '0.0.0.0');
+  const httpServer = await app.listen(port, '0.0.0.0');
+  allowLongRunningUploads(httpServer);
   logger.log(`Imadeo server listening on port ${port}`);
   logger.log(`API documentation at /api/docs`);
 
