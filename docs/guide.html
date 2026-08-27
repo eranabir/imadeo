@@ -187,14 +187,14 @@ docker compose up -d</code></pre>
       </p>
 
       <p>
-        Imadeo exposes two LAN/VPN ports: web on <code>1111</code> and API on
-        <code>6666</code>. It does not ship a public reverse proxy.
+        Imadeo exposes one LAN/VPN port, <code>1111</code>, for both the web app
+        and mobile API. It does not ship a public reverse proxy.
       </p>
 
       <h3 id="https">Remote access with a reverse proxy</h3>
       <p>
         On a LAN or VPN, open <code>http://&lt;server-ip&gt;:1111</code> and connect
-        the mobile app to <code>http://&lt;server-ip&gt;:6666</code>. For internet
+        the mobile app to that same address. For internet
         access, put a reverse proxy in front of web port <code>1111</code>.
         The proxy terminates HTTPS and must preserve <code>Host</code>,
         <code>X-Real-IP</code>, <code>X-Forwarded-For</code>, and
@@ -223,7 +223,7 @@ LOCAL_HTTP_ENABLED=true</code></pre>
 
       <p>
         Forward only the proxy’s HTTPS port through the router. Never expose
-        <code>1111</code> or <code>6666</code> directly. A raw WAN IP cannot use
+        <code>1111</code> directly. A raw WAN IP cannot use
         a normally trusted certificate, so remote access needs a domain/DDNS name
         or a VPN.
       </p>

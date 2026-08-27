@@ -9,10 +9,9 @@ Your originals stay on storage you choose.
 
 ## Development
 
-`yarn dev` serves the full local stack at `http://localhost:5173`; the
-API is on HTTP port `6666` in development and production. Production web is
-served on port `1111`. Remote deployments should use an
-HTTPS reverse proxy for remote access.
+`yarn dev` serves the web client at `http://localhost:5173` and its API on
+HTTP port `6666`. Docker exposes the production web app and API together on
+port `1111`. Remote deployments should use an HTTPS reverse proxy.
 
 ## Built for your library
 
@@ -45,7 +44,7 @@ Locked-folder secrets without overwriting existing values. By default, media,
 database files, and model files are all stored inside this installation folder.
 
 On your LAN or VPN, open `http://<server-ip>:1111` and create the first account.
-The mobile app connects to `http://<server-ip>:6666`.
+The mobile app uses that same address.
 
 ```bash
 docker compose logs -f
@@ -58,13 +57,13 @@ Install Imadeo on your phone, enter your server’s address, and sign in with th
 account you created. The app can back up your camera roll and show which items
 are safely stored on the server.
 
-On a LAN or VPN, enter the server IP and port `6666`; Imadeo selects HTTP for
+On a LAN or VPN, enter the server IP and port `1111`; Imadeo selects HTTP for
 private addresses. For internet access, enter the HTTPS address of your reverse
 proxy instead.
 
 ## Remote access with a reverse proxy
 
-Imadeo does not ship a public proxy. Keep ports `1111` and `6666` private, then
+Imadeo does not ship a public proxy. Keep port `1111` private, then
 point a reverse proxy at the web port. It terminates HTTPS and forwards the
 original `Host`, `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto` headers.
 Allow uploads up to your Imadeo upload limit.
@@ -93,7 +92,7 @@ LOCAL_HTTP_ENABLED=true
 ```
 
 Forward only the proxy’s HTTPS port from the router. Connect the mobile app to
-`https://photos.example.com`; never forward `1111` or `6666` directly. A bare
+`https://photos.example.com`; never forward `1111` directly. A bare
 WAN IP cannot have a normally trusted certificate, so use a domain/DDNS name or
 a VPN for remote access.
 

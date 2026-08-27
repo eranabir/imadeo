@@ -100,6 +100,7 @@ services:
         condition: service_healthy
 
   discovery:
+    container_name: imadeo_discovery
     image: ghcr.io/eranabir/imadeo/server:${IMADEO_VERSION:-latest}
     restart: unless-stopped
     command: ['node', 'dist/discovery']

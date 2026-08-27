@@ -11,8 +11,8 @@ docker compose up -d
 The first command creates `.env` with unique database, Redis, authentication,
 and Locked-folder secrets. It never replaces secrets that are already set.
 
-After startup, open `http://<server-ip>:1111`. The mobile app connects to
-`http://<server-ip>:6666` on the same LAN or through a VPN.
+After startup, open `http://<server-ip>:1111`. The mobile app uses that same
+address on the LAN or through a VPN.
 
 To update Imadeo later:
 
