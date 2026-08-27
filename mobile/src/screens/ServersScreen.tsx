@@ -53,8 +53,10 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
     setBusy(true);
     setError(null);
     try {
-      const checked = await probe(draft.externalUrl);
-      const profile = createProfile({ ...draft, ...checked, id: draft.id || undefined });
+      const candidate = draft.internalUrl?.trim() || draft.externalUrl?.trim();
+      if (!candidate) throw new Error('Enter an internal or external server address.');
+      const checked = await probe(candidate);
+      const profile = createProfile({ ...draft, version: checked.version, id: draft.id || undefined });
       await onSave(profile);
       await refresh();
       setDraft(null);
@@ -82,16 +84,16 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
       <Header title={draft.id ? 'Edit server' : 'Add server'} icon="storage" onBack={() => { setDraft(null); setError(null); }} />
       <ScrollView contentContainerStyle={{ paddingTop: clearance + 8, paddingHorizontal: 16, paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21, marginBottom: 24 }}>
-          The internal address is used only when the phone is connected to one of these Wi-Fi networks. Otherwise Imadeo uses the external address.
+          Add an internal address, an external address, or both. With both, Imadeo uses the internal address on the Wi-Fi networks below.
         </Text>
         <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>NAME</Text>
         <TextInput value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} placeholder="Home" placeholderTextColor={colors.faint} style={field()} />
-        <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>EXTERNAL URL</Text>
-        <TextInput value={draft.externalUrl} onChangeText={(externalUrl) => setDraft({ ...draft, externalUrl })} placeholder="https://photos.example.com" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
-        <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>INTERNAL URL</Text>
-        <TextInput value={draft.internalUrl} onChangeText={(internalUrl) => setDraft({ ...draft, internalUrl })} placeholder="http://192.168.1.40:3001" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field()} />
+        <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>EXTERNAL URL · OPTIONAL</Text>
+        <TextInput value={draft.externalUrl ?? ''} onChangeText={(externalUrl) => setDraft({ ...draft, externalUrl })} placeholder="https://photos.example.com" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
+        <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>INTERNAL URL · OPTIONAL</Text>
+        <TextInput value={draft.internalUrl ?? ''} onChangeText={(internalUrl) => setDraft({ ...draft, internalUrl })} placeholder="http://192.168.1.40:6666" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
         <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 4 }}>WI-FI NETWORKS</Text>
-        <Text style={{ color: colors.faint, fontSize: 13, lineHeight: 18, marginBottom: 6 }}>Your internal URL is used only on these networks.</Text>
+        <Text style={{ color: colors.faint, fontSize: 13, lineHeight: 18, marginBottom: 6 }}>Used to choose the internal address when both addresses are configured.</Text>
         {draft.ssids.map((ssid) => (
           <Pressable key={ssid} onPress={() => setDraft({ ...draft, ssids: draft.ssids.filter((item) => item !== ssid) })} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ color: colors.text, fontSize: 16, flex: 1 }}>{ssid}</Text>
@@ -100,7 +102,7 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
         ))}
         <Pressable onPress={() => void addCurrentWifi()} style={{ paddingVertical: 14 }}><Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Use current Wi-Fi</Text></Pressable>
         {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 8 }}>{error}</Text> : null}
-        <Pressable onPress={save} disabled={busy || !draft.externalUrl.trim()} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: busy || !draft.externalUrl.trim() ? 0.45 : pressed ? 0.85 : 1 })}>
+        <Pressable onPress={save} disabled={busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim())} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim()) ? 0.45 : pressed ? 0.85 : 1 })}>
           {busy ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Save server</Text>}
         </Pressable>
         {draft.id ? (
@@ -128,7 +130,16 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
               <View style={{ width: 38, height: 38, borderRadius: radius.sm, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}><Icon name="storage" size={20} color={colors.primary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontSize: 17, fontWeight: '700' }}>{item.name}</Text>
-                <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>{item.externalUrl.replace(/^https?:\/\//, '')}</Text>
+                {item.externalUrl ? (
+                  <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>
+                    External · {item.externalUrl.replace(/^https?:\/\//, '')}
+                  </Text>
+                ) : null}
+                {item.internalUrl ? (
+                  <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>
+                    Internal · {item.internalUrl.replace(/^https?:\/\//, '')}
+                  </Text>
+                ) : null}
               </View>
               {selected ? <Icon name="check" size={20} color={colors.primary} strong /> : null}
             </Pressable>

@@ -9,7 +9,7 @@ export interface ServerProfile {
   id: string;
   name: string;
   /** A URL which works everywhere, normally the public HTTPS address. */
-  externalUrl: string;
+  externalUrl?: string;
   /** A faster LAN URL, used only while the phone is on one of `ssids`. */
   internalUrl?: string;
   ssids: string[];
@@ -57,10 +57,10 @@ function makeId(): string {
  * A LAN address may intentionally use HTTP behind a trusted home network. A
  * public address must stay HTTPS so private media is never sent in the clear.
  */
-export async function probe(input: string): Promise<Pick<ServerProfile, 'externalUrl' | 'version'>> {
-  const externalUrl = normalize(input);
-  if (!externalUrl) throw new Error('Enter your server address.');
-  if (!__DEV__ && externalUrl.startsWith('http://') && !isLocalAddress(externalUrl)) {
+export async function probe(input: string): Promise<{ url: string; version: string }> {
+  const url = normalize(input);
+  if (!url) throw new Error('Enter your server address.');
+  if (!__DEV__ && url.startsWith('http://') && !isLocalAddress(url)) {
     throw new Error('Public Imadeo addresses must use HTTPS.');
   }
 
@@ -68,45 +68,52 @@ export async function probe(input: string): Promise<Pick<ServerProfile, 'externa
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    response = await fetch(`${externalUrl}/api`, { signal: controller.signal });
+    response = await fetch(`${url}/api`, { signal: controller.signal });
     clearTimeout(timer);
   } catch {
-    const help = isLocalAddress(externalUrl)
+    const help = isLocalAddress(url)
       ? 'Check the address and that your phone is on the same network.'
       : 'Check the public address and port forwarding.';
-    throw new Error(`Could not reach ${externalUrl}. ${help}`);
+    throw new Error(`Could not reach ${url}. ${help}`);
   }
 
   if (!response.ok) {
-    throw new Error(`${externalUrl} answered with ${response.status}. That does not look like an Imadeo server.`);
+    throw new Error(`${url} answered with ${response.status}. That does not look like an Imadeo server.`);
   }
 
   const body = await response.json().catch(() => null);
   if (!body || typeof body.message !== 'string' || !body.message.includes('Imadeo')) {
-    throw new Error(`Something is running at ${externalUrl}, but it is not Imadeo.`);
+    throw new Error(`Something is running at ${url}, but it is not Imadeo.`);
   }
 
-  return { externalUrl, version: typeof body.version === 'string' ? body.version : 'unknown' };
+  return { url, version: typeof body.version === 'string' ? body.version : 'unknown' };
 }
 
 export function createProfile(
-  values: Partial<Omit<ServerProfile, 'externalUrl' | 'version'>> & Pick<ServerProfile, 'externalUrl' | 'version'>,
+  values: Partial<Omit<ServerProfile, 'version'>> & Pick<ServerProfile, 'version'>,
 ): ServerProfile {
+  const externalUrl = values.externalUrl?.trim() ? normalize(values.externalUrl) : undefined;
+  const internalUrl = values.internalUrl?.trim() ? normalize(values.internalUrl) : undefined;
+  const primaryUrl = externalUrl ?? internalUrl;
+  if (!primaryUrl) throw new Error('Enter an internal or external server address.');
+
   return {
     id: values.id ?? makeId(),
-    name: values.name?.trim() || hostName(values.externalUrl),
-    externalUrl: normalize(values.externalUrl),
-    internalUrl: values.internalUrl?.trim() ? normalize(values.internalUrl) : undefined,
+    name: values.name?.trim() || hostName(primaryUrl),
+    externalUrl,
+    internalUrl,
     ssids: [...new Set((values.ssids ?? []).map((ssid) => ssid.trim()).filter(Boolean))],
     version: values.version,
   };
 }
 
 export function resolveServer(profile: ServerProfile, ssid: string | null): ServerInfo {
-  const useInternal = Boolean(profile.internalUrl && ssid && profile.ssids.includes(ssid));
+  const useInternal = Boolean(
+    profile.internalUrl && (!profile.externalUrl || (ssid && profile.ssids.includes(ssid))),
+  );
   return {
     ...profile,
-    url: useInternal ? profile.internalUrl! : profile.externalUrl,
+    url: useInternal ? profile.internalUrl! : profile.externalUrl!,
     connectedVia: useInternal ? 'internal' : 'external',
   };
 }
@@ -132,7 +139,7 @@ async function readProfiles(): Promise<ServerProfile[]> {
       const value = JSON.parse(saved);
       if (Array.isArray(value)) {
         return value.filter((profile): profile is ServerProfile =>
-          Boolean(profile?.id && profile?.externalUrl && profile?.name),
+          Boolean(profile?.id && (profile?.externalUrl || profile?.internalUrl) && profile?.name),
         );
       }
     } catch {

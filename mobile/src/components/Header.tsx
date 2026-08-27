@@ -81,6 +81,7 @@ export function Header({
         top: 0,
         left: 0,
         right: 0,
+        zIndex: 10,
         backgroundColor: colors.surface,
         borderBottomLeftRadius: radius.xl,
         borderBottomRightRadius: radius.xl,

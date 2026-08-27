@@ -8,6 +8,7 @@
     "dev": "prisma generate && nest start --watch",
     "dev:api": "nest start --watch",
     "dev:worker": "nest start --watch --entryFile worker",
+    "dev:discovery": "tsx watch src/discovery.ts",
     "start": "node dist/main",
     "start:worker": "node dist/worker",
     "db:generate": "prisma generate",

@@ -25,8 +25,10 @@ type Step = 'discover' | 'address' | 'details';
 export function ConnectScreen({ onConnected }: Props) {
   const [step, setStep] = useState<Step>('discover');
   const [searching, setSearching] = useState(true);
+  const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
   const [discovered, setDiscovered] = useState<DiscoveredServer[]>([]);
-  const [address, setAddress] = useState('');
+  const [externalUrl, setExternalUrl] = useState('');
   const [name, setName] = useState('');
   const [internalUrl, setInternalUrl] = useState('');
   const [ssids, setSsids] = useState<string[]>([]);
@@ -35,24 +37,36 @@ export function ConnectScreen({ onConnected }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setSearching(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(
-    () =>
-      discoverServers((server) => {
+    setSearching(true);
+    setDiscoveryError(null);
+    const stop = discoverServers(
+      (server) => {
+        setSearching(false);
         setDiscovered((current) =>
           current.some((item) => item.url === server.url) ? current : [...current, server],
         );
-      }),
-    [],
-  );
+      },
+      (message) => {
+        setSearching(false);
+        setDiscoveryError(message);
+      },
+    );
+    const timer = setTimeout(() => setSearching(false), 8000);
+    return () => {
+      clearTimeout(timer);
+      stop();
+    };
+  }, [discoveryAttempt]);
 
   const discoverOrContinue = () => setStep('address');
 
+  const searchAgain = () => {
+    setDiscovered([]);
+    setDiscoveryAttempt((current) => current + 1);
+  };
+
   const chooseDiscovered = (server: DiscoveredServer) => {
-    setAddress(server.url);
+    setInternalUrl(server.url);
     setName(server.name);
     setStep('address');
   };
@@ -61,9 +75,11 @@ export function ConnectScreen({ onConnected }: Props) {
     setChecking(true);
     setError(null);
     try {
-      const result = await probe(address);
-      setAddress(result.externalUrl);
-      setInternalUrl(result.externalUrl);
+      const candidate = internalUrl.trim() || externalUrl.trim();
+      if (!candidate) throw new Error('Enter an internal or external server address.');
+      const result = await probe(candidate);
+      if (candidate === internalUrl.trim()) setInternalUrl(result.url);
+      else setExternalUrl(result.url);
       setVersion(result.version);
       setStep('details');
     } catch (cause) {
@@ -89,7 +105,7 @@ export function ConnectScreen({ onConnected }: Props) {
     try {
       await onConnected(createProfile({
         name,
-        externalUrl: address,
+        externalUrl,
         internalUrl,
         ssids,
         version,
@@ -118,60 +134,150 @@ export function ConnectScreen({ onConnected }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28 }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ marginBottom: 28 }}><LogoLockup /></View>
-
         {step === 'discover' ? (
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: colors.text, fontSize: 29, fontWeight: '700', textAlign: 'center' }}>
-              Searching on your home network
+          <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            <View style={{ alignItems: 'center', marginBottom: 34 }}>
+              <LogoLockup size={54} />
+            </View>
+            <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, textAlign: 'center' }}>
+              Connect to your server
             </Text>
             <Text style={{ color: colors.muted, fontSize: 16, lineHeight: 23, textAlign: 'center', marginTop: 12 }}>
-              Looking for an Imadeo server nearby.
+              Imadeo can find a server connected to the same local network.
             </Text>
-            <View style={{ height: 96, justifyContent: 'center' }}>
-              {searching ? <ActivityIndicator size="large" color={colors.primary} /> : null}
+
+            <View
+              style={{
+                marginTop: 28,
+                padding: 20,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: radius.lg,
+                backgroundColor: colors.surface,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 22,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.raised,
+                  }}
+                >
+                  {searching ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <Text style={{ color: discovered.length ? colors.online : colors.muted, fontSize: 20, fontWeight: '700' }}>
+                      {discovered.length ? '✓' : '—'}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <Text style={{ color: colors.text, fontSize: 17, fontWeight: '700' }}>
+                    {searching
+                      ? 'Searching your local network…'
+                      : discovered.length
+                        ? `${discovered.length} server${discovered.length === 1 ? '' : 's'} found`
+                        : 'No server found'}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 3 }}>
+                    {searching
+                      ? 'This can take a few seconds.'
+                      : discovered.length
+                        ? 'Choose a server below to continue.'
+                        : 'Make sure the server is running and this phone is on the same network.'}
+                  </Text>
+                </View>
+              </View>
+
+              {discoveryError ? (
+                <Text style={{ color: colors.danger, fontSize: 13, lineHeight: 19, marginTop: 14 }}>
+                  Local discovery is unavailable. You can still enter the address manually.
+                </Text>
+              ) : null}
+
+              {discovered.map((server) => (
+                <Pressable
+                  key={server.url}
+                  onPress={() => chooseDiscovered(server)}
+                  style={({ pressed }) => ({
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: radius.md,
+                    padding: 14,
+                    marginTop: 14,
+                    backgroundColor: pressed ? colors.pressed : colors.raised,
+                  })}
+                >
+                  <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{server.name}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>{server.url}</Text>
+                </Pressable>
+              ))}
+
+              {!searching && !discovered.length ? (
+                <Pressable onPress={searchAgain} style={{ alignSelf: 'flex-start', paddingTop: 16, paddingBottom: 2 }}>
+                  <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '700' }}>Search again</Text>
+                </Pressable>
+              ) : null}
             </View>
-            {discovered.map((server) => (
-              <Pressable
-                key={server.url}
-                onPress={() => chooseDiscovered(server)}
-                style={({ pressed }) => ({ width: '100%', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 15, marginBottom: 10, opacity: pressed ? 0.72 : 1 })}
-              >
-                <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{server.name}</Text>
-                <Text style={{ color: colors.muted, fontSize: 13, marginTop: 3 }}>{server.url}</Text>
-              </Pressable>
-            ))}
-            {!searching ? (
-              <Text style={{ color: colors.faint, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-                No server announced itself on this network.
-              </Text>
-            ) : null}
-            <Pressable onPress={discoverOrContinue} style={{ marginTop: 42 }}>
-              <Text style={{ color: colors.primary, fontSize: 17, fontWeight: '700' }}>
-                Enter address manually
+
+            <Pressable
+              onPress={discoverOrContinue}
+              style={({ pressed }) => ({
+                marginTop: 16,
+                borderRadius: radius.pill,
+                paddingVertical: 15,
+                alignItems: 'center',
+                backgroundColor: pressed ? colors.pressed : colors.raised,
+                borderWidth: 1,
+                borderColor: colors.border,
+              })}
+            >
+              <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>
+                Enter server address
               </Text>
             </Pressable>
           </View>
         ) : null}
 
         {step === 'address' ? (
-          <>
+          <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            <View style={{ marginBottom: 28 }}><LogoLockup /></View>
             <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
               Add your server
             </Text>
             <Text style={{ color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: 10, marginBottom: 30 }}>
-              Enter the address Imadeo uses when you are away from home.
+              Add an internal address, an external address, or both.
             </Text>
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>
-              EXTERNAL URL
+              EXTERNAL URL · OPTIONAL
             </Text>
             <TextInput
-              value={address}
-              onChangeText={(value) => { setAddress(value); if (error) setError(null); }}
+              value={externalUrl}
+              onChangeText={(value) => { setExternalUrl(value); if (error) setError(null); }}
               placeholder="https://photos.example.com"
+              placeholderTextColor={colors.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="go"
+              onSubmitEditing={checkAddress}
+              editable={!checking}
+              style={field(Boolean(error))}
+            />
+            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>
+              INTERNAL URL · OPTIONAL
+            </Text>
+            <TextInput
+              value={internalUrl}
+              onChangeText={(value) => { setInternalUrl(value); if (error) setError(null); }}
+              placeholder="http://192.168.1.40:6666"
               placeholderTextColor={colors.faint}
               autoCapitalize="none"
               autoCorrect={false}
@@ -184,33 +290,32 @@ export function ConnectScreen({ onConnected }: Props) {
             {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 12 }}>{error}</Text> : null}
             <Pressable
               onPress={checkAddress}
-              disabled={checking || !address.trim()}
+              disabled={checking || !(externalUrl.trim() || internalUrl.trim())}
               style={({ pressed }) => ({
                 marginTop: 26,
                 backgroundColor: colors.primary,
                 borderRadius: radius.pill,
                 paddingVertical: 15,
                 alignItems: 'center',
-                opacity: checking || !address.trim() ? 0.45 : pressed ? 0.85 : 1,
+                opacity: checking || !(externalUrl.trim() || internalUrl.trim()) ? 0.45 : pressed ? 0.85 : 1,
               })}
             >
               {checking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Continue</Text>}
             </Pressable>
-          </>
+          </View>
         ) : null}
 
         {step === 'details' ? (
-          <>
+          <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            <View style={{ marginBottom: 28 }}><LogoLockup /></View>
             <Text style={{ color: colors.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }}>
               Finish setup
             </Text>
             <Text style={{ color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: 10, marginBottom: 24 }}>
-              Add a faster home-network address if you use one. It will only be used on the Wi-Fi names below.
+              Name this server and choose the Wi-Fi networks that should use its internal address.
             </Text>
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>NAME</Text>
             <TextInput value={name} onChangeText={setName} placeholder="Home" placeholderTextColor={colors.faint} style={field()} />
-            <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>INTERNAL URL</Text>
-            <TextInput value={internalUrl} onChangeText={setInternalUrl} placeholder="http://192.168.1.40:3001" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field()} />
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>WI-FI NETWORKS</Text>
             {ssids.map((ssid) => (
               <Pressable key={ssid} onPress={() => setSsids((current) => current.filter((item) => item !== ssid))} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
@@ -225,7 +330,7 @@ export function ConnectScreen({ onConnected }: Props) {
             <Pressable onPress={save} disabled={checking} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: checking ? 0.45 : pressed ? 0.85 : 1 })}>
               {checking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Connect</Text>}
             </Pressable>
-          </>
+          </View>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
