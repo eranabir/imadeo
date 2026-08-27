@@ -16,6 +16,7 @@ import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Album, type Asset, type Device, type FolderContents } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors } from '../theme';
+import { useMediaViewMode } from '../lib/viewMode';
 
 interface Props {
   serverUrl: string;
@@ -48,6 +49,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
 
   const [shelf, setShelf] = useState<Shelf>('photos');
   const selection = useSelection();
+  const [viewMode, setViewMode] = useMediaViewMode();
 
   const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
   const [menuFor, setMenuFor] = useState<Target | null>(null);
@@ -164,11 +166,19 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
           : 'browse') as IconName,
     action:
       showing === 'folders' || showing === 'albums' ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <HeaderAction
+            label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
+            icon={viewMode === 'grid' ? 'list' : 'grid'}
+            compact
+            onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+          />
         <HeaderAction
           label="New"
           icon="plus"
           onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
         />
+        </View>
       ) : undefined,
     below: atRoot ? (
       <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
@@ -251,16 +261,24 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
 
       {albums.length > 0 && (
         <Section title="Albums" trailing={`${albums.length}`}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 }}>
+          <View
+            style={{
+              flexDirection: viewMode === 'grid' ? 'row' : 'column',
+              flexWrap: viewMode === 'grid' ? 'wrap' : 'nowrap',
+              paddingHorizontal: 16,
+              gap: viewMode === 'grid' ? 12 : 8,
+            }}
+          >
             {albums.map((album) => (
               // Two to a row, with the gap taken out of each card's share.
-              <View key={album.id} style={{ width: '47.5%' }}>
+              <View key={album.id} style={{ width: viewMode === 'grid' ? '47.5%' : '100%' }}>
                 <AlbumCard
                   serverUrl={serverUrl}
                   album={album}
                   token={token}
                   onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
                   onLongPress={() => setMenuFor({ kind: 'album', id: album.id, name: album.name })}
+                  layout={viewMode}
                 />
               </View>
             ))}
@@ -299,6 +317,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
          * keep the plain grid.
          */
         groupByDay={atRoot && showing === 'photos'}
+        viewMode={showing === 'folders' ? viewMode : 'grid'}
         serverUrl={serverUrl}
         assets={assets}
         token={token}

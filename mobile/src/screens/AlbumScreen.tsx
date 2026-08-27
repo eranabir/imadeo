@@ -8,6 +8,7 @@ import { ShareSheet } from '../components/sheets';
 import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Asset } from '../lib/api';
 import { colors } from '../theme';
+import { useMediaViewMode } from '../lib/viewMode';
 
 interface AlbumDetail {
   id: string;
@@ -39,6 +40,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
   const { data } = useResource<AlbumDetail>(serverUrl, `/albums/${albumId}?size=1&sortBy=date&order=desc`);
   const clearance = useHeaderClearance();
   const selection = useSelection();
+  const [viewMode, setViewMode] = useMediaViewMode();
   const [sharing, setSharing] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
@@ -57,12 +59,20 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
     icon: 'album',
     onBack,
     action: (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <HeaderAction
+          label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
+          icon={viewMode === 'grid' ? 'list' : 'grid'}
+          compact
+          onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+        />
       <HeaderAction
         label="Share album"
         icon="shared"
         compact
         onPress={() => setSharing(true)}
       />
+      </View>
     ),
   };
 
@@ -75,6 +85,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
         loading={loading}
         onRefresh={reload}
         topInset={clearance}
+        viewMode={viewMode}
         header={
           error || shareError || data?.description ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>

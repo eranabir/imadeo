@@ -36,6 +36,11 @@ function directoryEntry(name: string, batches: DroppedEntry[][]): DroppedEntry {
 }
 
 describe('web upload selection', () => {
+  it('accepts lowercase and uppercase DNG files even without a browser MIME type', () => {
+    expect(isMediaFile(new File(['raw'], 'capture.dng'))).toBe(true);
+    expect(isMediaFile(new File(['raw'], 'capture.DNG', { type: 'application/octet-stream' }))).toBe(true);
+  });
+
   it('stays aligned with every media extension accepted by the server', async () => {
     const source = await readFile(
       resolve(process.cwd(), '../server/src/modules/asset/asset.service.ts'),

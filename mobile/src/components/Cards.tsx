@@ -109,13 +109,62 @@ export function AlbumCard({
   token,
   onPress,
   onLongPress,
+  layout = 'grid',
 }: {
   serverUrl: string;
   album: AlbumCardData;
   token: string | null;
   onPress: () => void;
   onLongPress?: () => void;
+  layout?: 'grid' | 'list';
 }) {
+  if (layout === 'list') {
+    return (
+      <Touchable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        label={album.name}
+        radius={radius.md}
+        style={[{ backgroundColor: colors.surface }, shadow(1)]}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, padding: 9 }}>
+          {album.coverAssetId ? (
+            <Image
+              source={thumbnail(serverUrl, album.coverAssetId, token)}
+              style={{ width: 54, height: 54, borderRadius: radius.sm, backgroundColor: colors.raised }}
+              contentFit="cover"
+              recyclingKey={album.coverAssetId}
+              transition={120}
+            />
+          ) : (
+            <View
+              style={{
+                width: 54,
+                height: 54,
+                borderRadius: radius.sm,
+                backgroundColor: colors.raised,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="album" size={23} color={colors.faint} />
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15.5, fontWeight: '600' }}>
+              {album.name}
+            </Text>
+            <Text style={{ color: colors.faint, fontSize: 12.5, marginTop: 3 }}>
+              {count(album.assetCount, 'photo')}
+            </Text>
+          </View>
+          {album.shared ? <Icon name="shared" size={16} color={colors.primary} /> : null}
+          <Icon name="forward" size={16} color={colors.faint} />
+        </View>
+      </Touchable>
+    );
+  }
+
   return (
     <Touchable
       onPress={onPress}

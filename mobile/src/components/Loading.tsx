@@ -254,6 +254,42 @@ export function GridSkeleton({ rows = 4, columns = 3 }: { rows?: number; columns
   );
 }
 
+/** Placeholder rows that keep list mode from briefly turning back into a grid. */
+export function ListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading photos" style={{ gap: 8 }}>
+      {Array.from({ length: rows }).map((_, row) => (
+        <View
+          key={row}
+          style={{
+            height: 72,
+            marginHorizontal: 16,
+            padding: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            borderRadius: radius.md,
+            backgroundColor: colors.surface,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ width: 56, height: 56, borderRadius: radius.sm, overflow: 'hidden' }}>
+            <Pulse delay={row * 90} />
+          </View>
+          <View style={{ flex: 1, gap: 9 }}>
+            <View style={{ width: '70%', height: 12, borderRadius: 6, overflow: 'hidden' }}>
+              <Pulse delay={row * 90 + 40} />
+            </View>
+            <View style={{ width: '42%', height: 9, borderRadius: 5, overflow: 'hidden' }}>
+              <Pulse delay={row * 90 + 80} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** A single square, breathing between 0.5 and 0.85 like the web's pulse. */
 function Pulse({ delay }: { delay: number }) {
   const beat = useRef(new Animated.Value(0)).current;

@@ -415,6 +415,16 @@ describe('AssetService duplicate upload destinations', () => {
     expect(detectType('clip.mov', '')).toBe('VIDEO');
     expect(detectType('clip.MOV', '')).toBe('VIDEO');
   });
+
+  it('treats lower- and uppercase DNG extensions as images without a MIME type', () => {
+    const { service } = createService({ id: 'asset-id' });
+    const detectType = (service as unknown as {
+      detectType: (filename: string, mimetype: string) => string;
+    }).detectType.bind(service);
+
+    expect(detectType('capture.dng', '')).toBe('IMAGE');
+    expect(detectType('capture.DNG', 'application/octet-stream')).toBe('IMAGE');
+  });
 });
 
 describe('AssetService deferred upload processing', () => {

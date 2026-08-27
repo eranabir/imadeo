@@ -25,7 +25,7 @@ import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
-import { GridSkeleton } from './Loading';
+import { GridSkeleton, ListSkeleton } from './Loading';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from './Scrubber';
 import { Touchable } from './ui';
 
@@ -73,6 +73,8 @@ interface Props {
    * a library scrolled for minutes is nothing but days.
    */
   groupByDay?: boolean;
+  /** Dense rows with names and dates, or the normal edge-to-edge photo wall. */
+  viewMode?: 'grid' | 'list';
 }
 
 /**
@@ -106,6 +108,7 @@ export function AssetGrid({
   loadingMore = false,
   onLoadMore,
   groupByDay = false,
+  viewMode = 'grid',
 }: Props) {
   const selecting = (selected?.length ?? 0) > 0;
   const [viewing, setViewing] = useState<{ at: number; from: Rect | null } | null>(null);
@@ -246,6 +249,102 @@ export function AssetGrid({
     );
   };
 
+  const renderListItem = (item: Asset, at: number) => {
+    const length = formatDuration(item.duration);
+    const on = selected?.includes(item.id) ?? false;
+    const date = item.localDateTime
+      ? new Date(item.localDateTime).toLocaleDateString()
+      : null;
+
+    return (
+      <Pressable
+        ref={(node) => {
+          if (node) tiles.set(item.id, node);
+          else tiles.delete(item.id);
+        }}
+        onPress={() => press(item.id, at)}
+        onLongPress={() => onStartSelecting?.(item.id)}
+        delayLongPress={280}
+        accessibilityRole={selecting ? 'checkbox' : 'button'}
+        accessibilityLabel={item.originalFileName ?? 'Photo'}
+        accessibilityState={selecting ? { checked: on } : undefined}
+        style={{ marginHorizontal: 16, marginBottom: 8 }}
+      >
+        <View
+          style={{
+            minHeight: 72,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            padding: 8,
+            borderRadius: radius.md,
+            backgroundColor: on ? colors.pressed : colors.surface,
+          }}
+        >
+          {selecting ? (
+            <View
+              style={{
+                width: 23,
+                height: 23,
+                borderRadius: 12,
+                borderWidth: on ? 0 : 2,
+                borderColor: colors.muted,
+                backgroundColor: on ? colors.primary : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {on ? <Icon name="check" size={14} color={colors.onPrimary} strong /> : null}
+            </View>
+          ) : null}
+          <View style={{ width: 56, height: 56 }}>
+            <Image
+              source={thumbnail(serverUrl, item.id, token)}
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: radius.sm,
+                backgroundColor: colors.raised,
+                transform: [{ rotate: `${item.rotation ?? 0}deg` }],
+              }}
+              contentFit="cover"
+              recyclingKey={item.id}
+              transition={120}
+            />
+            {item.type === 'VIDEO' ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 4,
+                  bottom: 4,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 3,
+                  paddingHorizontal: 4,
+                  paddingVertical: 2,
+                  borderRadius: radius.sm,
+                  backgroundColor: colors.overlay,
+                }}
+              >
+                <Icon name="play" size={10} color="#fff" />
+                {length ? <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }}>{length}</Text> : null}
+              </View>
+            ) : null}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
+              {item.originalFileName ?? (item.type === 'VIDEO' ? 'Video' : 'Photo')}
+            </Text>
+            <Text numberOfLines={1} style={{ color: colors.faint, fontSize: 12.5, marginTop: 4 }}>
+              {[item.type === 'VIDEO' ? 'Video' : 'Photo', date].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+          {item.isFavorite ? <Icon name="heart-filled" size={16} color={colors.primary} /> : null}
+        </View>
+      </Pressable>
+    );
+  };
+
   const days = useMemo(
     () =>
       groupByDay
@@ -279,7 +378,7 @@ export function AssetGrid({
    * changes a few times a second at most and has to reach a `Text`.
    */
   const scrollY = useRef(new Animated.Value(0)).current;
-  const list = useRef<SectionList<Asset[]> | FlatList<Asset[]>>(null);
+  const list = useRef<SectionList<Asset[]> | FlatList<Asset>>(null);
   const [contentHeight, setContentHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [seeking, setSeeking] = useState(false);
@@ -459,10 +558,10 @@ export function AssetGrid({
         <FlatList
           data={assets}
           keyExtractor={(item) => item.id}
-          numColumns={columns}
+          numColumns={viewMode === 'list' ? 1 : columns}
           // Remounts the rows rather than reflowing them: FlatList cannot change
           // numColumns on a live list.
-          key={columns}
+          key={`${viewMode}-${columns}`}
           contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
           ListHeaderComponent={header}
           refreshControl={
@@ -478,13 +577,15 @@ export function AssetGrid({
               />
             ) : undefined
           }
-          renderItem={({ item, index }) => renderTile(item, index)}
+          renderItem={({ item, index }) =>
+            viewMode === 'list' ? renderListItem(item, index) : renderTile(item, index)
+          }
           onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
           onEndReachedThreshold={1.5}
           ListEmptyComponent={
             !showEmptyState ? null : loading ? (
               // The shape of the grid that is arriving, not a spinner over a void.
-              <GridSkeleton columns={columns} />
+              viewMode === 'list' ? <ListSkeleton /> : <GridSkeleton columns={columns} />
             ) : (
               <Empty icon={emptyIcon} title={emptyTitle} body={emptyBody}>
                 {emptyExtra}

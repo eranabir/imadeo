@@ -16,6 +16,11 @@ describe('mimeFor', () => {
   it('prefers the generated derivative extension', () => {
     expect(mimeFor('/data/users/id/encoded-video/asset.mp4', 'IMG_1234.MOV')).toBe('video/mp4');
   });
+
+  it('serves extensionless DNG originals with their RAW image type', () => {
+    expect(mimeFor('/data/users/id/library/asset', 'IMG_1234.dng')).toBe('image/x-adobe-dng');
+    expect(mimeFor('/data/users/id/library/asset', 'IMG_1234.DNG')).toBe('image/x-adobe-dng');
+  });
 });
 
 describe('thumbnailCacheControl', () => {

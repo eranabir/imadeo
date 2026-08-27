@@ -5,6 +5,8 @@ export type IconName =
   | 'browse'
   | 'folder'
   | 'album'
+  | 'grid'
+  | 'list'
   | 'search'
   | 'people-and-pets'
   | 'person'
@@ -120,12 +122,25 @@ function shapes(name: IconName, color: string) {
 
     // lucide's `LayoutGrid`, which is what the web client marks Albums with.
     case 'album':
+    case 'grid':
       return (
         <>
           <Rect x="3" y="3" width="7.5" height="7.5" rx="1.8" />
           <Rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8" />
           <Rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8" />
           <Rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8" />
+        </>
+      );
+
+    case 'list':
+      return (
+        <>
+          <Circle cx="5" cy="6" r="1" />
+          <Circle cx="5" cy="12" r="1" />
+          <Circle cx="5" cy="18" r="1" />
+          <Path d="M9 6h11" />
+          <Path d="M9 12h11" />
+          <Path d="M9 18h11" />
         </>
       );
 
