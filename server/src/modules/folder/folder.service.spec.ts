@@ -205,7 +205,9 @@ describe('FolderService.create', () => {
     } as unknown as PrismaService;
     const service = new FolderService(prisma, {} as never);
 
-    await expect(service.create('owner-id', { name: '2010' })).resolves.toMatchObject({
+    await expect(
+      service.create({ user: { id: 'owner-id' } } as never, { name: '2010' }),
+    ).resolves.toMatchObject({
       id: 'new-folder',
       deletedAt: null,
       path: '/new-folder/',
@@ -213,6 +215,44 @@ describe('FolderService.create', () => {
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({ ownerId: 'owner-id', parentId: null, name: '2010' }),
     });
+  });
+
+  it('creates a root folder inside Locked only for an unlocked session', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'locked-folder' });
+    const update = vi.fn().mockResolvedValue({ id: 'locked-folder', isLocked: true });
+    const service = new FolderService(
+      {
+        folder: { findFirst: vi.fn().mockResolvedValue(null) },
+        $transaction: vi.fn(async (work: (tx: unknown) => unknown) =>
+          work({ folder: { create, update } }),
+        ),
+      } as never,
+      {} as never,
+    );
+    const auth = {
+      user: { id: 'owner-id' },
+      session: { vaultUnlockedUntil: new Date(Date.now() + 60_000) },
+    } as never;
+
+    await service.create(auth, { name: 'Private', isLocked: true });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ isLocked: true, name: 'Private' }),
+    });
+  });
+
+  it('rejects a locked root folder when the vault is closed', async () => {
+    const service = new FolderService(
+      { folder: { findFirst: vi.fn().mockResolvedValue(null) } } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.create({ user: { id: 'owner-id' } } as never, {
+        name: 'Private',
+        isLocked: true,
+      }),
+    ).rejects.toThrow('Locked is locked');
   });
 });
 

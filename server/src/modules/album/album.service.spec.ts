@@ -33,6 +33,57 @@ describe('AlbumService locked album access', () => {
   });
 });
 
+describe('AlbumService.create inside Locked', () => {
+  it('creates an unshared locked album for an unlocked session', async () => {
+    const create = vi.fn().mockResolvedValue({
+      id: 'album-id',
+      name: 'Private',
+      isLocked: true,
+      _count: { assets: 0 },
+    });
+    const service = new AlbumService(
+      { album: { create } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const auth = {
+      user: { id: 'owner-id' },
+      session: { vaultUnlockedUntil: new Date(Date.now() + 60_000) },
+    } as never;
+
+    await expect(
+      service.create(auth, { albumName: 'Private', isLocked: true }),
+    ).resolves.toMatchObject({ id: 'album-id', isLocked: true, assetCount: 0 });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          isLocked: true,
+          albumUsers: { create: [] },
+        }),
+      }),
+    );
+  });
+
+  it('rejects a locked album while the vault is closed', async () => {
+    const service = new AlbumService(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.create({ user: { id: 'owner-id' } } as never, {
+        albumName: 'Private',
+        isLocked: true,
+      }),
+    ).rejects.toThrow('Locked is locked');
+  });
+});
+
 describe('AlbumService asset sorting', () => {
   it('groups album media by type with deterministic ordering', () => {
     const service = new AlbumService(

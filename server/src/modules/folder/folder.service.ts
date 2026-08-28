@@ -5,6 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { assertVaultUnlocked } from '../../common/auth.guard';
+import type { AuthDto } from '../../common/auth.types';
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
 import { AssetType, AssetVisibility, Prisma, UserStatus } from '../../db';
 import sanitize from 'sanitize-filename';
@@ -442,7 +444,8 @@ export class FolderService {
 
   // -- writes ---------------------------------------------------------------
 
-  async create(userId: string, dto: CreateFolderDto) {
+  async create(auth: AuthDto, dto: CreateFolderDto) {
+    const userId = auth.user.id;
     const name = this.normaliseName(dto.name);
 
     let parent = null;
@@ -452,6 +455,9 @@ export class FolderService {
         throw new BadRequestException(`Folders cannot nest deeper than ${MAX_DEPTH} levels`);
       }
     }
+
+    const isLocked = dto.isLocked === true || parent?.isLocked === true;
+    if (isLocked) assertVaultUnlocked(auth);
 
     await this.assertNameFree(userId, dto.parentId ?? null, name);
 
@@ -465,7 +471,7 @@ export class FolderService {
           name,
           path: '/',
           depth: parent ? parent.depth + 1 : 0,
-          isLocked: parent?.isLocked ?? false,
+          isLocked,
           color: dto.color,
           icon: dto.icon,
         },
@@ -1071,10 +1077,13 @@ export class FolderService {
         if (existing) return existing;
 
         try {
-          return await this.create(userId, {
-            name,
-            parentId: currentParentId ?? undefined,
-          });
+          return await this.create(
+            { user: { id: userId }, session: undefined } as AuthDto,
+            {
+              name,
+              parentId: currentParentId ?? undefined,
+            },
+          );
         } catch (error) {
           // Keep the database-level fallback for deployments that run more
           // than one server process against the same non-root parent.

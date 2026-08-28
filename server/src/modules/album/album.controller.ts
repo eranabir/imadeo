@@ -42,8 +42,8 @@ export class AlbumController {
   }
 
   @Post()
-  create(@AuthedUserId() userId: string, @Body() dto: CreateAlbumDto) {
-    return this.albumService.create(userId, dto);
+  create(@Authed() auth: AuthDto, @Body() dto: CreateAlbumDto) {
+    return this.albumService.create(auth, dto);
   }
 
   @Auth({ sharedLink: true })

@@ -32,6 +32,11 @@ export class CreateFolderDto {
   @IsOptional()
   @IsString()
   icon?: string;
+
+  @ApiPropertyOptional({ description: 'Create this folder inside Locked' })
+  @IsOptional()
+  @IsBoolean()
+  isLocked?: boolean;
 }
 
 export class UpdateFolderDto {

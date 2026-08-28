@@ -33,8 +33,9 @@ export class FolderController {
 
   @Get('tree')
   @ApiOperation({ summary: 'The complete nested folder tree for the current user' })
-  getTree(@AuthedUserId() userId: string, @Query() query: FolderTreeQueryDto) {
-    return this.folderService.getTree(userId, query);
+  getTree(@Authed() auth: AuthDto, @Query() query: FolderTreeQueryDto) {
+    if (query.includeLocked) assertVaultUnlocked(auth);
+    return this.folderService.getTree(auth.user.id, query);
   }
 
   @Get('root')
@@ -51,8 +52,8 @@ export class FolderController {
 
   @Post()
   @ApiOperation({ summary: 'Create a folder, optionally inside another folder' })
-  create(@AuthedUserId() userId: string, @Body() dto: CreateFolderDto) {
-    return this.folderService.create(userId, dto);
+  create(@Authed() auth: AuthDto, @Body() dto: CreateFolderDto) {
+    return this.folderService.create(auth, dto);
   }
 
   @Post('ensure-path')

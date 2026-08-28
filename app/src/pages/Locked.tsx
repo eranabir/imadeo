@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock, LockOpen, ShieldCheck } from 'lucide-react';
+import { FolderPlus, ImagePlus, Lock, LockOpen, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { AssetViewer } from '../components/AssetViewer';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
@@ -9,7 +9,7 @@ import { VaultDialog, useVaultStatus } from '../components/VaultGate';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
 import type { Album, Asset, FolderNode, Paginated } from '../types';
-import { Button, EmptyState } from '../ui';
+import { Button, EmptyState, PromptDialog } from '../ui';
 
 /**
  * Everything filed as locked, behind a private password.
@@ -22,6 +22,7 @@ export function LockedPage() {
   const [error, setError] = useState<string | null>(null);
   const [askPin, setAskPin] = useState(false);
   const [viewing, setViewing] = useState<Asset | null>(null);
+  const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
 
   const { data: vault } = useVaultStatus();
   const actions = useLibraryActions({ onError: setError, onShowDetails: setViewing });
@@ -62,6 +63,26 @@ export function LockedPage() {
     onError: (e) => setError(errorMessage(e)),
   });
 
+  const createFolder = useMutation({
+    mutationFn: async (name: string) =>
+      (await api.post('/folders', { name, isLocked: true })).data,
+    onSuccess: () => {
+      setCreating(null);
+      void queryClient.invalidateQueries({ queryKey: ['folders'] });
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  const createAlbum = useMutation({
+    mutationFn: async (albumName: string) =>
+      (await api.post('/albums', { albumName, isLocked: true })).data,
+    onSuccess: () => {
+      setCreating(null);
+      void queryClient.invalidateQueries({ queryKey: ['albums'] });
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
   const flatten = (nodes: FolderNode[]): FolderNode[] =>
     nodes.flatMap((node) => [node, ...flatten(node.children)]);
 
@@ -85,9 +106,27 @@ export function LockedPage() {
         </div>
 
         {unlocked && (
-          <Button size="sm" icon={<Lock size={14} />} onClick={() => lockNow.mutate()}>
-            Lock now
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<FolderPlus size={14} />}
+              onClick={() => setCreating('folder')}
+            >
+              New folder
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<ImagePlus size={14} />}
+              onClick={() => setCreating('album')}
+            >
+              New album
+            </Button>
+            <Button size="sm" icon={<Lock size={14} />} onClick={() => lockNow.mutate()}>
+              Lock now
+            </Button>
+          </div>
         )}
       </header>
 
@@ -120,7 +159,17 @@ export function LockedPage() {
         <EmptyState
           icon={Lock}
           title="Nothing is locked yet"
-          description="Open a photo or right-click any photo, folder or album and choose Lock."
+          description="Create a private folder or album here, or lock existing photos, folders and albums."
+          action={
+            <div className="flex items-center gap-2">
+              <Button icon={<FolderPlus size={15} />} onClick={() => setCreating('folder')}>
+                New folder
+              </Button>
+              <Button icon={<ImagePlus size={15} />} onClick={() => setCreating('album')}>
+                New album
+              </Button>
+            </div>
+          }
         />
       ) : (
         <div className="space-y-7 px-5 pb-24 pt-4">
@@ -192,6 +241,27 @@ export function LockedPage() {
       )}
 
       <VaultDialog open={askPin} onClose={() => setAskPin(false)} />
+
+      <PromptDialog
+        open={creating === 'folder'}
+        title="New locked folder"
+        label="Folder name"
+        placeholder="Private photos"
+        confirmLabel="Create folder"
+        onSubmit={(name) => createFolder.mutate(name)}
+        onClose={() => setCreating(null)}
+      />
+
+      <PromptDialog
+        open={creating === 'album'}
+        title="New locked album"
+        description="Everything added to this album stays visible only inside Locked."
+        label="Album name"
+        placeholder="Private album"
+        confirmLabel="Create album"
+        onSubmit={(name) => createAlbum.mutate(name)}
+        onClose={() => setCreating(null)}
+      />
     </div>
   );
 }

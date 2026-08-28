@@ -431,15 +431,24 @@ export class AlbumService {
 
   // -- writes ---------------------------------------------------------------
 
-  async create(userId: string, dto: CreateAlbumDto) {
+  async create(auth: AuthDto, dto: CreateAlbumDto) {
+    const userId = auth.user.id;
+    let folder: { isLocked: boolean } | null = null;
     if (dto.folderId) {
-      const folder = await this.prisma.folder.findFirst({
+      folder = await this.prisma.folder.findFirst({
         where: { id: dto.folderId, ownerId: userId, deletedAt: null },
+        select: { isLocked: true },
       });
       if (!folder) throw new BadRequestException('Target folder does not exist');
     }
 
-    const assetIds = await this.filterOwnedAssets(userId, dto.assetIds ?? []);
+    const isLocked = dto.isLocked === true || folder?.isLocked === true;
+    if (isLocked) assertVaultUnlocked(auth);
+    if (isLocked && dto.albumUsers?.length) {
+      throw new BadRequestException('Locked albums cannot be shared');
+    }
+
+    const assetIds = await this.filterOwnedAssets(userId, dto.assetIds ?? [], isLocked);
 
     const album = await this.prisma.album.create({
       data: {
@@ -447,19 +456,22 @@ export class AlbumService {
         name: dto.albumName.trim(),
         description: dto.description ?? '',
         folderId: dto.folderId ?? null,
+        isLocked,
         thumbnailAssetId: assetIds[0] ?? null,
         assets: {
           create: assetIds.map((assetId) => ({ assetId, addedById: userId })),
         },
         albumUsers: {
-          create: (dto.albumUsers ?? []).map((u) => ({
+          create: (isLocked ? [] : (dto.albumUsers ?? [])).map((u) => ({
             userId: u.userId,
             role: u.role ?? AlbumUserRole.VIEWER,
           })),
         },
       },
       include: {
-        _count: { select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } } },
+        _count: {
+          select: { assets: { where: { asset: activeAlbumAssetWhere(isLocked) } } },
+        },
       },
     });
 
@@ -854,10 +866,15 @@ export class AlbumService {
 
   // -- helpers --------------------------------------------------------------
 
-  private async filterOwnedAssets(userId: string, assetIds: string[]) {
+  private async filterOwnedAssets(userId: string, assetIds: string[], isLocked = false) {
     if (assetIds.length === 0) return [];
     const rows = await this.prisma.asset.findMany({
-      where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId) },
+      where: {
+        id: { in: assetIds },
+        ...(isLocked
+          ? { ownerId: userId, ...activeAlbumAssetWhere(true) }
+          : mainLibraryAssetWhere(userId)),
+      },
       select: { id: true },
     });
     return rows.map((r) => r.id);

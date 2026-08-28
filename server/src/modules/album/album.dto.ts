@@ -45,6 +45,11 @@ export class CreateAlbumDto {
   @ValidateNested({ each: true })
   @Type(() => AlbumUserDto)
   albumUsers?: AlbumUserDto[];
+
+  @ApiPropertyOptional({ description: 'Create this album inside Locked' })
+  @IsOptional()
+  @IsBoolean()
+  isLocked?: boolean;
 }
 
 export class AlbumUserDto {
