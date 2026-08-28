@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AssetVisibility } from '../../db';
+import { BULK_MUTATION_BATCH_SIZE, batchesOf } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
 
 export interface BackupDeviceInput {
   clientId?: string;
@@ -11,7 +13,10 @@ export interface BackupDeviceInput {
 
 @Injectable()
 export class DeviceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly assetLifecycle: AssetLifecycleService,
+  ) {}
 
   /**
    * Registers the mobile library and returns its database id.
@@ -91,6 +96,29 @@ export class DeviceService {
     const device = (await this.list(userId)).find((entry) => entry.id === id);
     if (!device) throw new NotFoundException('Device not found');
     return device;
+  }
+
+  /** Moves the complete device library to Trash, then removes its association. */
+  async remove(userId: string, id: string) {
+    const device = await this.prisma.device.findFirst({
+      where: { id, ownerId: userId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device not found');
+
+    const linkedAssets = await this.prisma.deviceAsset.findMany({
+      where: { deviceId: id, asset: { ownerId: userId, deletedAt: null } },
+      select: { assetId: true },
+    });
+    let trashedAssets = 0;
+    for (const batch of batchesOf(linkedAssets.map(({ assetId }) => assetId), BULK_MUTATION_BATCH_SIZE)) {
+      const result = await this.assetLifecycle.moveToTrash(userId, batch);
+      trashedAssets += result.trashed;
+    }
+
+    const result = await this.prisma.device.deleteMany({ where: { id, ownerId: userId } });
+    if (result.count === 0) throw new NotFoundException('Device not found');
+    return { deleted: true, trashedAssets };
   }
 
   /** OS asset ids already represented in this particular mobile library. */

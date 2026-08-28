@@ -1,12 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Smartphone } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Smartphone, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
-import { api, mediaUrl } from '../lib/api';
+import { api, errorMessage, mediaUrl } from '../lib/api';
 import type { Asset, Device, Paginated } from '../types';
-import { EmptyState, Loading, Tooltip } from '../ui';
+import { ConfirmDialog, EmptyState, IconButton, Loading, Tooltip } from '../ui';
 
 export function DevicesPage() {
   const { deviceId } = useParams();
@@ -15,9 +15,20 @@ export function DevicesPage() {
 
 /** Every mobile photo library backed up to this account. */
 function DeviceList() {
+  const queryClient = useQueryClient();
+  const [removing, setRemoving] = useState<Device | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const { data: devices = [], isLoading } = useQuery({
     queryKey: ['devices'],
     queryFn: async () => (await api.get<Device[]>('/devices')).data,
+  });
+  const remove = useMutation({
+    mutationFn: async (deviceId: string) => (await api.delete(`/devices/${deviceId}`)).data,
+    onSuccess: () => {
+      setRemoveError(null);
+      void queryClient.invalidateQueries({ queryKey: ['devices'] });
+    },
+    onError: (error) => setRemoveError(errorMessage(error)),
   });
 
   return (
@@ -28,6 +39,8 @@ function DeviceList() {
           {isLoading ? '' : `${devices.length} device ${devices.length === 1 ? 'library' : 'libraries'}`}
         </span>
       </header>
+
+      {removeError && <p className="px-5 pt-4 text-sm text-danger">{removeError}</p>}
 
       {isLoading ? (
         <Loading label="Loading devices…" />
@@ -40,46 +53,72 @@ function DeviceList() {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4 p-5">
           {devices.map((device) => (
-            <Link
+            <article
               key={device.id}
-              to={`/devices/${device.id}`}
-              className="group overflow-hidden rounded-panel border border-border-subtle bg-surface-raised transition hover:border-primary"
+              className="group relative overflow-hidden rounded-panel border border-border-subtle bg-surface-raised transition hover:border-primary"
             >
-              <span className="relative block aspect-[4/3] overflow-hidden bg-surface-sunken">
-                {device.coverAssetId ? (
-                  <img
-                    src={mediaUrl(device.coverAssetId, 'thumbnail')}
-                    alt=""
-                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                  />
-                ) : (
-                  <span className="grid h-full place-items-center text-content-muted">
-                    <Smartphone size={40} strokeWidth={1.4} />
+              <Link to={`/devices/${device.id}`} className="block">
+                <span className="relative block aspect-[4/3] overflow-hidden bg-surface-sunken">
+                  {device.coverAssetId ? (
+                    <img
+                      src={mediaUrl(device.coverAssetId, 'thumbnail')}
+                      alt=""
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                    />
+                  ) : (
+                    <span className="grid h-full place-items-center text-content-muted">
+                      <Smartphone size={40} strokeWidth={1.4} />
+                    </span>
+                  )}
+                  <span className="absolute bottom-2 left-2 grid h-9 w-9 place-items-center rounded-full bg-surface-overlay/90 text-secondary shadow-popover backdrop-blur">
+                    <Smartphone size={18} />
                   </span>
-                )}
-                <span className="absolute bottom-2 left-2 grid h-9 w-9 place-items-center rounded-full bg-surface-overlay/90 text-secondary shadow-popover backdrop-blur">
-                  <Smartphone size={18} />
                 </span>
-              </span>
-              <span className="block px-3 py-2.5">
-                <Tooltip label={device.libraryName} onlyWhenOverflow>
-                  <span className="block truncate text-sm font-medium">{device.libraryName}</span>
-                </Tooltip>
-                <span className="mt-0.5 block text-xs text-content-muted">
-                  {device.assetCount.toLocaleString()} {device.assetCount === 1 ? 'item' : 'items'}
+                <span className="block px-3 py-2.5 pr-12">
+                  <Tooltip label={device.libraryName} onlyWhenOverflow>
+                    <span className="block truncate text-sm font-medium">{device.libraryName}</span>
+                  </Tooltip>
+                  <span className="mt-0.5 block text-xs text-content-muted">
+                    {device.assetCount.toLocaleString()} {device.assetCount === 1 ? 'item' : 'items'}
+                  </span>
                 </span>
-              </span>
-            </Link>
+              </Link>
+              <IconButton
+                label={`Remove ${device.libraryName}`}
+                size="sm"
+                className="absolute bottom-2 right-2"
+                onClick={() => {
+                  setRemoveError(null);
+                  setRemoving(device);
+                }}
+              >
+                <Trash2 size={15} />
+              </IconButton>
+            </article>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Remove “${removing?.libraryName ?? 'device library'}”?`}
+        description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. It can appear again if it backs up later."
+        confirmLabel={remove.isPending ? 'Removing…' : 'Remove device'}
+        destructive
+        onConfirm={() => removing && remove.mutate(removing.id)}
+        onClose={() => setRemoving(null)}
+      />
     </div>
   );
 }
 
 /** One phone or tablet library, without duplicating its files in storage. */
 function DeviceLibrary({ deviceId }: { deviceId: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [viewing, setViewing] = useState<Asset | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const { data: device, isLoading: deviceLoading } = useQuery({
     queryKey: ['devices', deviceId],
     queryFn: async () => (await api.get<Device>(`/devices/${deviceId}`)).data,
@@ -90,6 +129,14 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
       (await api.get<Paginated<Asset>>('/assets', { params: { deviceId, size: 1000 } })).data,
   });
   const assets = page?.items ?? [];
+  const remove = useMutation({
+    mutationFn: async () => (await api.delete(`/devices/${deviceId}`)).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['devices'] });
+      navigate('/devices');
+    },
+    onError: (error) => setRemoveError(errorMessage(error)),
+  });
 
   if (deviceLoading) return <Loading label="Loading device library…" />;
   if (!device) return null;
@@ -111,8 +158,20 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
               {device.assetCount.toLocaleString()} {device.assetCount === 1 ? 'item' : 'items'}
             </p>
           </div>
+          <IconButton
+            label="Remove device"
+            className="ml-auto"
+            onClick={() => {
+              setRemoveError(null);
+              setConfirmRemove(true);
+            }}
+          >
+            <Trash2 size={17} />
+          </IconButton>
         </div>
       </header>
+
+      {removeError && <p className="px-5 pt-4 text-sm text-danger">{removeError}</p>}
 
       {!assetsLoading && assets.length === 0 ? (
         <EmptyState
@@ -134,6 +193,16 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
           onNavigate={setViewing}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title={`Remove “${device.libraryName}”?`}
+        description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. It can appear again if it backs up later."
+        confirmLabel={remove.isPending ? 'Removing…' : 'Remove device'}
+        destructive
+        onConfirm={() => remove.mutate()}
+        onClose={() => setConfirmRemove(false)}
+      />
     </div>
   );
 }

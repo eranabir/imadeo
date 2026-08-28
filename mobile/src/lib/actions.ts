@@ -147,6 +147,9 @@ const writes = {
 
   deleteAlbum: (server: string, id: string) =>
     request(server, `/albums/${id}`, { method: 'DELETE' }),
+
+  removeDevice: (server: string, id: string) =>
+    request(server, `/devices/${id}`, { method: 'DELETE' }),
 };
 
 /**

@@ -219,12 +219,13 @@ export function PromptSheet({
   );
 }
 
-/** Confirms something that cannot be undone with a tap. */
+/** Asks for one last acknowledgement before an action runs. */
 export function ConfirmSheet({
   open,
   title,
   description,
   confirmLabel,
+  variant = 'danger',
   onConfirm,
   onClose,
 }: {
@@ -232,6 +233,7 @@ export function ConfirmSheet({
   title: string;
   description: string;
   confirmLabel: string;
+  variant?: 'primary' | 'danger';
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -246,12 +248,15 @@ export function ConfirmSheet({
           <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
           <Button
             label={confirmLabel}
-            variant="danger"
+            variant={variant}
             onPress={() => {
               onConfirm();
               onClose();
             }}
-            style={{ flex: 1, borderWidth: 1, borderColor: colors.danger }}
+            style={[
+              { flex: 1 },
+              variant === 'danger' ? { borderWidth: 1, borderColor: colors.danger } : null,
+            ]}
           />
         </View>
       }
@@ -388,6 +393,10 @@ interface FolderRow {
   children: FolderRow[];
 }
 
+export type MoveDestination =
+  | { kind: 'folder'; id: string | null; name: string }
+  | { kind: 'album'; id: string; name: string };
+
 /**
  * Picks where something goes.
  *
@@ -403,8 +412,7 @@ export function MoveSheet({
   allowAlbums,
   /** A folder cannot be moved inside itself. */
   excludeFolderId,
-  onFolder,
-  onAlbum,
+  onSelect,
   onClose,
 }: {
   open: boolean;
@@ -412,8 +420,7 @@ export function MoveSheet({
   count: number;
   allowAlbums: boolean;
   excludeFolderId?: string;
-  onFolder: (folderId: string | null) => void;
-  onAlbum: (albumId: string) => void;
+  onSelect: (destination: MoveDestination) => void;
   onClose: () => void;
 }) {
   const [needle, setNeedle] = useState('');
@@ -548,7 +555,7 @@ export function MoveSheet({
           label="Top level"
           hint="Not filed in any folder"
           onPress={() => {
-            onFolder(null);
+            onSelect({ kind: 'folder', id: null, name: 'Top level' });
             onClose();
           }}
         />
@@ -567,7 +574,7 @@ export function MoveSheet({
               folded={query || !row.holds ? undefined : closed.has(row.folder.id)}
               onToggle={() => toggleFolder(row.folder.id)}
               onPress={() => {
-                onFolder(row.folder.id);
+                onSelect({ kind: 'folder', id: row.folder.id, name: row.folder.name });
                 onClose();
               }}
             />
@@ -583,7 +590,7 @@ export function MoveSheet({
               }
               indent={row.depth}
               onPress={() => {
-                onAlbum(row.album.id);
+                onSelect({ kind: 'album', id: row.album.id, name: row.album.name });
                 onClose();
               }}
             />

@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Delete, Get, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Auth, AuthedUserId } from '../../common/decorators';
 import { DeviceService } from './device.service';
@@ -19,5 +19,11 @@ export class DeviceController {
   @ApiOperation({ summary: 'One mobile device library' })
   get(@AuthedUserId() userId: string, @Param('id') id: string) {
     return this.devices.get(userId, id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Remove a mobile device library and move its media to Trash' })
+  remove(@AuthedUserId() userId: string, @Param('id') id: string) {
+    return this.devices.remove(userId, id);
   }
 }

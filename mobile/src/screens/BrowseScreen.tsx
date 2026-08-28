@@ -10,7 +10,13 @@ import { SelectionDock } from '../components/SelectionDock';
 import { Segmented } from '../components/Segmented';
 import { PlacesBody } from './PlacesScreen';
 import { SharingShelf } from './SharingScreen';
-import { ConfirmSheet, MoveSheet, PromptSheet, ShareSheet } from '../components/sheets';
+import {
+  ConfirmSheet,
+  MoveSheet,
+  PromptSheet,
+  ShareSheet,
+  type MoveDestination,
+} from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Album, type Asset, type Device, type FolderContents } from '../lib/api';
@@ -55,6 +61,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
   const [menuFor, setMenuFor] = useState<Target | null>(null);
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
+  const [moveConfirmation, setMoveConfirmation] = useState<{
+    item: Target;
+    destination: MoveDestination;
+  } | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
   const [sharingFolder, setSharingFolder] = useState<Target | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -482,14 +492,27 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
         allowAlbums={false}
         excludeFolderId={moving?.kind === 'folder' ? moving.id : undefined}
         onClose={() => setMoving(null)}
-        onFolder={(destination) =>
-          run(() =>
-            moving?.kind === 'folder'
-              ? actions.moveFolder(serverUrl, moving.id, destination)
-              : actions.moveAlbum(serverUrl, moving!.id, destination),
-          )
-        }
-        onAlbum={() => {}}
+        onSelect={(destination) => {
+          if (moving) setMoveConfirmation({ item: moving, destination });
+        }}
+      />
+
+      <ConfirmSheet
+        open={moveConfirmation !== null}
+        title={`Move “${moveConfirmation?.item.name ?? ''}” to “${moveConfirmation?.destination.name ?? ''}”?`}
+        description={`The ${moveConfirmation?.item.kind ?? 'item'} will be moved to this folder.`}
+        confirmLabel="Move"
+        variant="primary"
+        onClose={() => setMoveConfirmation(null)}
+        onConfirm={() => {
+          if (!moveConfirmation || moveConfirmation.destination.kind !== 'folder') return;
+          const { item, destination } = moveConfirmation;
+          void run(() =>
+            item.kind === 'folder'
+              ? actions.moveFolder(serverUrl, item.id, destination.id)
+              : actions.moveAlbum(serverUrl, item.id, destination.id),
+          );
+        }}
       />
 
       <ConfirmSheet

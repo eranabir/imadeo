@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { FolderCard, Section } from '../components/Cards';
-import { Header, useHeaderClearance } from '../components/Header';
+import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
 import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
+import { ConfirmSheet } from '../components/sheets';
+import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Asset, type Device } from '../lib/api';
+import { useMediaViewMode } from '../lib/viewMode';
 import { colors } from '../theme';
 
 interface ListProps {
@@ -73,10 +77,24 @@ interface DetailProps {
 
 /** The photos and videos known to one phone or tablet library. */
 export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: DetailProps) {
+  const router = useRouter();
   const device = useResource<Device>(serverUrl, `/devices/${deviceId}`);
   const assets = usePagedResource<Asset>(serverUrl, `/assets?deviceId=${encodeURIComponent(deviceId)}`);
   const clearance = useHeaderClearance();
   const selection = useSelection();
+  const [viewMode, setViewMode] = useMediaViewMode();
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const removeDevice = async () => {
+    setRemoveError(null);
+    try {
+      await actions.removeDevice(serverUrl, deviceId);
+      router.back();
+    } catch (cause) {
+      setRemoveError(cause instanceof Error ? cause.message : 'Could not remove this device.');
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -97,6 +115,14 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         hasMore={assets.hasMore}
         loadingMore={assets.loadingMore}
         onLoadMore={assets.loadMore}
+        viewMode={viewMode}
+        header={
+          removeError ? (
+            <Text style={{ color: colors.danger, paddingHorizontal: 16, paddingVertical: 12 }}>
+              {removeError}
+            </Text>
+          ) : null
+        }
         emptyIcon="phone"
         emptyTitle={assets.loading ? 'Loading…' : 'This device library is empty'}
         emptyBody="Photos and videos backed up from this device appear here."
@@ -124,8 +150,33 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         }
         icon="phone"
         onBack={onBack}
+        action={
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <HeaderAction
+              label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
+              icon={viewMode === 'grid' ? 'list' : 'grid'}
+              compact
+              onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            />
+            <HeaderAction
+              label="Remove device"
+              icon="trash"
+              compact
+              onPress={() => setConfirmRemove(true)}
+            />
+          </View>
+        }
       />
       <SelectionDock />
+
+      <ConfirmSheet
+        open={confirmRemove}
+        title={`Remove “${device.data?.libraryName ?? title}”?`}
+        description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. It can appear again if it backs up later."
+        confirmLabel="Remove device"
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => void removeDevice()}
+      />
     </View>
   );
 }

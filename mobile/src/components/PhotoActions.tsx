@@ -5,7 +5,13 @@ import { actions } from '../lib/actions';
 import { useSelectionBar, useSelectionDock } from '../selection';
 import { colors, radius } from '../theme';
 import { Icon, type IconName } from './Icon';
-import { AssignSheet, ConfirmSheet, MoveSheet, ShareSheet } from './sheets';
+import {
+  AssignSheet,
+  ConfirmSheet,
+  MoveSheet,
+  ShareSheet,
+  type MoveDestination,
+} from './sheets';
 import { Touchable } from './ui';
 
 interface Props {
@@ -36,6 +42,7 @@ export function PhotoActions({
   onDone,
 }: Props) {
   const [moving, setMoving] = useState(false);
+  const [moveDestination, setMoveDestination] = useState<MoveDestination | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [trashing, setTrashing] = useState(false);
@@ -112,8 +119,28 @@ export function PhotoActions({
         count={ids.length}
         allowAlbums
         onClose={() => setMoving(false)}
-        onFolder={(folderId) => run(() => actions.toFolder(serverUrl, folderId, ids))}
-        onAlbum={(albumId) => run(() => actions.toAlbum(serverUrl, albumId, ids))}
+        onSelect={setMoveDestination}
+      />
+
+      <ConfirmSheet
+        open={moveDestination !== null}
+        title={
+          ids.length === 1
+            ? `Move this item to “${moveDestination?.name ?? ''}”?`
+            : `Move ${ids.length} items to “${moveDestination?.name ?? ''}”?`
+        }
+        description={`The selected ${ids.length === 1 ? 'item' : 'items'} will be moved to this ${moveDestination?.kind ?? 'destination'}.`}
+        confirmLabel="Move"
+        variant="primary"
+        onClose={() => setMoveDestination(null)}
+        onConfirm={() => {
+          if (!moveDestination) return;
+          void run(() =>
+            moveDestination.kind === 'folder'
+              ? actions.toFolder(serverUrl, moveDestination.id, ids)
+              : actions.toAlbum(serverUrl, moveDestination.id, ids),
+          );
+        }}
       />
 
       <AssignSheet
