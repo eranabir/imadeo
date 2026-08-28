@@ -69,13 +69,23 @@ export class DeviceService {
           select: {
             assets: {
               where: {
-                asset: { deletedAt: null, visibility: AssetVisibility.TIMELINE },
+                asset: {
+                  deletedAt: null,
+                  visibility: AssetVisibility.TIMELINE,
+                  isDeviceOnly: true,
+                },
               },
             },
           },
         },
         assets: {
-          where: { asset: { deletedAt: null, visibility: AssetVisibility.TIMELINE } },
+          where: {
+            asset: {
+              deletedAt: null,
+              visibility: AssetVisibility.TIMELINE,
+              isDeviceOnly: true,
+            },
+          },
           orderBy: { asset: { localDateTime: 'desc' } },
           take: 1,
           select: { assetId: true },
@@ -107,7 +117,10 @@ export class DeviceService {
     if (!device) throw new NotFoundException('Device not found');
 
     const linkedAssets = await this.prisma.deviceAsset.findMany({
-      where: { deviceId: id, asset: { ownerId: userId, deletedAt: null } },
+      where: {
+        deviceId: id,
+        asset: { ownerId: userId, deletedAt: null, isDeviceOnly: true },
+      },
       select: { assetId: true },
     });
     let trashedAssets = 0;

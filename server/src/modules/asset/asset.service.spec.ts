@@ -122,6 +122,22 @@ describe('AssetService browser thumbnail', () => {
 });
 
 describe('AssetService library filters', () => {
+  it('shows only media that still belongs to a device library', () => {
+    const { service } = createService({ id: 'asset-id' });
+
+    const where = service.buildWhere('owner-id', { deviceId: 'device-id' });
+
+    expect(where).toEqual({
+      AND: [
+        { ownerId: 'owner-id' },
+        expect.objectContaining({
+          isDeviceOnly: true,
+          deviceAssets: { some: { deviceId: 'device-id' } },
+        }),
+      ],
+    });
+  });
+
   it('finds media that belongs to neither a folder nor an album', () => {
     const { service } = createService({ id: 'asset-id' });
 
@@ -211,6 +227,23 @@ describe('AssetService individual media locking', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(test.assetUpdateMany).not.toHaveBeenCalled();
   });
+
+  it('promotes device media when moving it to the library root', async () => {
+    const test = createService({ id: 'asset-id' });
+
+    await expect(
+      test.service.bulkUpdate('owner-id', { ids: ['asset-id'], folderId: null }),
+    ).resolves.toEqual({ updated: 1 });
+    expect(test.assetUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id', deletedAt: null },
+      data: {
+        isFavorite: undefined,
+        visibility: undefined,
+        folderId: null,
+        isDeviceOnly: false,
+      },
+    });
+  });
 });
 
 describe('AssetService media rename', () => {
@@ -233,6 +266,18 @@ describe('AssetService media rename', () => {
     expect(test.assetUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'asset-id' },
       data: expect.objectContaining({ originalFileName: 'Trip.final.MOV' }),
+    }));
+  });
+});
+
+describe('AssetService media moves', () => {
+  it('promotes a device item when assigning an individual library destination', async () => {
+    const test = createService({ id: 'asset-id', originalFileName: 'photo.jpg' });
+
+    await test.service.update('owner-id', 'asset-id', { folderId: 'folder-id' });
+
+    expect(test.assetUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ folderId: 'folder-id', isDeviceOnly: false }),
     }));
   });
 });

@@ -582,18 +582,24 @@ export class AlbumService {
       );
     }
 
-    // Albums normally group media without changing its folder. The explicit
-    // Move action opts into removing owned media from the source folder, and
-    // does so in the same transaction as the new album membership.
-    if (removeFromFolder && usable.length > 0) {
+    // Filing a device backup in an album imports it into the normal library.
+    // Its DeviceAsset relation stays intact so the mobile library continues
+    // to report the original as backed up.
+    if (usable.length > 0) {
       writes.push(
         this.prisma.asset.updateMany({
           where: { id: { in: usable }, ownerId: auth.user.id },
-          data: { folderId: null },
+          data: {
+            isDeviceOnly: false,
+            folderId: removeFromFolder ? null : undefined,
+          },
         }),
       );
     }
 
+    // Albums normally group media without changing its folder. The explicit
+    // Move action opts into removing owned media from the source folder, and
+    // does so in the same transaction as the new album membership.
     if (writes.length > 0) await this.prisma.$transaction(writes);
 
     return assetIds.map((id) => ({
@@ -852,14 +858,21 @@ export class AlbumService {
       where: { sharedWithId: userId },
       select: { sharedById: true },
     });
-    const ownerIds = [userId, ...partners.map((p) => p.sharedById)];
+    const partnerIds = partners.map((p) => p.sharedById);
 
     const rows = await this.prisma.asset.findMany({
       where: {
         id: { in: assetIds },
-        ownerId: { in: ownerIds },
+        OR: [
+          // The owner may explicitly import one of their device-only backups.
+          { ownerId: userId },
+          // Another account's hidden device library must never leak through
+          // partnership access.
+          ...(partnerIds.length
+            ? [{ ownerId: { in: partnerIds }, isDeviceOnly: false }]
+            : []),
+        ],
         deletedAt: null,
-        isDeviceOnly: false,
         visibility: albumIsLocked
           ? AssetVisibility.LOCKED
           : { in: [AssetVisibility.TIMELINE, AssetVisibility.ARCHIVE] },

@@ -101,7 +101,7 @@ describe('AlbumService moving media into an album', () => {
     });
     expect(updateAssets).toHaveBeenCalledWith({
       where: { id: { in: ['asset-id'] }, ownerId: 'owner-id' },
-      data: { folderId: null },
+      data: { folderId: null, isDeviceOnly: false },
     });
     expect(transaction).toHaveBeenCalledOnce();
   });

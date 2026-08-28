@@ -960,7 +960,13 @@ export class AssetService implements OnModuleInit {
       folderId: query.folderId,
       ...(query.albumId ? { albums: { some: { albumId: query.albumId } } } : {}),
       ...(query.deviceId
-        ? { deviceAssets: { some: { deviceId: query.deviceId } } }
+        ? {
+            // The relation is kept after a move so the phone still knows the
+            // original is backed up. Only device-only media belongs on this
+            // screen; filed media now lives in the normal library.
+            isDeviceOnly: true,
+            deviceAssets: { some: { deviceId: query.deviceId } },
+          }
         : { isDeviceOnly: false }),
       ...(query.personId ? { faces: { some: { personId: query.personId, deletedAt: null } } } : {}),
       ...(query.filename
@@ -1481,6 +1487,7 @@ export class AssetService implements OnModuleInit {
         rotation: dto.rotation,
         visibility: dto.visibility,
         folderId: dto.folderId === undefined ? undefined : dto.folderId,
+        isDeviceOnly: dto.folderId === undefined ? undefined : false,
         // Editing the capture date has to move the asset in the timeline too.
         localDateTime: dto.dateTimeOriginal ? new Date(dto.dateTimeOriginal) : undefined,
         ...(hasExifEdit
@@ -1540,6 +1547,9 @@ export class AssetService implements OnModuleInit {
         isFavorite: dto.isFavorite,
         visibility: dto.visibility,
         folderId: dto.folderId === undefined ? undefined : dto.folderId,
+        // Choosing any library destination, including its root, promotes a
+        // device backup without discarding its backed-up device association.
+        isDeviceOnly: dto.folderId === undefined ? undefined : false,
       },
     });
     return { updated: count };
