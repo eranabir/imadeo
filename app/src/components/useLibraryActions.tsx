@@ -139,6 +139,16 @@ export function useLibraryActions({
     ),
   );
 
+  const setAssetLock = useMutation({
+    mutationFn: async ({ ids, isLocked }: { ids: string[]; isLocked: boolean }) =>
+      api.put('/assets/lock', { ids, isLocked }),
+    onSuccess: () => {
+      setPendingLock(null);
+      void invalidate();
+    },
+    onError: (error) => handleVaultError(error),
+  });
+
   const trashAssets = useMutation(
     mutation(async (ids: string[]) =>
       runBatchedOperation(
@@ -364,6 +374,7 @@ export function useLibraryActions({
     if (item.kind === 'assets') {
       const { asset, ids } = item;
       const suffix = ids.length > 1 ? ` (${ids.length})` : '';
+      const locked = asset.visibility === 'LOCKED';
 
       if (trashed) {
         return [
@@ -415,24 +426,43 @@ export function useLibraryActions({
           separated: true,
           onSelect: () => setMoving(item),
         },
-        {
-          id: 'share',
-          label: 'Share privately' + suffix,
-          icon: <Share2 size={15} />,
-          hint: 'Choose accounts on this server',
-          onSelect: () => setSharing(ids),
-        },
-        {
-          id: 'archive',
-          label: (asset.visibility === 'ARCHIVE' ? 'Move back to timeline' : 'Archive') + suffix,
-          icon: <Archive size={15} />,
-          separated: true,
-          onSelect: () =>
-            setArchived.mutate({
-              ids,
-              visibility: asset.visibility === 'ARCHIVE' ? 'TIMELINE' : 'ARCHIVE',
-            }),
-        },
+        ...(!locked
+          ? [
+              {
+                id: 'share',
+                label: 'Share privately' + suffix,
+                icon: <Share2 size={15} />,
+                hint: 'Choose accounts on this server',
+                onSelect: () => setSharing(ids),
+              },
+              {
+                id: 'archive',
+                label: (asset.visibility === 'ARCHIVE' ? 'Move back to timeline' : 'Archive') + suffix,
+                icon: <Archive size={15} />,
+                separated: true,
+                onSelect: () =>
+                  setArchived.mutate({
+                    ids,
+                    visibility: asset.visibility === 'ARCHIVE' ? 'TIMELINE' : 'ARCHIVE',
+                  }),
+              },
+            ]
+          : []),
+        ...(asset.ownerId === user?.id
+          ? [
+              {
+                id: 'lock',
+                label: (locked ? 'Unlock' : 'Lock') + suffix,
+                icon: locked ? <Unlock size={15} /> : <Lock size={15} />,
+                hint: locked ? undefined : 'Hidden from photos, search and shares',
+                separated: true,
+                onSelect: () => {
+                  setPendingLock(item);
+                  setAssetLock.mutate({ ids, isLocked: !locked });
+                },
+              },
+            ]
+          : []),
         {
           id: 'download',
           label: 'Download' + suffix,
@@ -782,6 +812,11 @@ export function useLibraryActions({
           } else if (pendingLock?.kind === 'album') {
             const locked = (pendingLock.album as { isLocked?: boolean }).isLocked;
             setAlbumLock.mutate({ id: pendingLock.album.id, isLocked: !locked });
+          } else if (pendingLock?.kind === 'assets') {
+            setAssetLock.mutate({
+              ids: pendingLock.ids,
+              isLocked: pendingLock.asset.visibility !== 'LOCKED',
+            });
           }
           setPendingLock(null);
         }}

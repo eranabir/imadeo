@@ -47,7 +47,7 @@ export class AuthGuard implements CanActivate {
       const until = auth.session?.vaultUnlockedUntil;
       if (!until || until.getTime() < Date.now()) {
         throw new ForbiddenException({
-          message: 'Locked folders are locked',
+          message: 'Locked is locked',
           code: 'VAULT_LOCKED',
         });
       }

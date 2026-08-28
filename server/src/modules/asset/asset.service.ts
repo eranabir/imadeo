@@ -842,7 +842,7 @@ export class AssetService implements OnModuleInit {
       if (asset.visibility === AssetVisibility.LOCKED) {
         const until = auth.session?.vaultUnlockedUntil;
         if (!until || until.getTime() < Date.now()) {
-          throw new ForbiddenException({ message: 'Locked folders are locked', code: 'VAULT_LOCKED' });
+          throw new ForbiddenException({ message: 'Locked is locked', code: 'VAULT_LOCKED' });
         }
       }
       return;
@@ -1051,7 +1051,10 @@ export class AssetService implements OnModuleInit {
     }
   }
 
-  async query(userId: string, query: AssetQueryDto) {
+  async query(userId: string, query: AssetQueryDto, allowLocked = false) {
+    if (query.visibility === AssetVisibility.LOCKED && !allowLocked) {
+      throw new ForbiddenException('Open Locked to see locked photos');
+    }
     const page = Math.max(1, query.page ?? 1);
     const size = Math.min(1000, query.size ?? 100);
 
@@ -1075,6 +1078,15 @@ export class AssetService implements OnModuleInit {
     ]);
 
     return { items, pagination: { page, size, total, pages: Math.ceil(total / size) } };
+  }
+
+  /** Vault-only listing; callers cannot weaken the ownership or visibility filters. */
+  queryLocked(userId: string, query: AssetQueryDto) {
+    return this.query(
+      userId,
+      { ...query, ownership: 'owned', visibility: AssetVisibility.LOCKED },
+      true,
+    );
   }
 
   /**
@@ -1446,6 +1458,9 @@ export class AssetService implements OnModuleInit {
   async update(userId: string, id: string, dto: UpdateAssetDto) {
     const asset = await this.prisma.asset.findFirst({ where: { id, ownerId: userId } });
     if (!asset) throw new NotFoundException('Asset not found');
+    if (asset.visibility === AssetVisibility.LOCKED && dto.visibility !== undefined) {
+      throw new ForbiddenException('Unlock this photo from Locked');
+    }
 
     const hasExifEdit =
       dto.description !== undefined ||
@@ -1507,6 +1522,18 @@ export class AssetService implements OnModuleInit {
   }
 
   async bulkUpdate(userId: string, dto: BulkUpdateAssetsDto) {
+    if (dto.visibility !== undefined) {
+      const locked = await this.prisma.asset.count({
+        where: {
+          id: { in: dto.ids },
+          ownerId: userId,
+          deletedAt: null,
+          visibility: AssetVisibility.LOCKED,
+        },
+      });
+      if (locked > 0) throw new ForbiddenException('Unlock locked photos from Locked');
+    }
+
     const { count } = await this.prisma.asset.updateMany({
       where: { id: { in: dto.ids }, ownerId: userId, deletedAt: null },
       data: {
@@ -1516,6 +1543,54 @@ export class AssetService implements OnModuleInit {
       },
     });
     return { updated: count };
+  }
+
+  /** Hides individual media everywhere except Locked, and retracts every direct share. */
+  async setLock(userId: string, ids: string[], isLocked: boolean) {
+    const uniqueIds = [...new Set(ids)];
+    const assets = await this.prisma.asset.findMany({
+      where: {
+        id: { in: uniqueIds },
+        ownerId: userId,
+        deletedAt: null,
+        visibility: { not: AssetVisibility.HIDDEN },
+      },
+      select: {
+        id: true,
+        folder: { select: { isLocked: true } },
+        albums: {
+          where: { album: { isLocked: true, deletedAt: null } },
+          select: { albumId: true },
+        },
+      },
+    });
+
+    if (assets.length !== uniqueIds.length) {
+      throw new NotFoundException('One or more photos were not found');
+    }
+
+    if (!isLocked && assets.some((asset) => asset.folder?.isLocked || asset.albums.length > 0)) {
+      throw new BadRequestException(
+        'Move the photo out of its locked folder or album before unlocking it',
+      );
+    }
+
+    const operations = [
+      this.prisma.asset.updateMany({
+        where: { id: { in: uniqueIds }, ownerId: userId, deletedAt: null },
+        data: { visibility: isLocked ? AssetVisibility.LOCKED : AssetVisibility.TIMELINE },
+      }),
+    ];
+
+    if (isLocked) {
+      operations.push(
+        this.prisma.assetUser.deleteMany({ where: { assetId: { in: uniqueIds } } }),
+        this.prisma.sharedLinkAsset.deleteMany({ where: { assetId: { in: uniqueIds } } }),
+      );
+    }
+
+    const [updated] = await this.prisma.$transaction(operations, BULK_MUTATION_TRANSACTION);
+    return { updated: updated.count };
   }
 
   // -- trash ----------------------------------------------------------------

@@ -448,7 +448,7 @@ export class AuthController {
 
   @Auth()
   @Post('vault/pin')
-  @ApiOperation({ summary: 'Set the password for locked folders for the first time' })
+  @ApiOperation({ summary: 'Set the private password for Locked for the first time' })
   async setVaultPin(@Authed() auth: AuthDto, @Body() dto: VaultPinDto) {
     await this.vaultService.setPin(auth.user.id, dto.pin);
     return { successful: true };
@@ -466,7 +466,7 @@ export class AuthController {
   @Post('vault/unlock')
   @HttpCode(200)
   unlockVault(@Authed() auth: AuthDto, @Body() dto: VaultPinDto) {
-    if (!auth.session) throw new BadRequestException('Unlocking locked folders requires a device session');
+    if (!auth.session) throw new BadRequestException('Unlocking Locked requires a device session');
     return this.vaultService.unlock(auth.user.id, auth.session.id, dto.pin);
   }
 

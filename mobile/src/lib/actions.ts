@@ -24,6 +24,12 @@ const writes = {
       body: JSON.stringify({ ids, visibility: archived ? 'ARCHIVE' : 'TIMELINE' }),
     }),
 
+  setLock: (server: string, ids: string[], isLocked: boolean) =>
+    request(server, '/assets/lock', {
+      method: 'PUT',
+      body: JSON.stringify({ ids, isLocked }),
+    }),
+
   /** Recoverable for 30 days. Permanent deletion is a web-only action for now. */
   trash: (server: string, ids: string[]) =>
     request(server, '/assets', { method: 'DELETE', body: JSON.stringify({ ids }) }),

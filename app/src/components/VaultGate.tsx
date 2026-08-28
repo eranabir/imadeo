@@ -92,11 +92,11 @@ export function VaultDialog({ open, onClose, onUnlocked }: Props) {
         reset();
         onClose();
       }}
-      title={isSetup ? 'Set password for locked folders' : 'Unlock locked folders'}
+      title={isSetup ? 'Set password for Locked' : 'Unlock Locked'}
       description={
         isSetup
-          ? 'Locked folders and albums are hidden from the timeline, search and every share link. There is no way to recover this password, so keep it somewhere safe.'
-          : 'Enter your private password to open locked folders and albums on this device.'
+          ? 'Locked photos, videos, folders and albums are hidden from the timeline, search and every share link. There is no way to recover this password, so keep it somewhere safe.'
+          : 'Enter your private password to open locked photos, videos, folders and albums on this device.'
       }
       footer={
         <>

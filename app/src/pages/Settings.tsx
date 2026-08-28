@@ -1520,25 +1520,25 @@ function Security() {
 
   const setUpPin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin', { pin })).data,
-    onSuccess: after('Password for locked folders set.'),
+    onSuccess: after('Private password set.'),
     onError,
   });
 
   const changePin = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/pin/change', { pin, newPin })).data,
-    onSuccess: after('Password for locked folders changed. Every device must unlock again.'),
+    onSuccess: after('Private password changed. Every device must unlock again.'),
     onError,
   });
 
   const unlock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/unlock', { pin })).data,
-    onSuccess: after('Locked folders unlocked.'),
+    onSuccess: after('Locked unlocked.'),
     onError,
   });
 
   const lock = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/lock')).data,
-    onSuccess: after('Locked folders locked.'),
+    onSuccess: after('Locked locked.'),
     onError,
   });
 
@@ -1552,13 +1552,13 @@ function Security() {
   return (
     <>
       <Card
-        title="Locked folders"
-        description="Folders and albums you lock are hidden until this password is entered. It is separate from your account password."
+        title="Locked"
+        description="Photos, videos, folders and albums you lock are hidden until this private password is entered. It is separate from your account password."
       >
         {!vault?.isConfigured ? (
           <div className="space-y-3">
             <Input
-              label="Password for locked folders"
+              label="Private password"
               type="password"
               autoComplete="new-password"
               value={pin}
@@ -1805,7 +1805,7 @@ function StorageLocationCard() {
               label={
                 { originals: 'Originals', incoming: 'Incoming uploads', thumbnails: 'Thumbnails',
                   encodedVideo: 'Encoded video', profile: 'Profile images', backups: 'Backups',
-                  vault: 'Locked folders' }[key] ?? key
+                  vault: 'Locked' }[key] ?? key
               }
               path={path}
             />
@@ -2037,7 +2037,7 @@ function About() {
         ['Machine learning', data.features.machineLearning],
         ['Duplicate detection', data.features.duplicateDetection],
         ['Trash', data.features.trash],
-        ['Locked folders', data.features.vault],
+        ['Locked', data.features.vault],
         ['Public registration', data.features.publicRegistration],
       ]
     : [];

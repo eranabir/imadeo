@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { actions } from '../lib/actions';
-import { subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
+import { request, subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
 import { colors, radius } from '../theme';
 import { Icon } from './Icon';
 import { Button, Chip, Sheet, Touchable } from './ui';
@@ -14,12 +14,14 @@ function Field({
   placeholder,
   onSubmit,
   autoFocus = true,
+  secure = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
   onSubmit?: () => void;
   autoFocus?: boolean;
+  secure?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -32,6 +34,7 @@ function Field({
       placeholderTextColor={colors.faint}
       autoFocus={autoFocus}
       autoCorrect={false}
+      secureTextEntry={secure}
       returnKeyType="done"
       onSubmitEditing={onSubmit}
       style={{
@@ -45,6 +48,121 @@ function Field({
         backgroundColor: colors.bg,
       }}
     />
+  );
+}
+
+export interface VaultStatus {
+  isConfigured: boolean;
+  isUnlocked: boolean;
+  unlockedUntil: string | null;
+}
+
+/** Sets or unlocks the private password protecting Locked on this device. */
+export function VaultSheet({
+  open,
+  serverUrl,
+  onClose,
+  onUnlocked,
+}: {
+  open: boolean;
+  serverUrl: string;
+  onClose: () => void;
+  onUnlocked: () => void;
+}) {
+  const status = useResource<VaultStatus>(serverUrl, open ? '/auth/vault' : null);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const setup = status.data ? !status.data.isConfigured : false;
+
+  useEffect(() => {
+    if (!open) {
+      setPassword('');
+      setConfirm('');
+      setError(null);
+      setBusy(false);
+    }
+  }, [open]);
+
+  const submit = async () => {
+    setError(null);
+    if (password.length < 8) {
+      setError('The private password must be at least 8 characters.');
+      return;
+    }
+    if (setup && password !== confirm) {
+      setError('The two passwords do not match.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (setup) {
+        await request(serverUrl, '/auth/vault/pin', {
+          method: 'POST',
+          body: JSON.stringify({ pin: password }),
+        });
+      }
+      await request(serverUrl, '/auth/vault/unlock', {
+        method: 'POST',
+        body: JSON.stringify({ pin: password }),
+      });
+      onUnlocked();
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Locked could not be unlocked.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      title={setup ? 'Set password for Locked' : 'Unlock Locked'}
+      description={
+        setup
+          ? 'Locked photos, videos, folders and albums stay out of your library, search and shares.'
+          : 'Enter your private password to open Locked on this device.'
+      }
+      onClose={onClose}
+      footer={
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
+          <Button
+            label={setup ? 'Set password' : 'Unlock'}
+            icon={setup ? 'lock' : 'unlock'}
+            disabled={busy || status.loading || !password}
+            onPress={() => void submit()}
+            style={{ flex: 1 }}
+          />
+        </View>
+      }
+    >
+      <View style={{ gap: 10 }}>
+        <Field
+          value={password}
+          onChange={setPassword}
+          placeholder="Private password"
+          secure
+          onSubmit={setup ? undefined : () => void submit()}
+        />
+        {setup && (
+          <Field
+            value={confirm}
+            onChange={setConfirm}
+            placeholder="Confirm private password"
+            secure
+            autoFocus={false}
+            onSubmit={() => void submit()}
+          />
+        )}
+        {(error ?? status.error) && (
+          <Text style={{ color: colors.danger, fontSize: 14 }}>{error ?? status.error}</Text>
+        )}
+      </View>
+    </Sheet>
   );
 }
 

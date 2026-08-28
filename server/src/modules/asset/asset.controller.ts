@@ -30,6 +30,7 @@ import {
   CheckUploadReceiptsDto,
   CompleteUploadBatchDto,
   DeleteAssetsDto,
+  SetAssetLockDto,
   ShareAssetsDto,
   StackAssetsDto,
   UpdateAssetDto,
@@ -275,6 +276,13 @@ export class AssetController {
     return this.assetService.query(userId, query);
   }
 
+  @Auth({ vault: true })
+  @Get('locked')
+  @ApiOperation({ summary: 'Locked photos and videos for an unlocked session' })
+  locked(@AuthedUserId() userId: string, @Query() query: AssetQueryDto) {
+    return this.assetService.queryLocked(userId, query);
+  }
+
   @Get('statistics')
   statistics(@AuthedUserId() userId: string) {
     return this.assetService.statistics(userId);
@@ -348,6 +356,13 @@ export class AssetController {
   @ApiOperation({ summary: 'Favourite, archive or re-file many assets at once' })
   bulkUpdate(@AuthedUserId() userId: string, @Body() dto: BulkUpdateAssetsDto) {
     return this.assetService.bulkUpdate(userId, dto);
+  }
+
+  @Auth({ vault: true })
+  @Put('lock')
+  @ApiOperation({ summary: 'Lock or unlock photos and videos' })
+  setLock(@AuthedUserId() userId: string, @Body() dto: SetAssetLockDto) {
+    return this.assetService.setLock(userId, dto.ids, dto.isLocked);
   }
 
   @Post('stack')

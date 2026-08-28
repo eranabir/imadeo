@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,8 +19,12 @@ function createService(
   lifecycleOverrides: Record<string, unknown> = {},
 ) {
   const assetFindFirst = vi.fn().mockResolvedValue(existing);
+  const assetFindMany = vi.fn().mockResolvedValue([]);
+  const assetCount = vi.fn().mockResolvedValue(0);
   const assetUpdate = vi.fn().mockResolvedValue({ id: existing.id });
   const assetUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const assetUserDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
+  const sharedLinkAssetDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
   const albumFindFirst = vi.fn().mockResolvedValue({ id: 'album-id' });
   const albumAssetCreateMany = vi.fn().mockResolvedValue({ count: 1 });
   const albumUpdate = vi.fn().mockResolvedValue({ id: 'album-id' });
@@ -34,10 +38,13 @@ function createService(
     {
       asset: {
         findFirst: assetFindFirst,
-        findMany: vi.fn().mockResolvedValue([]),
+        findMany: assetFindMany,
+        count: assetCount,
         update: assetUpdate,
         updateMany: assetUpdateMany,
       },
+      assetUser: { deleteMany: assetUserDeleteMany },
+      sharedLinkAsset: { deleteMany: sharedLinkAssetDeleteMany },
       album: { findFirst: albumFindFirst, update: albumUpdate },
       albumAsset: { createMany: albumAssetCreateMany },
       $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
@@ -65,8 +72,12 @@ function createService(
   return {
     service,
     assetFindFirst,
+    assetFindMany,
+    assetCount,
     assetUpdate,
     assetUpdateMany,
+    assetUserDeleteMany,
+    sharedLinkAssetDeleteMany,
     storageRemove,
     ensurePath,
     refreshThumbnails,
@@ -128,6 +139,77 @@ describe('AssetService library filters', () => {
         }),
       ],
     });
+  });
+
+  it('does not expose locked media through the ordinary asset query', async () => {
+    const { service } = createService({ id: 'asset-id' });
+
+    await expect(
+      service.query('owner-id', { visibility: 'LOCKED' as never }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('AssetService individual media locking', () => {
+  it('locks owned media and revokes direct and link sharing atomically', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([
+      { id: 'asset-id', folder: null, albums: [] },
+    ]);
+
+    await expect(test.service.setLock('owner-id', ['asset-id'], true)).resolves.toEqual({
+      updated: 1,
+    });
+    expect(test.assetUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id', deletedAt: null },
+      data: { visibility: 'LOCKED' },
+    });
+    expect(test.assetUserDeleteMany).toHaveBeenCalledWith({
+      where: { assetId: { in: ['asset-id'] } },
+    });
+    expect(test.sharedLinkAssetDeleteMany).toHaveBeenCalledWith({
+      where: { assetId: { in: ['asset-id'] } },
+    });
+  });
+
+  it('unlocks loose media back to the timeline', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([
+      { id: 'asset-id', folder: null, albums: [] },
+    ]);
+
+    await test.service.setLock('owner-id', ['asset-id'], false);
+
+    expect(test.assetUpdateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['asset-id'] }, ownerId: 'owner-id', deletedAt: null },
+      data: { visibility: 'TIMELINE' },
+    });
+    expect(test.assetUserDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps media locked while it still belongs to a locked container', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([
+      { id: 'asset-id', folder: { isLocked: true }, albums: [] },
+    ]);
+
+    await expect(test.service.setLock('owner-id', ['asset-id'], false)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(test.assetUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not let the ordinary bulk editor unlock locked media', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetCount.mockResolvedValue(1);
+
+    await expect(
+      test.service.bulkUpdate('owner-id', {
+        ids: ['asset-id'],
+        visibility: 'TIMELINE' as never,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(test.assetUpdateMany).not.toHaveBeenCalled();
   });
 });
 

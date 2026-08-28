@@ -20,6 +20,19 @@ export interface Asset {
   localDateTime?: string;
   isFavorite?: boolean;
   rotation?: 0 | 90 | 180 | 270;
+  visibility?: 'TIMELINE' | 'ARCHIVE' | 'HIDDEN' | 'LOCKED';
+}
+
+/** A server rejection whose machine-readable code callers may act on. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
 export interface Paged<T> {
@@ -249,7 +262,7 @@ export async function request<T>(
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const message = Array.isArray(body?.message) ? body.message[0] : body?.message;
-    throw new Error(message ?? `The server answered ${response.status}.`);
+    throw new ApiError(message ?? `The server answered ${response.status}.`, response.status, body?.code);
   }
 
   // 204s carry nothing, and asking an empty body for JSON throws.

@@ -15,12 +15,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
-import { duration as formatDuration, type Asset } from '../lib/api';
+import { ApiError, duration as formatDuration, type Asset } from '../lib/api';
 import { ensureFreshToken } from '../lib/auth';
 import { colors, radius } from '../theme';
 import { useGrowFrom, type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
-import { ConfirmSheet } from './sheets';
+import { ConfirmSheet, VaultSheet } from './sheets';
 import { Touchable } from './ui';
 
 interface Props {
@@ -56,6 +56,9 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
   const [chrome, setChrome] = useState(true);
   const [trashing, setTrashing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [vaultPrompt, setVaultPrompt] = useState(false);
+  const [pendingLock, setPendingLock] = useState<boolean | null>(null);
   /** Overrides the server's answer for anything favourited in this session. */
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [rotations, setRotations] = useState<Record<string, 0 | 90 | 180 | 270>>({});
@@ -72,6 +75,9 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
     setChrome(true);
     setFavorites({});
     setRotations({});
+    setVaultPrompt(false);
+    setPendingLock(null);
+    setActionError(null);
   }, [index]);
 
   /*
@@ -91,12 +97,32 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
 
   const favorite = favorites[asset.id] ?? asset.isFavorite ?? false;
   const rotation = rotations[asset.id] ?? asset.rotation ?? 0;
+  const locked = asset.visibility === 'LOCKED';
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
     try {
       await work();
       onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setLock = async (isLocked: boolean) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await actions.setLock(serverUrl, [asset.id], isLocked);
+      onChanged();
+      onClose();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'VAULT_LOCKED') {
+        setPendingLock(isLocked);
+        setVaultPrompt(true);
+      } else {
+        setActionError(cause instanceof Error ? cause.message : 'Locked could not be changed.');
+      }
     } finally {
       setBusy(false);
     }
@@ -254,6 +280,13 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                 }}
               />
               <ViewerAction
+                icon={locked ? 'unlock' : 'lock'}
+                label={locked ? 'Remove from Locked' : 'Move to Locked'}
+                tint="#fff"
+                disabled={busy}
+                onPress={() => void setLock(!locked)}
+              />
+              <ViewerAction
                 icon="trash"
                 label="Move to trash"
                 tint="#fff"
@@ -261,6 +294,23 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
                 onPress={() => setTrashing(true)}
               />
             </Animated.View>
+            {actionError && (
+              <Animated.View
+                style={{
+                  position: 'absolute',
+                  top: insets.top + 68,
+                  left: 16,
+                  right: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: radius.md,
+                  backgroundColor: colors.overlay,
+                  opacity: enter,
+                }}
+              >
+                <Text style={{ color: colors.danger, fontSize: 13 }}>{actionError}</Text>
+              </Animated.View>
+            )}
           </>
         )}
 
@@ -274,6 +324,19 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
             // Nothing left to look at on this page once it is gone.
             void run(() => actions.trash(serverUrl, [asset.id]));
             onClose();
+          }}
+        />
+        <VaultSheet
+          open={vaultPrompt}
+          serverUrl={serverUrl}
+          onClose={() => {
+            setVaultPrompt(false);
+            setPendingLock(null);
+          }}
+          onUnlocked={() => {
+            const next = pendingLock;
+            setPendingLock(null);
+            if (next !== null) void setLock(next);
           }}
         />
       </View>

@@ -317,9 +317,9 @@ export function RegisterPage() {
                   <div className="mb-2 flex items-start gap-2.5">
                     <ShieldCheck size={16} className="mt-0.5 shrink-0 text-primary" />
                     <div>
-                      <p className="text-sm font-medium">Password for locked folders</p>
+                      <p className="text-sm font-medium">Password for Locked</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-content-muted">
-                        Locks your private folders and albums.
+                        Locks your private photos, videos, folders and albums.
                       </p>
                     </div>
                   </div>
@@ -329,7 +329,7 @@ export function RegisterPage() {
                       mb-1.5) and the card keeps its rhythm. */}
                   <Input
                     containerClassName="mt-[1.375rem] w-full"
-                    aria-label="Password for locked folders"
+                    aria-label="Private password for Locked"
                     type="password"
                     autoComplete="new-password"
                     value={pin}

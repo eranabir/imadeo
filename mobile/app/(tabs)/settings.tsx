@@ -10,6 +10,7 @@ export default function Route() {
     <SettingsScreen
       serverUrl={server?.url ?? ''}
       onManageServers={() => router.push('/servers')}
+      onLocked={() => router.push('/locked')}
     />
   );
 }

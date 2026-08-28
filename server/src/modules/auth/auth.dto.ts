@@ -73,7 +73,7 @@ export class CreateApiKeyDto {
 export class VaultPinDto {
   @ApiProperty({ description: 'Private password: at least 8 characters.' })
   @IsString()
-  @MinLength(8, { message: 'Password for locked folders must be at least 8 characters' })
+  @MinLength(8, { message: 'The private password must be at least 8 characters' })
   pin!: string;
 }
 
@@ -93,7 +93,7 @@ export class AcceptInviteDto {
 export class ChangeVaultPinDto extends VaultPinDto {
   @ApiProperty({ description: 'New private password: at least 8 characters.' })
   @IsString()
-  @MinLength(8, { message: 'Password for locked folders must be at least 8 characters' })
+  @MinLength(8, { message: 'The private password must be at least 8 characters' })
   newPin!: string;
 }
 

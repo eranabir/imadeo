@@ -175,6 +175,7 @@ export function Row({
   value,
   last = false,
   dot,
+  onPress,
 }: {
   icon: IconName;
   label: string;
@@ -182,8 +183,9 @@ export function Row({
   last?: boolean;
   /** A status pip beside the value, when there is a status worth showing. */
   dot?: string;
+  onPress?: () => void;
 }) {
-  return (
+  const content = (
     <View
       style={{
         flexDirection: 'row',
@@ -205,6 +207,12 @@ export function Row({
       </Text>
     </View>
   );
+
+  return onPress ? (
+    <Touchable onPress={onPress} radius={radius.md} label={label}>
+      {content}
+    </Touchable>
+  ) : content;
 }
 
 export function Action({

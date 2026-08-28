@@ -25,6 +25,8 @@ export type IconName =
   | 'heart'
   | 'heart-filled'
   | 'trash'
+  | 'lock'
+  | 'unlock'
   | 'rotate'
   | 'move'
   | 'plus'
@@ -289,6 +291,22 @@ function shapes(name: IconName, color: string) {
           <Path d="M6.2 6.6l.9 12.1a2 2 0 0 0 2 1.8h5.8a2 2 0 0 0 2-1.8l.9-12.1" />
           <Path d="M10.3 10.4v6.2" />
           <Path d="M13.7 10.4v6.2" />
+        </>
+      );
+
+    case 'lock':
+      return (
+        <>
+          <Rect x="5" y="10" width="14" height="11" rx="2.5" />
+          <Path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </>
+      );
+
+    case 'unlock':
+      return (
+        <>
+          <Rect x="5" y="10" width="14" height="11" rx="2.5" />
+          <Path d="M16 10V7a4 4 0 0 0-7.6-1.7" />
         </>
       );
 

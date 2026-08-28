@@ -5,6 +5,8 @@ import {
   Download,
   Heart,
   Info,
+  Lock,
+  LockOpen,
   Maximize2,
   Pause,
   Play,
@@ -20,6 +22,8 @@ import { formatBytes, formatDateTime } from '../lib/format';
 import { useAuth } from '../store/auth';
 import type { Asset } from '../types';
 import { ConfirmDialog, IconButton } from '../ui';
+import { RetryingImage } from './RetryingImage';
+import { VaultDialog } from './VaultGate';
 
 interface Props {
   asset: Asset;
@@ -31,6 +35,7 @@ interface Props {
 export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
   const [showInfo, setShowInfo] = useState(false);
   const [confirmTrash, setConfirmTrash] = useState(false);
+  const [askForVaultPassword, setAskForVaultPassword] = useState(false);
   const [rotations, setRotations] = useState<Record<string, number>>({});
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -70,6 +75,24 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
     onSuccess: (_, next) => {
       setRotations((current) => ({ ...current, [asset.id]: next }));
       void queryClient.invalidateQueries({ queryKey: ['assets'] });
+    },
+  });
+
+  const setLocked = useMutation({
+    mutationFn: async () =>
+      (
+        await api.put('/assets/lock', {
+          ids: [asset.id],
+          isLocked: asset.visibility !== 'LOCKED',
+        })
+      ).data,
+    onSuccess: () => {
+      void queryClient.invalidateQueries();
+      onClose();
+    },
+    onError: (error) => {
+      const code = (error as { response?: { data?: { code?: string } } }).response?.data?.code;
+      if (code === 'VAULT_LOCKED') setAskForVaultPassword(true);
     },
   });
 
@@ -123,6 +146,17 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
           >
             <Download size={18} />
           </a>
+          {!isShared && (
+            <button
+              type="button"
+              onClick={() => setLocked.mutate()}
+              title={asset.visibility === 'LOCKED' ? 'Unlock photo' : 'Lock photo'}
+              disabled={setLocked.isPending}
+              className="grid h-9 w-9 place-items-center rounded-md hover:bg-white/10 disabled:opacity-40"
+            >
+              {asset.visibility === 'LOCKED' ? <LockOpen size={18} /> : <Lock size={18} />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((v) => !v)}
@@ -237,6 +271,11 @@ export function AssetViewer({ asset, assets, onClose, onNavigate }: Props) {
         onConfirm={() => trash.mutate()}
         onClose={() => setConfirmTrash(false)}
       />
+      <VaultDialog
+        open={askForVaultPassword}
+        onClose={() => setAskForVaultPassword(false)}
+        onUnlocked={() => setLocked.mutate()}
+      />
     </div>
   );
 }
@@ -283,6 +322,7 @@ function RotatedMedia({ asset, rotation }: { asset: Asset; rotation: number }) {
           key={asset.id}
           assetId={asset.id}
           alt={asset.originalFileName}
+          thumbnailReady={Boolean(asset.thumbnailPath)}
           style={style}
         />
       )}
@@ -298,10 +338,12 @@ function RotatedMedia({ asset, rotation }: { asset: Asset; rotation: number }) {
 export function ProgressiveOriginalImage({
   assetId,
   alt,
+  thumbnailReady = true,
   style,
 }: {
   assetId: string;
   alt: string;
+  thumbnailReady?: boolean;
   style: CSSProperties;
 }) {
   const [originalLoaded, setOriginalLoaded] = useState(false);
@@ -309,8 +351,10 @@ export function ProgressiveOriginalImage({
 
   return (
     <>
-      <img
+      <RetryingImage
         src={mediaUrl(assetId, 'preview')}
+        assetId={assetId}
+        thumbnailReady={thumbnailReady}
         alt=""
         aria-hidden="true"
         style={{ ...style, opacity: originalLoaded ? 0 : 1 }}

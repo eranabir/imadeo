@@ -1,11 +1,14 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
+import { AssetViewer } from '../components/AssetViewer';
+import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
+import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
 import { VaultDialog, useVaultStatus } from '../components/VaultGate';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
-import type { Album, FolderNode } from '../types';
+import type { Album, Asset, FolderNode, Paginated } from '../types';
 import { Button, EmptyState } from '../ui';
 
 /**
@@ -18,9 +21,10 @@ export function LockedPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [askPin, setAskPin] = useState(false);
+  const [viewing, setViewing] = useState<Asset | null>(null);
 
   const { data: vault } = useVaultStatus();
-  const actions = useLibraryActions({ onError: setError });
+  const actions = useLibraryActions({ onError: setError, onShowDetails: setViewing });
 
   const unlocked = vault?.isUnlocked ?? false;
 
@@ -38,6 +42,20 @@ export function LockedPage() {
     enabled: unlocked,
   });
 
+  const media = useInfiniteQuery({
+    queryKey: ['assets', 'locked'],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) =>
+      (
+        await api.get<Paginated<Asset>>('/assets/locked', {
+          params: { page: pageParam, size: 150 },
+        })
+      ).data,
+    getNextPageParam: (last) =>
+      last.pagination.page < last.pagination.pages ? last.pagination.page + 1 : undefined,
+    enabled: unlocked,
+  });
+
   const lockNow = useMutation({
     mutationFn: async () => (await api.post('/auth/vault/lock')).data,
     onSuccess: () => queryClient.invalidateQueries(),
@@ -49,17 +67,19 @@ export function LockedPage() {
 
   const lockedFolders = flatten(folders).filter((folder) => folder.isLocked);
   const lockedAlbums = albums.filter((album) => album.isLocked);
-  const isEmpty = lockedFolders.length === 0 && lockedAlbums.length === 0;
+  const lockedAssets = media.data?.pages.flatMap((page) => page.items) ?? [];
+  const lockedAssetTotal = media.data?.pages[0]?.pagination.total ?? 0;
+  const isEmpty = lockedFolders.length === 0 && lockedAlbums.length === 0 && lockedAssetTotal === 0;
 
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle/60 bg-surface/80 px-5 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <Lock size={16} className="text-content-muted" />
-          <h1 className="text-lg font-semibold tracking-tight">Locked folders</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Locked</h1>
           {unlocked && (
             <span className="text-xs text-content-muted">
-              {lockedFolders.length} folders · {lockedAlbums.length} albums
+              {lockedAssetTotal} media · {lockedFolders.length} folders · {lockedAlbums.length} albums
             </span>
           )}
         </div>
@@ -80,11 +100,11 @@ export function LockedPage() {
       {!unlocked ? (
         <EmptyState
           icon={Lock}
-          title={vault?.isConfigured ? 'Locked folders are locked' : 'Set up locked folders'}
+          title={vault?.isConfigured ? 'Locked items are locked' : 'Set up Locked'}
           description={
             vault?.isConfigured
-              ? 'Enter your private password to see the folders and albums you have locked away. They stay out of the timeline, search results and share links.'
-              : 'Choose a private password to start locking folders and albums. Locked items are hidden from the timeline, search and every share link.'
+              ? 'Enter your private password to see the photos, videos, folders and albums you have locked away. They stay out of the timeline, search results and share links.'
+              : 'Choose a private password to start locking photos, videos, folders and albums. Locked items are hidden from the timeline, search and every share link.'
           }
           action={
             <Button
@@ -100,10 +120,28 @@ export function LockedPage() {
         <EmptyState
           icon={Lock}
           title="Nothing is locked yet"
-          description="Right-click any folder or album and choose “Make private” to keep it here."
+          description="Open a photo or right-click any photo, folder or album and choose Lock."
         />
       ) : (
         <div className="space-y-7 px-5 pb-24 pt-4">
+          {lockedAssets.length > 0 && (
+            <section>
+              <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">
+                Photos & videos
+              </h2>
+              <JustifiedGrid
+                assets={lockedAssets}
+                onOpen={setViewing}
+                onContextMenu={actions.onAssetContextMenu}
+              />
+              <InfiniteScrollSentinel
+                enabled={Boolean(media.hasNextPage)}
+                loading={media.isFetchingNextPage}
+                onVisible={() => void media.fetchNextPage()}
+              />
+            </section>
+          )}
+
           {lockedFolders.length > 0 && (
             <section>
               <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-content-muted">
@@ -143,6 +181,15 @@ export function LockedPage() {
       )}
 
       {actions.overlays}
+
+      {viewing && (
+        <AssetViewer
+          asset={viewing}
+          assets={lockedAssets}
+          onClose={() => setViewing(null)}
+          onNavigate={setViewing}
+        />
+      )}
 
       <VaultDialog open={askPin} onClose={() => setAskPin(false)} />
     </div>

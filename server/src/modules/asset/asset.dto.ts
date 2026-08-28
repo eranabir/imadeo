@@ -216,6 +216,11 @@ export class BulkAssetIdsDto {
   ids!: string[];
 }
 
+export class SetAssetLockDto extends BulkAssetIdsDto {
+  @IsBoolean()
+  isLocked!: boolean;
+}
+
 /** Give existing accounts read-only access to one or more of your assets. */
 export class ShareAssetsDto extends BulkAssetIdsDto {
   @IsArray()

@@ -59,6 +59,7 @@ function useAutoBackup() {
 interface Props {
   serverUrl: string;
   onManageServers: () => void;
+  onLocked: () => void;
 }
 
 interface Statistics {
@@ -90,7 +91,7 @@ interface Me {
   quotaSizeInBytes?: string | number | null;
 }
 
-export function SettingsScreen({ serverUrl, onManageServers }: Props) {
+export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) {
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
   const me = useResource<Me>(serverUrl, '/users/me');
   const auto = useAutoBackup();
@@ -213,6 +214,10 @@ export function SettingsScreen({ serverUrl, onManageServers }: Props) {
               ))}
             </View>
           </View>
+        </Group>
+
+        <Group title="Privacy">
+          <Row icon="lock" label="Locked" value="Open" last onPress={onLocked} />
         </Group>
 
         <Action label="Manage servers" onPress={onManageServers} />
