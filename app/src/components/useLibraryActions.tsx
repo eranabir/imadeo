@@ -61,6 +61,8 @@ interface Options {
   assignmentFaceIds?: (assetIds: string[]) => string[];
   onError?: (message: string) => void;
   onFolderConverted?: (album: Album) => void;
+  /** Clears page-owned selection after a menu or move action succeeds. */
+  onAfterChange?: () => void;
 }
 
 /** Split the final extension from a display name without treating `.hidden` as an extension. */
@@ -85,6 +87,7 @@ export function useLibraryActions({
   assignmentFaceIds,
   onError,
   onFolderConverted,
+  onAfterChange,
 }: Options = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -109,7 +112,10 @@ export function useLibraryActions({
   /** Remembered so the lock can be applied straight after unlocking. */
   const [pendingLock, setPendingLock] = useState<Target | null>(null);
 
-  const invalidate = () => queryClient.invalidateQueries();
+  const invalidate = () => {
+    onAfterChange?.();
+    return queryClient.invalidateQueries();
+  };
   const fail = (e: unknown) => onError?.(errorMessage(e));
   const mutation = <T,>(fn: (input: T) => Promise<unknown>) => ({
     mutationFn: fn,
@@ -832,6 +838,8 @@ export function useLibraryActions({
     dropOnFolder,
     dropOnAlbum,
     dropOnRoot,
+    moveAssets: (asset: Asset, ids: string[]) =>
+      setMoving({ kind: 'assets', asset, ids }),
     onConvertFolder: (folder: Pick<FolderNode, 'id' | 'name' | 'isLocked' | 'shared'>) =>
       setConvertingFolder({ kind: 'folder', folder }),
   };

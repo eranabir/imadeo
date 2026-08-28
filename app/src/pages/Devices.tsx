@@ -4,7 +4,11 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AssetViewer } from '../components/AssetViewer';
 import { JustifiedGrid } from '../components/JustifiedGrid';
+import { SelectionBar } from '../components/SelectionBar';
+import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage, mediaUrl } from '../lib/api';
+import { runBatchedOperation } from '../lib/operationProgress';
+import { useSelection } from '../lib/useSelection';
 import type { Asset, Device, Paginated } from '../types';
 import { ConfirmDialog, EmptyState, IconButton, Loading, Tooltip } from '../ui';
 
@@ -119,6 +123,7 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
   const [viewing, setViewing] = useState<Asset | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
   const { data: device, isLoading: deviceLoading } = useQuery({
     queryKey: ['devices', deviceId],
     queryFn: async () => (await api.get<Device>(`/devices/${deviceId}`)).data,
@@ -129,6 +134,28 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
       (await api.get<Paginated<Asset>>('/assets', { params: { deviceId, size: 1000 } })).data,
   });
   const assets = page?.items ?? [];
+  const afterAssetChange = () => {
+    clear();
+    void queryClient.invalidateQueries({ queryKey: ['devices', deviceId] });
+  };
+  const actions = useLibraryActions({
+    onShowDetails: setViewing,
+    selectedIds: [...selected],
+    onAfterChange: clear,
+  });
+  const favorite = useMutation({
+    mutationFn: async (ids: string[]) => api.put('/assets/bulk', { ids, isFavorite: true }),
+    onSuccess: afterAssetChange,
+  });
+  const trash = useMutation({
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo to Trash' : `Moving ${ids.length} photos to Trash`,
+        ids,
+        (batch) => api.delete('/assets', { data: { ids: batch } }),
+      ),
+    onSuccess: afterAssetChange,
+  });
   const remove = useMutation({
     mutationFn: async () => (await api.delete(`/devices/${deviceId}`)).data,
     onSuccess: () => {
@@ -181,9 +208,33 @@ function DeviceLibrary({ deviceId }: { deviceId: string }) {
         />
       ) : (
         <div className="px-2 pb-24 pt-2">
-          <JustifiedGrid assets={assets} onOpen={setViewing} />
+          <JustifiedGrid
+            assets={assets}
+            selected={selected}
+            onOpen={setViewing}
+            onToggleSelect={toggle}
+            onSelectRange={(asset) => selectRange(asset, assets)}
+            onAnchor={setAnchor}
+            onContextMenu={actions.onAssetContextMenu}
+          />
         </div>
       )}
+
+      {actions.overlays}
+
+      <SelectionBar
+        count={selected.size}
+        onClear={clear}
+        onFavorite={() => favorite.mutate([...selected])}
+        onMove={() => {
+          const first = assets.find((asset) => selected.has(asset.id));
+          if (first) actions.moveAssets(first, [...selected]);
+        }}
+        onDownload={() => {
+          window.location.href = `/api/assets/download/archive?ids=${[...selected].join(',')}`;
+        }}
+        onTrash={() => trash.mutate([...selected])}
+      />
 
       {viewing && (
         <AssetViewer

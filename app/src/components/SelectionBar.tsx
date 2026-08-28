@@ -1,4 +1,4 @@
-import { Download, Heart, Trash2, X } from 'lucide-react';
+import { Download, FolderInput, Heart, Trash2, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { ConfirmDialog } from '../ui';
 
@@ -6,6 +6,7 @@ interface Props {
   count: number;
   onClear: () => void;
   onFavorite?: () => void;
+  onMove?: () => void;
   onDownload?: () => void;
   onTrash?: () => void;
   children?: ReactNode;
@@ -19,6 +20,7 @@ export function SelectionBar({
   count,
   onClear,
   onFavorite,
+  onMove,
   onDownload,
   onTrash,
   children,
@@ -51,6 +53,16 @@ export function SelectionBar({
             className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
           >
             <Heart size={17} />
+          </button>
+        )}
+        {onMove && (
+          <button
+            type="button"
+            onClick={onMove}
+            title="Move"
+            className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
+          >
+            <FolderInput size={17} />
           </button>
         )}
         {onDownload && (
