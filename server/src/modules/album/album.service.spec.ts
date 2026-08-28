@@ -1,5 +1,37 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ForbiddenException } from '@nestjs/common';
 import { AlbumService } from './album.service';
+
+describe('AlbumService locked album access', () => {
+  it('requires an unlocked vault before the owner can open a locked album', async () => {
+    const service = new AlbumService(
+      {
+        album: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'album-id',
+            ownerId: 'owner-id',
+            isLocked: true,
+            albumUsers: [],
+          }),
+        },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.getAccess(
+        {
+          user: { id: 'owner-id' },
+          session: { vaultUnlockedUntil: null },
+        } as never,
+        'album-id',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
 
 describe('AlbumService asset sorting', () => {
   it('groups album media by type with deterministic ordering', () => {
@@ -29,7 +61,10 @@ describe('AlbumService.getAssetIds', () => {
     const rows = Array.from({ length: 359 }, (_, index) => ({ assetId: `asset-${index}` }));
     const findMany = vi.fn().mockResolvedValue(rows);
     const service = new AlbumService(
-      { albumAsset: { findMany } } as never,
+      {
+        album: { findUniqueOrThrow: vi.fn().mockResolvedValue({ isLocked: false }) },
+        albumAsset: { findMany },
+      } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -46,7 +81,7 @@ describe('AlbumService.getAssetIds', () => {
         asset: {
           deletedAt: null,
           isDeviceOnly: false,
-          visibility: { not: 'HIDDEN' },
+          visibility: { in: ['TIMELINE', 'ARCHIVE'] },
         },
       },
       select: { assetId: true },
@@ -153,7 +188,10 @@ describe('AlbumService.processingStatus', () => {
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(2);
     const service = new AlbumService(
-      { albumAsset: { count } } as never,
+      {
+        album: { findUniqueOrThrow: vi.fn().mockResolvedValue({ isLocked: false }) },
+        albumAsset: { count },
+      } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -178,6 +216,78 @@ describe('AlbumService.processingStatus', () => {
         asset: expect.objectContaining({ thumbnailPath: { not: null } }),
       },
     });
+  });
+});
+
+describe('AlbumService locked media visibility', () => {
+  it('keeps a locked photo membership but excludes it from a normal album', async () => {
+    const albumAssetFindMany = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const albumAssetCount = vi.fn().mockResolvedValue(0);
+    const service = new AlbumService(
+      {
+        album: {
+          findUniqueOrThrow: vi.fn().mockResolvedValue({
+            id: 'album-id',
+            ownerId: 'owner-id',
+            name: 'Summer',
+            isLocked: false,
+            order: 'desc',
+            folder: null,
+            thumbnailAssetId: 'locked-photo',
+          }),
+        },
+        albumAsset: { findMany: albumAssetFindMany, count: albumAssetCount },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    const result = await service.get({ user: { id: 'owner-id' } } as never, 'album-id');
+
+    expect(result.assets).toEqual([]);
+    expect(result.assetCount).toBe(0);
+    expect(result.coverAssetId).toBeNull();
+    expect(albumAssetCount).toHaveBeenCalledWith({
+      where: {
+        albumId: 'album-id',
+        asset: {
+          deletedAt: null,
+          isDeviceOnly: false,
+          visibility: { in: ['TIMELINE', 'ARCHIVE'] },
+        },
+      },
+    });
+  });
+
+  it('shows locked media only when opening a locked album through Locked', async () => {
+    const findMany = vi.fn().mockResolvedValue([{ assetId: 'locked-photo' }]);
+    const service = new AlbumService(
+      {
+        album: { findUniqueOrThrow: vi.fn().mockResolvedValue({ isLocked: true }) },
+        albumAsset: { findMany },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    vi.spyOn(service, 'getAccess').mockResolvedValue('owner');
+
+    await service.getAssetIds({ user: { id: 'owner-id' } } as never, 'album-id');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          asset: expect.objectContaining({ visibility: 'LOCKED' }),
+        }),
+      }),
+    );
   });
 });
 

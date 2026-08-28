@@ -26,8 +26,9 @@ export class AlbumController {
 
   @Get()
   @ApiOperation({ summary: 'Albums you own or that are shared with you' })
-  list(@AuthedUserId() userId: string, @Query() query: AlbumQueryDto) {
-    return this.albumService.list(userId, query);
+  list(@Authed() auth: AuthDto, @Query() query: AlbumQueryDto) {
+    if (query.includeLocked) assertVaultUnlocked(auth);
+    return this.albumService.list(auth.user.id, query);
   }
 
   @Get('statistics')

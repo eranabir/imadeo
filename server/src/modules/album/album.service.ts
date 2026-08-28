@@ -5,10 +5,11 @@ import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { BULK_MUTATION_TRANSACTION } from '../../infra/prisma/bulk-mutation';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { assertVaultUnlocked } from '../../common/auth.guard';
 import { InvitationService } from '../auth/invitation.service';
 import { AssetLifecycleService } from '../asset/asset-lifecycle.service';
 import type { AuthDto } from '../../common/auth.types';
-import { mainLibraryAssetWhere } from '../../common/asset-scope';
+import { MAIN_LIBRARY_VISIBILITIES, mainLibraryAssetWhere } from '../../common/asset-scope';
 import type {
   AlbumAssetsQueryDto,
   AlbumQueryDto,
@@ -19,11 +20,28 @@ import type {
 
 type Access = 'owner' | 'editor' | 'viewer';
 
-const ACTIVE_ALBUM_ASSET = {
+const ACTIVE_ALBUM_ASSET: Prisma.AssetWhereInput = {
   deletedAt: null,
   isDeviceOnly: false,
-  visibility: { not: AssetVisibility.HIDDEN },
-} as const;
+  visibility: { in: [...MAIN_LIBRARY_VISIBILITIES] },
+};
+
+const activeAlbumAssetWhere = (isLocked: boolean): Prisma.AssetWhereInput => ({
+  deletedAt: null,
+  isDeviceOnly: false,
+  visibility: isLocked
+    ? AssetVisibility.LOCKED
+    : { in: [...MAIN_LIBRARY_VISIBILITIES] },
+});
+
+const albumCoverInclude = (assetWhere: Prisma.AssetWhereInput) => ({
+  assets: {
+    where: { asset: assetWhere },
+    orderBy: { asset: { localDateTime: 'desc' as const } },
+    take: 8,
+    select: { assetId: true },
+  },
+});
 
 /**
  * Newest few live assets in the album, used to derive a cover.
@@ -32,14 +50,7 @@ const ACTIVE_ALBUM_ASSET = {
  * trashed, in which case we still want a real picture rather than a grey icon.
  */
 export const ALBUM_COVER_INCLUDE = {
-  assets: {
-    where: {
-      asset: ACTIVE_ALBUM_ASSET,
-    },
-    orderBy: { asset: { localDateTime: 'desc' } },
-    take: 8,
-    select: { assetId: true },
-  },
+  ...albumCoverInclude(ACTIVE_ALBUM_ASSET),
 } as const;
 
 /**
@@ -87,6 +98,14 @@ export class AlbumService {
     });
     if (!album) throw new NotFoundException('Album not found');
 
+    if (album.isLocked) {
+      if (album.ownerId !== auth.user.id || auth.sharedLink) {
+        throw new ForbiddenException('Locked albums cannot be shared');
+      }
+      assertVaultUnlocked(auth);
+      return 'owner';
+    }
+
     if (auth.sharedLink) {
       if (auth.sharedLink.albumId !== albumId) {
         throw new ForbiddenException('This link does not grant access to that album');
@@ -95,7 +114,6 @@ export class AlbumService {
     }
 
     if (album.ownerId === auth.user.id) return 'owner';
-    if (album.isLocked) throw new ForbiddenException('Locked albums cannot be shared');
 
     const membership = album.albumUsers[0];
     if (membership) return membership.role === AlbumUserRole.EDITOR ? 'editor' : 'viewer';
@@ -178,6 +196,8 @@ export class AlbumService {
   // -- reads ----------------------------------------------------------------
 
   async list(userId: string, query: AlbumQueryDto = {}) {
+    const lockedView = Boolean(query.includeLocked);
+    const assetWhere = activeAlbumAssetWhere(lockedView);
     const mine: Prisma.AlbumWhereInput = { ownerId: userId };
     const sharedWithMe: Prisma.AlbumWhereInput = { albumUsers: { some: { userId } } };
     const sharedFolderIds = await this.prisma.$queryRaw<{ id: string }[]>`
@@ -200,7 +220,7 @@ export class AlbumService {
     };
     const where: Prisma.AlbumWhereInput = {
       deletedAt: null,
-      ...(query.includeLocked ? {} : { isLocked: false }),
+      isLocked: lockedView,
       ...(query.folderId !== undefined ? { folderId: query.folderId } : {}),
       ...(query.assetId ? { assets: { some: { assetId: query.assetId } } } : {}),
       ...(query.shared
@@ -212,12 +232,12 @@ export class AlbumService {
       where,
       include: {
         _count: {
-          select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } },
+          select: { assets: { where: { asset: assetWhere } } },
         },
         albumUsers: { include: { user: { select: { id: true, name: true, email: true, profileImagePath: true } } } },
         owner: { select: { id: true, name: true, email: true, profileImagePath: true } },
         folder: { select: { id: true, name: true, path: true } },
-        ...ALBUM_COVER_INCLUDE,
+        ...albumCoverInclude(assetWhere),
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -239,53 +259,43 @@ export class AlbumService {
         owner: { select: { id: true, name: true, email: true, profileImagePath: true } },
         albumUsers: { include: { user: { select: { id: true, name: true, email: true, profileImagePath: true } } } },
         folder: { select: { id: true, name: true, path: true } },
-        _count: {
-          select: { assets: { where: { asset: ACTIVE_ALBUM_ASSET } } },
-        },
-        ...ALBUM_COVER_INCLUDE,
       },
     });
 
     const page = Math.max(1, query.page ?? 1);
     const size = Math.min(1000, Math.max(1, query.size ?? 250));
     const order = query.order ?? (album.order as 'asc' | 'desc');
+    const assetWhere = activeAlbumAssetWhere(album.isLocked);
 
     // A share link that names individual assets must not expose the rest.
     const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
 
-    const rows = await this.prisma.albumAsset.findMany({
-      where: {
-        albumId,
-        asset: {
-          deletedAt: null,
-          isDeviceOnly: false,
-          visibility: { not: AssetVisibility.HIDDEN },
-          ...(restrictTo ? { id: { in: restrictTo } } : {}),
-        },
-      },
-      include: { asset: { include: { exif: true } } },
-      orderBy: this.orderBy(query.sortBy ?? 'date', order),
-      skip: (page - 1) * size,
-      take: size,
-    });
+    const scopedAssetWhere = {
+      ...assetWhere,
+      ...(restrictTo ? { id: { in: restrictTo } } : {}),
+    };
+    const [rows, total, coverAssets] = await Promise.all([
+      this.prisma.albumAsset.findMany({
+        where: { albumId, asset: scopedAssetWhere },
+        include: { asset: { include: { exif: true } } },
+        orderBy: this.orderBy(query.sortBy ?? 'date', order),
+        skip: (page - 1) * size,
+        take: size,
+      }),
+      this.prisma.albumAsset.count({ where: { albumId, asset: scopedAssetWhere } }),
+      this.prisma.albumAsset.findMany({
+        where: { albumId, asset: scopedAssetWhere },
+        orderBy: { asset: { localDateTime: 'desc' } },
+        take: 8,
+        select: { assetId: true },
+      }),
+    ]);
 
-    const { _count, assets: coverAssets, ...rest } = album;
     const breadcrumbs = album.folder
       ? await this.getFolderBreadcrumbs(auth, album.ownerId, album.folder)
       : [];
-    const total = await this.prisma.albumAsset.count({
-      where: {
-        albumId,
-        asset: {
-          deletedAt: null,
-          isDeviceOnly: false,
-          visibility: { not: AssetVisibility.HIDDEN },
-          ...(restrictTo ? { id: { in: restrictTo } } : {}),
-        },
-      },
-    });
     return {
-      ...rest,
+      ...album,
       access,
       breadcrumbs,
       assetCount: total,
@@ -298,14 +308,16 @@ export class AlbumService {
   /** Every live asset id in an album, independent of the paginated grid. */
   async getAssetIds(auth: AuthDto, albumId: string) {
     await this.getAccess(auth, albumId);
+    const album = await this.prisma.album.findUniqueOrThrow({
+      where: { id: albumId },
+      select: { isLocked: true },
+    });
     const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
     const assets = await this.prisma.albumAsset.findMany({
       where: {
         albumId,
         asset: {
-          deletedAt: null,
-          isDeviceOnly: false,
-          visibility: { not: AssetVisibility.HIDDEN },
+          ...activeAlbumAssetWhere(album.isLocked),
           ...(restrictTo ? { id: { in: restrictTo } } : {}),
         },
       },
@@ -318,9 +330,13 @@ export class AlbumService {
   /** Count preview and video preparation for every asset in this album. */
   async processingStatus(auth: AuthDto, albumId: string) {
     await this.getAccess(auth, albumId);
+    const album = await this.prisma.album.findUniqueOrThrow({
+      where: { id: albumId },
+      select: { isLocked: true },
+    });
     const restrictTo = auth.sharedLink?.assetIds?.length ? auth.sharedLink.assetIds : null;
     const assetWhere: Prisma.AssetWhereInput = {
-      ...ACTIVE_ALBUM_ASSET,
+      ...activeAlbumAssetWhere(album.isLocked),
       ...(restrictTo ? { id: { in: restrictTo } } : {}),
     };
     const [total, previewsReady, videos, videoPreviewsReady, videosReady] = await Promise.all([
@@ -641,7 +657,7 @@ export class AlbumService {
     const album = await this.prisma.album.findUniqueOrThrow({ where: { id: albumId } });
     if (album.thumbnailAssetId && ownedIds.includes(album.thumbnailAssetId)) {
       const next = await this.prisma.albumAsset.findFirst({
-        where: { albumId, asset: ACTIVE_ALBUM_ASSET },
+        where: { albumId, asset: activeAlbumAssetWhere(album.isLocked) },
         orderBy: { createdAt: 'asc' },
       });
       await this.prisma.album.update({
