@@ -917,7 +917,7 @@ export function UploadButton({
                           can land pages down and look like it never uploaded. */}
                       {progress.created > 0 && (
                         <Link
-                          to="/?sort=added"
+                          to="/photos?sort=added"
                           onClick={closeProgress}
                           className="text-xs font-medium text-primary hover:underline"
                         >

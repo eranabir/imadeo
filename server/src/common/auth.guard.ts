@@ -11,6 +11,16 @@ import { AuthService } from '../modules/auth/auth.service';
 import { AUTH_COOKIE, AUTH_HEADER, type AuthDto } from './auth.types';
 import { METADATA } from './decorators';
 
+export function assertVaultUnlocked(auth: AuthDto) {
+  const until = auth.session?.vaultUnlockedUntil;
+  if (!until || until.getTime() < Date.now()) {
+    throw new ForbiddenException({
+      message: 'Locked is locked',
+      code: 'VAULT_LOCKED',
+    });
+  }
+}
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -44,13 +54,7 @@ export class AuthGuard implements CanActivate {
     }
 
     if (requireVault) {
-      const until = auth.session?.vaultUnlockedUntil;
-      if (!until || until.getTime() < Date.now()) {
-        throw new ForbiddenException({
-          message: 'Locked is locked',
-          code: 'VAULT_LOCKED',
-        });
-      }
+      assertVaultUnlocked(auth);
     }
 
     request.auth = auth;

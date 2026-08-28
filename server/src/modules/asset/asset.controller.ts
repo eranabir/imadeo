@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthDto } from '../../common/auth.types';
+import { assertVaultUnlocked } from '../../common/auth.guard';
 import { Auth, Authed, AuthedUserId } from '../../common/decorators';
 import { GeocodingService } from '../../infra/geo/geocoding.service';
 import { JOB, QUEUE } from '../../infra/job/job.constants';
@@ -358,11 +359,11 @@ export class AssetController {
     return this.assetService.bulkUpdate(userId, dto);
   }
 
-  @Auth({ vault: true })
   @Put('lock')
   @ApiOperation({ summary: 'Lock or unlock photos and videos' })
-  setLock(@AuthedUserId() userId: string, @Body() dto: SetAssetLockDto) {
-    return this.assetService.setLock(userId, dto.ids, dto.isLocked);
+  setLock(@Authed() auth: AuthDto, @Body() dto: SetAssetLockDto) {
+    if (!dto.isLocked) assertVaultUnlocked(auth);
+    return this.assetService.setLock(auth.user.id, dto.ids, dto.isLocked);
   }
 
   @Post('stack')

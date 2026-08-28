@@ -139,7 +139,7 @@ function App() {
     <Routes>
       <Route
         path="/login"
-        element={status === 'authenticated' ? <Navigate to="/" replace /> : <LoginPage />}
+        element={status === 'authenticated' ? <Navigate to="/photos" replace /> : <LoginPage />}
       />
       {/* An invitation is for whoever holds the link, not for whoever happens
           to be signed in on this browser. Bouncing them to Photos made a valid
@@ -147,12 +147,12 @@ function App() {
       <Route
         path="/register"
         element={
-          status === 'authenticated' && !invited ? <Navigate to="/" replace /> : <RegisterPage />
+          status === 'authenticated' && !invited ? <Navigate to="/photos" replace /> : <RegisterPage />
         }
       />
       <Route
         path="/setup"
-        element={status === 'authenticated' ? <Navigate to="/" replace /> : <RegisterPage />}
+        element={status === 'authenticated' ? <Navigate to="/photos" replace /> : <RegisterPage />}
       />
       <Route path="/auth/callback" element={<OAuthCallbackPage />} />
       <Route
@@ -162,7 +162,8 @@ function App() {
           </Protected>
         }
       >
-        <Route path="/" element={<PhotosPage />} />
+        <Route path="/" element={<Navigate to="/photos" replace />} />
+        <Route path="/photos" element={<PhotosPage />} />
         <Route path="/browse" element={<BrowsePage />} />
         <Route path="/browse/folders/:folderId" element={<BrowsePage />} />
         <Route path="/browse/albums/:albumId" element={<BrowseAlbumPage />} />
@@ -189,7 +190,7 @@ function App() {
           element={<Navigate to="/settings?section=upload-history" replace />}
         />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/photos" replace />} />
       </Route>
     </Routes>
   );

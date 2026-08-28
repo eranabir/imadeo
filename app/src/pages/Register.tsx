@@ -142,7 +142,7 @@ export function RegisterPage() {
       await queryClient.invalidateQueries({ queryKey: ['auth', 'registration'] });
 
       await restore();
-      navigate('/');
+      navigate('/photos');
     } catch (e) {
       setError(errorMessage(e));
     } finally {

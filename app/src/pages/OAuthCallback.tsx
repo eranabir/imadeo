@@ -16,10 +16,10 @@ export function OAuthCallbackPage() {
     const run = async () => {
       const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
       // Drop the navigation fragment before anything else renders.
-      window.history.replaceState({}, '', '/');
+      window.history.replaceState({}, '', '/photos');
 
       await restore();
-      navigate(fragment.get('returnTo') || '/', { replace: true });
+      navigate(fragment.get('returnTo') || '/photos', { replace: true });
     };
 
     void run();

@@ -99,14 +99,14 @@ export function TopBar({
     id: to,
     label,
     icon: <Icon size={16} className={tint} />,
-    checked: to === '/' ? location.pathname === '/' : location.pathname.startsWith(to),
+    checked: location.pathname === to || location.pathname.startsWith(`${to}/`),
     onSelect: () => navigate(to),
   }));
 
   return (
     <>
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle/70 bg-surface/85 px-4 backdrop-blur-xl">
-      <Link to="/" className="shrink-0" aria-label="Imadeo home">
+      <Link to="/photos" className="shrink-0" aria-label="Imadeo home">
         <span className="sm:hidden"><Logo size={34} /></span>
         <span className="hidden sm:block"><LogoLockup size={34} /></span>
       </Link>

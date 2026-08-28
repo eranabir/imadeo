@@ -36,7 +36,7 @@ import { useLibraryActions } from './useLibraryActions';
 export const NAV = [
   { to: '/browse', label: 'Browse', icon: BrowseIcon, tint: 'text-primary', end: false },
   { to: '/devices', label: 'Devices', icon: DevicesIcon, tint: 'text-secondary', end: false },
-  { to: '/', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
+  { to: '/photos', label: 'Photos', icon: PhotosIcon, tint: 'text-nav-photos', end: true },
   { to: '/albums', label: 'Albums', icon: AlbumsIcon, tint: 'text-amber-500', end: false },
   { to: '/sharing', label: 'Sharing', icon: SharingIcon, tint: 'text-secondary', end: false },
   // ScanFace rather than a group-of-people glyph: the section is about

@@ -346,7 +346,7 @@ function AlbumPageContent({ rootMode }: { rootMode: 'browse' | 'albums' }) {
           title="This album is empty"
           description="Drag photos onto the album to add them, or choose “Move to…” to move them here."
           action={
-            <Button variant="primary" icon={<LayoutGrid size={15} />} onClick={() => navigate('/')}>
+            <Button variant="primary" icon={<LayoutGrid size={15} />} onClick={() => navigate('/photos')}>
               Browse photos
             </Button>
           }

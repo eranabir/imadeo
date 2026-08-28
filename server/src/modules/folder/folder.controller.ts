@@ -10,7 +10,9 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Auth, AuthedUserId } from '../../common/decorators';
+import { assertVaultUnlocked } from '../../common/auth.guard';
+import type { AuthDto } from '../../common/auth.types';
+import { Auth, Authed, AuthedUserId } from '../../common/decorators';
 import {
   CreateFolderDto,
   FolderAssetsDto,
@@ -179,13 +181,13 @@ export class FolderController {
   }
 
   @Put(':id/lock')
-  @Auth({ vault: true })
   @ApiOperation({ summary: 'Lock or unlock a folder subtree' })
   setLock(
-    @AuthedUserId() userId: string,
+    @Authed() auth: AuthDto,
     @Param('id') id: string,
     @Body() dto: SetFolderLockDto,
   ) {
-    return this.folderService.setLock(userId, id, dto.isLocked);
+    if (!dto.isLocked) assertVaultUnlocked(auth);
+    return this.folderService.setLock(auth.user.id, id, dto.isLocked);
   }
 }

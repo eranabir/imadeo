@@ -55,7 +55,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      navigate('/');
+      navigate('/photos');
     } catch (e) {
       setError(errorMessage(e));
     } finally {

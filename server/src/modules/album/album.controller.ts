@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { assertVaultUnlocked } from '../../common/auth.guard';
 import type { AuthDto } from '../../common/auth.types';
 import { Auth, Authed, AuthedUserId } from '../../common/decorators';
 import { AlbumUserRole } from '../../db';
@@ -144,10 +145,10 @@ export class AlbumController {
     return this.albumService.removeUser(auth, id, userId === 'me' ? auth.user.id : userId);
   }
 
-  @Auth({ vault: true })
   @Put(':id/lock')
   @ApiOperation({ summary: 'Lock or unlock an album' })
   setLock(@Authed() auth: AuthDto, @Param('id') id: string, @Body() dto: SetAlbumLockDto) {
+    if (!dto.isLocked) assertVaultUnlocked(auth);
     return this.albumService.setLock(auth, id, dto.isLocked);
   }
 
