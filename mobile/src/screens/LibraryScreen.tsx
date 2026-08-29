@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useFocusEffect } from 'expo-router';
 /*
  * The legacy entry, deliberately.
  *
@@ -141,9 +142,9 @@ export function LibraryScreen({ serverUrl }: Props) {
     }
   }, [permission?.granted, permission?.accessPrivileges, serverUrl]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     void load();
-  }, [load]);
+  }, [load]));
 
   /**
    * Picking "Select photos" is granting access, not refusing it.

@@ -97,10 +97,11 @@ export async function uploadedIds(baseUrl?: string): Promise<Set<string>> {
  * knows better, and the photo ids it stores come from the OS rather than from
  * any one install, so they still line up.
  *
- * Merged rather than replaced: the local log may legitimately be ahead, holding
- * an upload that finished moments ago. A failure here is silent — the log is an
- * optimisation, and a backup run that cannot reach the server has bigger
- * problems to report than this.
+ * The server answer replaces the local log. A successful upload records its
+ * device relation before answering the phone, so anything missing from this
+ * list was deleted or belongs to a removed device and must become pending
+ * again. A failure here is silent — the last local answer remains useful while
+ * the server is unreachable.
  */
 async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string> | null> {
   try {
@@ -109,11 +110,11 @@ async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string>
       baseUrl,
       `/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
     );
-    const before = done.size;
-    for (const id of ids) done.add(id);
-    if (done.size !== before) await saveDone(done);
+    const serverDone = new Set(ids);
+    const changed = serverDone.size !== done.size || [...serverDone].some((assetId) => !done.has(assetId));
+    if (changed) await saveDone(serverDone);
 
-    return done;
+    return serverDone;
   } catch {
     return null;
   }
