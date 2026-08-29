@@ -100,11 +100,7 @@ export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Prop
           <Text style={{ color: colors.danger, fontSize: 14, fontWeight: '700' }}>Remove</Text>
         </Pressable>
       ))}
-      {isIosSimulator ? (
-        <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, paddingVertical: 12 }}>
-          The iOS Simulator cannot expose the Mac's Wi-Fi name. Imadeo will still try both server addresses automatically.
-        </Text>
-      ) : (
+      {!isIosSimulator ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Use current Wi-Fi"
@@ -123,7 +119,7 @@ export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Prop
             {currentSsid ? 'Refresh current Wi-Fi' : 'Use current Wi-Fi'}
           </Text>
         </Pressable>
-      )}
+      ) : null}
       {error ? (
         <View style={{ marginBottom: 10 }}>
           <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20 }}>{error}</Text>
