@@ -5,9 +5,12 @@ import { AssetViewer } from '../components/AssetViewer';
 import { InfiniteScrollSentinel } from '../components/InfiniteScrollSentinel';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { AlbumCard, FolderCard } from '../components/LibraryCards';
+import { SelectionBar } from '../components/SelectionBar';
 import { VaultDialog, useVaultStatus } from '../components/VaultGate';
 import { useLibraryActions } from '../components/useLibraryActions';
 import { api, errorMessage } from '../lib/api';
+import { runBatchedOperation } from '../lib/operationProgress';
+import { useSelection } from '../lib/useSelection';
 import type { Album, Asset, FolderNode, Paginated } from '../types';
 import { Button, EmptyState, PromptDialog } from '../ui';
 
@@ -23,9 +26,15 @@ export function LockedPage() {
   const [askPin, setAskPin] = useState(false);
   const [viewing, setViewing] = useState<Asset | null>(null);
   const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
+  const { selected, toggle, selectRange, setAnchor, clear } = useSelection<Asset>();
 
   const { data: vault } = useVaultStatus();
-  const actions = useLibraryActions({ onError: setError, onShowDetails: setViewing });
+  const actions = useLibraryActions({
+    onError: setError,
+    onShowDetails: setViewing,
+    selectedIds: [...selected],
+    onAfterChange: clear,
+  });
 
   const unlocked = vault?.isUnlocked ?? false;
 
@@ -79,6 +88,20 @@ export function LockedPage() {
     onSuccess: () => {
       setCreating(null);
       void queryClient.invalidateQueries({ queryKey: ['albums'] });
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  const trash = useMutation({
+    mutationFn: async (ids: string[]) =>
+      runBatchedOperation(
+        ids.length === 1 ? 'Moving photo to Trash' : `Moving ${ids.length} photos to Trash`,
+        ids,
+        (batch) => api.delete('/assets', { data: { ids: batch } }),
+      ),
+    onSuccess: () => {
+      clear();
+      void queryClient.invalidateQueries();
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -180,7 +203,11 @@ export function LockedPage() {
               </h2>
               <JustifiedGrid
                 assets={lockedAssets}
+                selected={selected}
                 onOpen={setViewing}
+                onToggleSelect={toggle}
+                onSelectRange={(asset) => selectRange(asset, lockedAssets)}
+                onAnchor={setAnchor}
                 onContextMenu={actions.onAssetContextMenu}
               />
               <InfiniteScrollSentinel
@@ -230,6 +257,15 @@ export function LockedPage() {
       )}
 
       {actions.overlays}
+
+      <SelectionBar
+        count={selected.size}
+        onClear={clear}
+        onDownload={() => {
+          window.location.href = `/api/assets/download/archive?ids=${[...selected].join(',')}`;
+        }}
+        onTrash={() => trash.mutate([...selected])}
+      />
 
       {viewing && (
         <AssetViewer
