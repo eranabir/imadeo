@@ -44,6 +44,7 @@ export function ConnectScreen({ onConnected }: Props) {
     const stop = discoverServers(
       (server) => {
         setSearching(false);
+        setDiscoveryError(null);
         setDiscovered((current) =>
           current.some((item) => item.url === server.url) ? current : [...current, server],
         );

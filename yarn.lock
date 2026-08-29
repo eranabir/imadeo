@@ -2278,12 +2278,12 @@ __metadata:
   resolution: "@imadeo/mobile@workspace:mobile"
   dependencies:
     "@expo/metro-runtime": "npm:~57.0.8"
+    "@inthepocket/react-native-service-discovery": "npm:^0.2.11"
     "@maplibre/maplibre-react-native": "npm:^11.3.6"
     "@react-native-community/netinfo": "npm:12.0.1"
     "@types/react": "npm:~19.2.2"
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
-    "@types/react-native-zeroconf": "npm:^0"
     eas-cli: "npm:^21.6.0"
     expo: "npm:^57.0.0"
     expo-background-task: "npm:~57.0.8"
@@ -2313,7 +2313,6 @@ __metadata:
     react-native-svg: "npm:15.15.4"
     react-native-web: "npm:^0.21.0"
     react-native-worklets: "npm:0.10.1"
-    react-native-zeroconf: "npm:^0.14.0"
     typescript: "npm:~6.0.3"
   languageName: unknown
   linkType: soft
@@ -2885,6 +2884,16 @@ __metadata:
     "@types/node":
       optional: true
   checksum: 10c0/a846c7a570e3bf2657d489bcc5dcdc3179d24c7323719de1951dcdb722400ac76e5b2bfe9765d0a789bc1921fac810983d7999f021f30a78a6a174c23fc78dc9
+  languageName: node
+  linkType: hard
+
+"@inthepocket/react-native-service-discovery@npm:^0.2.11":
+  version: 0.2.11
+  resolution: "@inthepocket/react-native-service-discovery@npm:0.2.11"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/032f9cd9ed25132bc2efbb89f94596b39b1a79447313bed73f84ac7cc298fe1af50e8d60477de9c1354ca7e1bcdf25b49b6d1b912f38060d7e1c5e845be92d6b
   languageName: node
   linkType: hard
 
@@ -5525,15 +5534,6 @@ __metadata:
     "@types/react": "npm:*"
     react-native: "npm:*"
   checksum: 10c0/df5a0cc071251a9626fef9aeb3e9e1e2e44a4465138cbdea01e80a7315a4a48c9da89e0d25672fda7a1c44decea9c9928f237d5367e33e7fb057f5c6402ca71d
-  languageName: node
-  linkType: hard
-
-"@types/react-native-zeroconf@npm:^0":
-  version: 0.13.1
-  resolution: "@types/react-native-zeroconf@npm:0.13.1"
-  dependencies:
-    "@types/node": "npm:*"
-  checksum: 10c0/3e04750e1b79c9dec81f409c0b52acf0ea1779910685006d51b1aab321c5546f03bb84230e9b5ffed4813e06458a09b724553ff373b6cb6003c0f1204a73f3ec
   languageName: node
   linkType: hard
 
@@ -8749,7 +8749,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"events@npm:^3.0.0, events@npm:^3.2.0, events@npm:^3.3.0":
+"events@npm:^3.2.0, events@npm:^3.3.0":
   version: 3.3.0
   resolution: "events@npm:3.3.0"
   checksum: 10c0/d6b6f2adbccbcda74ddbab52ed07db727ef52e31a61ed26db9feb7dc62af7fc8e060defa65e5f8af9449b86b52cc1a1f6a79f2eafcf4e62add2b7a1fa4a432f6
@@ -13331,17 +13331,6 @@ __metadata:
     react: "*"
     react-native: 0.83 - 0.86
   checksum: 10c0/31712cf1b311e3dc96544a665da269cdd6be8cab286234cea968c22509398924020f168b1e9e13a532acc23086048c16f5167aa3737e756711239b6f7521fe5a
-  languageName: node
-  linkType: hard
-
-"react-native-zeroconf@npm:^0.14.0":
-  version: 0.14.0
-  resolution: "react-native-zeroconf@npm:0.14.0"
-  dependencies:
-    events: "npm:^3.0.0"
-  peerDependencies:
-    react-native: ">=0.60"
-  checksum: 10c0/43347fdcec580c899af859baf87e568b36140ef47297bd6d31f83c238113c0438b2ba57dd8166a5874a680757f07ae85303b8afebd38b4f6634b5ff6d8d30e7a
   languageName: node
   linkType: hard
 
