@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from 'react-native';
+import * as Device from 'expo-device';
+import { ActivityIndicator, Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { requestCurrentSsid, type SsidLookupIssue } from '../lib/network';
 import { colors, radius } from '../theme';
 import { Icon } from './Icon';
@@ -19,6 +20,7 @@ function issueMessage(issue: SsidLookupIssue | undefined): string {
 
 /** Current and manually entered SSIDs used to select a server's LAN address. */
 export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Props) {
+  const isIosSimulator = Platform.OS === 'ios' && !Device.isDevice;
   const [networkName, setNetworkName] = useState('');
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +41,11 @@ export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Prop
   };
 
   const useCurrent = async (alive: () => boolean = () => true) => {
+    if (isIosSimulator) {
+      setError(null);
+      setShowSettings(false);
+      return;
+    }
     setReading(true);
     setError(null);
     setShowSettings(false);
@@ -58,12 +65,12 @@ export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Prop
   useEffect(() => {
     if (!autoSelectCurrent) return;
     let mounted = true;
-    void useCurrent(() => mounted);
+    if (!isIosSimulator) void useCurrent(() => mounted);
     return () => { mounted = false; };
     // This runs once when an internal address becomes relevant; prop refs keep
     // the selected list current without repeating the permission prompt.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoSelectCurrent]);
+  }, [autoSelectCurrent, isIosSimulator]);
 
   const openSettings = async () => {
     await Linking.openSettings();
@@ -93,24 +100,30 @@ export function WifiNetworks({ value, onChange, autoSelectCurrent = true }: Prop
           <Text style={{ color: colors.danger, fontSize: 14, fontWeight: '700' }}>Remove</Text>
         </Pressable>
       ))}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Use current Wi-Fi"
-        disabled={reading}
-        onPress={() => void useCurrent()}
-        style={({ pressed }) => ({
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 9,
-          paddingVertical: 14,
-          opacity: reading ? 0.55 : pressed ? 0.72 : 1,
-        })}
-      >
-        {reading ? <ActivityIndicator color={colors.primary} size="small" /> : <Icon name="plus" size={18} color={colors.primary} strong />}
-        <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>
-          {currentSsid ? 'Refresh current Wi-Fi' : 'Use current Wi-Fi'}
+      {isIosSimulator ? (
+        <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, paddingVertical: 12 }}>
+          The iOS Simulator cannot expose the Mac's Wi-Fi name. Imadeo will still try both server addresses automatically.
         </Text>
-      </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Use current Wi-Fi"
+          disabled={reading}
+          onPress={() => void useCurrent()}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 9,
+            paddingVertical: 14,
+            opacity: reading ? 0.55 : pressed ? 0.72 : 1,
+          })}
+        >
+          {reading ? <ActivityIndicator color={colors.primary} size="small" /> : <Icon name="plus" size={18} color={colors.primary} strong />}
+          <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>
+            {currentSsid ? 'Refresh current Wi-Fi' : 'Use current Wi-Fi'}
+          </Text>
+        </Pressable>
+      )}
       {error ? (
         <View style={{ marginBottom: 10 }}>
           <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20 }}>{error}</Text>

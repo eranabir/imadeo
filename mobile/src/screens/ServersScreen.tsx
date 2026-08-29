@@ -83,7 +83,9 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
         <TextInput value={draft.externalUrl ?? ''} onChangeText={(externalUrl) => setDraft({ ...draft, externalUrl })} placeholder="https://photos.example.com" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
         <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 8 }}>INTERNAL URL · OPTIONAL</Text>
         <TextInput value={draft.internalUrl ?? ''} onChangeText={(internalUrl) => setDraft({ ...draft, internalUrl })} placeholder="http://192.168.1.40:6666" placeholderTextColor={colors.faint} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={field(Boolean(error))} />
-        <WifiNetworks value={draft.ssids} onChange={(ssids) => setDraft({ ...draft, ssids })} autoSelectCurrent={Boolean(draft.internalUrl?.trim())} />
+        {draft.externalUrl?.trim() && draft.internalUrl?.trim() ? (
+          <WifiNetworks value={draft.ssids} onChange={(ssids) => setDraft({ ...draft, ssids })} />
+        ) : null}
         {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 8 }}>{error}</Text> : null}
         <Pressable onPress={save} disabled={busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim())} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: busy || !(draft.externalUrl?.trim() || draft.internalUrl?.trim()) ? 0.45 : pressed ? 0.85 : 1 })}>
           {busy ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Save server</Text>}

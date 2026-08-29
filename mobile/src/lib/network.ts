@@ -52,11 +52,11 @@ async function refreshSsid(): Promise<string | null> {
   // Asking for the Wi-Fi interface bypasses NetInfo's cached global state and
   // calls iOS' current-network API. The permission result can take a moment to
   // reach that API after the system sheet closes, so retry briefly.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const state = await NetInfo.fetch('wifi');
     const ssid = ssidFrom(state);
     if (ssid) return ssid;
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250));
+    if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return null;
 }

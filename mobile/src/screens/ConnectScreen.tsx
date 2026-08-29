@@ -332,11 +332,15 @@ export function ConnectScreen({ onConnected }: Props) {
               Finish setup
             </Text>
             <Text style={{ color: colors.muted, fontSize: 16, lineHeight: 23, marginTop: 10, marginBottom: 24 }}>
-              Name this server and choose the Wi-Fi networks that should use its internal address.
+              {externalUrl.trim() && internalUrl.trim()
+                ? 'Name this server and choose the Wi-Fi networks that should use its internal address.'
+                : 'Give this server a name so it is easy to recognise.'}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '700', marginBottom: 8 }}>NAME</Text>
             <TextInput value={name} onChangeText={setName} placeholder="Home" placeholderTextColor={colors.faint} style={field()} />
-            <WifiNetworks value={ssids} onChange={setSsids} autoSelectCurrent={Boolean(internalUrl.trim())} />
+            {externalUrl.trim() && internalUrl.trim() ? (
+              <WifiNetworks value={ssids} onChange={setSsids} />
+            ) : null}
             {error ? <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 20, marginTop: 8 }}>{error}</Text> : null}
             <Pressable onPress={save} disabled={checking} style={({ pressed }) => ({ marginTop: 26, backgroundColor: colors.primary, borderRadius: radius.pill, paddingVertical: 15, alignItems: 'center', opacity: checking ? 0.45 : pressed ? 0.85 : 1 })}>
               {checking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '700' }}>Connect</Text>}
