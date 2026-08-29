@@ -164,6 +164,35 @@ describe('AssetService library filters', () => {
       service.query('owner-id', { visibility: 'LOCKED' as never }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('lists only loose media in Locked while preserving normal container context', async () => {
+    const test = createService({ id: 'asset-id' });
+
+    await test.service.queryLocked('owner-id', {});
+
+    expect(test.assetFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            expect.any(Object),
+            {
+              AND: [
+                { OR: [{ folderId: null }, { folder: { isLocked: false } }] },
+                {
+                  albums: {
+                    none: { album: { isLocked: true, deletedAt: null } },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(test.assetCount).toHaveBeenCalledWith({
+      where: expect.objectContaining({ AND: expect.any(Array) }),
+    });
+  });
 });
 
 describe('AssetService individual media locking', () => {

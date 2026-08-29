@@ -1057,7 +1057,12 @@ export class AssetService implements OnModuleInit {
     }
   }
 
-  async query(userId: string, query: AssetQueryDto, allowLocked = false) {
+  async query(
+    userId: string,
+    query: AssetQueryDto,
+    allowLocked = false,
+    additionalWhere?: Prisma.AssetWhereInput,
+  ) {
     if (query.visibility === AssetVisibility.LOCKED && !allowLocked) {
       throw new ForbiddenException('Open Locked to see locked photos');
     }
@@ -1070,7 +1075,8 @@ export class AssetService implements OnModuleInit {
       ? { ...query, folderIds: await this.folderIdsMatching(userId, query.path) }
       : query;
 
-    const where = this.buildWhere(userId, resolved);
+    const baseWhere = this.buildWhere(userId, resolved);
+    const where = additionalWhere ? { AND: [baseWhere, additionalWhere] } : baseWhere;
 
     const [items, total] = await Promise.all([
       this.prisma.asset.findMany({
@@ -1092,6 +1098,18 @@ export class AssetService implements OnModuleInit {
       userId,
       { ...query, ownership: 'owned', visibility: AssetVisibility.LOCKED },
       true,
+      {
+        AND: [
+          // Keep locked media in its original normal folder for context, but
+          // once it is filed inside a Locked folder it belongs there instead
+          // of also appearing in the loose Locked Photos section.
+          { OR: [{ folderId: null }, { folder: { isLocked: false } }] },
+          // Normal album memberships are intentionally retained while an
+          // individual photo is locked. Only a Locked album files it away
+          // from the loose Locked Photos section.
+          { albums: { none: { album: { isLocked: true, deletedAt: null } } } },
+        ],
+      },
     );
   }
 
