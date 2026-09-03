@@ -82,10 +82,10 @@ async function saveDone(done: Set<string>) {
  * The grid marks these, so "is this one safe yet" is answerable per photo
  * rather than only as a count in the header.
  */
-export async function uploadedIds(baseUrl?: string): Promise<Set<string>> {
+export async function uploadedIds(baseUrl?: string, signal?: AbortSignal): Promise<Set<string>> {
   const done = await loadDone();
   if (!baseUrl) return done;
-  return (await syncDone(baseUrl, done)) ?? done;
+  return (await syncDone(baseUrl, done, signal)) ?? done;
 }
 
 /**
@@ -103,19 +103,25 @@ export async function uploadedIds(baseUrl?: string): Promise<Set<string>> {
  * again. A failure here is silent — the last local answer remains useful while
  * the server is unreachable.
  */
-async function syncDone(baseUrl: string, done: Set<string>): Promise<Set<string> | null> {
+async function syncDone(
+  baseUrl: string,
+  done: Set<string>,
+  signal?: AbortSignal,
+): Promise<Set<string> | null> {
   try {
     const id = await deviceId();
     const ids = await request<string[]>(
       baseUrl,
       `/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
+      { signal },
     );
     const serverDone = new Set(ids);
     const changed = serverDone.size !== done.size || [...serverDone].some((assetId) => !done.has(assetId));
     if (changed) await saveDone(serverDone);
 
     return serverDone;
-  } catch {
+  } catch (cause) {
+    if (signal?.aborted) throw cause;
     return null;
   }
 }
@@ -263,6 +269,26 @@ export interface Progress {
  */
 let inFlight = false;
 let activeUpload: FileSystem.UploadTask | null = null;
+let activeRun: AbortController | null = null;
+
+class BackupCancelled extends Error {
+  constructor() {
+    super('Backup stopped');
+    this.name = 'BackupCancelled';
+  }
+}
+
+/** Lets APIs without native cancellation stop holding the backup UI open. */
+function abortable<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(new BackupCancelled());
+
+  return new Promise<T>((resolve, reject) => {
+    const cancel = () => reject(new BackupCancelled());
+    signal.addEventListener('abort', cancel, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancel));
+  });
+}
 
 /** Whether something is uploading right now. */
 export const backupInFlight = () => inFlight;
@@ -276,6 +302,7 @@ export const backupInFlight = () => inFlight;
  * "stop after this file eventually finishes".
  */
 export async function cancelBackup(): Promise<void> {
+  activeRun?.abort();
   const upload = activeUpload;
   if (!upload) return;
   try {
@@ -299,9 +326,18 @@ export async function runBackup(
 ): Promise<Progress> {
   if (inFlight) throw new Error('A backup is already running.');
   inFlight = true;
+  const controller = new AbortController();
+  activeRun = controller;
   try {
-    return await send(baseUrl, onProgress, shouldStop, only);
+    return await send(
+      baseUrl,
+      onProgress,
+      () => shouldStop() || controller.signal.aborted,
+      only,
+      controller.signal,
+    );
   } finally {
+    if (activeRun === controller) activeRun = null;
     inFlight = false;
   }
 }
@@ -311,6 +347,7 @@ async function send(
   onProgress: (p: Progress) => void,
   shouldStop: () => boolean,
   only?: string[],
+  signal?: AbortSignal,
 ): Promise<Progress> {
   let token = await storedToken();
   if (!token) throw new Error('Not signed in.');
@@ -318,13 +355,16 @@ async function send(
   const id = await deviceId();
   // Reconciled first, so a run started on a fresh install does not re-send the
   // whole camera roll before it works out that the server already has it.
-  const done = await uploadedIds(baseUrl);
+  const done = await uploadedIds(baseUrl, signal);
 
-  const page = await MediaLibrary.getAssetsAsync({
-    first: 10000,
-    mediaType: ['photo', 'video'],
-    sortBy: [MediaLibrary.SortBy.creationTime],
-  });
+  const page = await abortable(
+    MediaLibrary.getAssetsAsync({
+      first: 10000,
+      mediaType: ['photo', 'video'],
+      sortBy: [MediaLibrary.SortBy.creationTime],
+    }),
+    signal,
+  );
 
   const wanted = only ? new Set(only) : null;
   const unsent = page.assets.filter(
@@ -338,7 +378,7 @@ async function send(
    * stop halfway through a video the moment a phone left the house, and the
    * partial upload would be wasted either way — the next run picks the rest up.
    */
-  const allowed = await allowedNow();
+  const allowed = await abortable(allowedNow(), signal);
   const pending = unsent.filter((asset) => allowed(kindOf(asset)));
 
   const progress: Progress = {
@@ -370,9 +410,12 @@ async function send(
       // shouldDownloadFromNetwork pulls the original back for photos that
       // iCloud has offloaded; without it those resolve to nothing on a phone
       // using Optimise Storage, which is most of them.
-      const info = await MediaLibrary.getAssetInfoAsync(asset, {
-        shouldDownloadFromNetwork: true,
-      });
+      const info = await abortable(
+        MediaLibrary.getAssetInfoAsync(asset, {
+          shouldDownloadFromNetwork: true,
+        }),
+        signal,
+      );
       const uri = info.localUri;
       if (!uri || uri.startsWith('ph://')) {
         throw new Error(`No local file for ${asset.filename}`);
@@ -381,7 +424,7 @@ async function send(
       // Authentication is checked before the native HTTP stack streams the
       // body. Refresh first so a multi-gigabyte video never gets rejected
       // after spending minutes crossing the network.
-      token = await ensureFreshToken(baseUrl);
+      token = await abortable(ensureFreshToken(baseUrl), signal);
 
       /**
        * Streamed from disk rather than assembled in memory.
@@ -425,7 +468,7 @@ async function send(
       let response = await upload(token);
       if (response.status === 401) {
         if (shouldStop()) break;
-        token = await refreshToken(baseUrl);
+        token = await abortable(refreshToken(baseUrl), signal);
         response = await upload(token);
       }
 

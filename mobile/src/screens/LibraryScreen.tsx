@@ -200,14 +200,27 @@ export function LibraryScreen({ serverUrl }: Props) {
     setRunning(true);
     setProgress({ done: 0, total: 0, failed: 0, held: 0, queue: [], at: -1, sent: [], failures: [] });
     try {
-      await runBackup(serverUrl, setProgress, () => stop.current, only);
-      setPending(await pendingCount(serverUrl));
-      setUploaded(await uploadedIds(serverUrl));
+      const result = await runBackup(serverUrl, setProgress, () => stop.current, only);
+      if (stop.current) {
+        // Stopping should not be followed by two fresh library/server scans.
+        // Account only for files that finished before cancellation; the next
+        // normal refresh performs the full reconciliation.
+        setUploaded((current) => new Set([...current, ...result.sent]));
+        setPending((current) =>
+          current === null ? null : Math.max(0, current - result.sent.length),
+        );
+      } else {
+        setPending(await pendingCount(serverUrl));
+        setUploaded(await uploadedIds(serverUrl));
+      }
       // A selection is what was sent, so it has been dealt with. One photo sent
       // from the viewer leaves whatever was picked exactly where it was.
       if (!ids) setPicked([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Backup failed.');
+      // Cancellation can happen before the queue exists (while checking the
+      // server or asking Photos for an iCloud original). It is still a clean
+      // stop, not an error to show above the library.
+      if (!stop.current) setError(e instanceof Error ? e.message : 'Backup failed.');
     } finally {
       /**
        * The run stops; its record does not.
