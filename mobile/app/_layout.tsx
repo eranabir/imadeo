@@ -12,6 +12,7 @@ import { Opening } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
 import { ConnectScreen } from '../src/screens/ConnectScreen';
 import { ConnectionErrorScreen } from '../src/screens/ConnectionErrorScreen';
+import { ServersScreen } from '../src/screens/ServersScreen';
 import { SignInScreen } from '../src/screens/SignInScreen';
 import {
   beginServerCheck,
@@ -96,11 +97,15 @@ function Gate() {
     signedInNow,
     changeServer,
     activateServerAddress,
+    selectServer,
+    updateServer,
+    removeServer,
   } = useSession();
   const reachability = useServerReachability();
   const [verifiedServer, setVerifiedServer] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [serverEditor, setServerEditor] = useState<'edit' | 'add' | null>(null);
   const justSignedIn = useRef(false);
 
   // Check the selected server before mounting any route. Signed-in sessions
@@ -211,6 +216,26 @@ function Gate() {
 
   if (!server) return <ConnectScreen onConnected={connect} />;
 
+  if (serverEditor) {
+    return (
+      <ServersScreen
+        active={server}
+        openWith={serverEditor}
+        onBack={() => setServerEditor(null)}
+        onSelect={async (profile) => {
+          await selectServer(profile);
+          setServerEditor(null);
+        }}
+        onSave={async (profile) => {
+          await updateServer(profile);
+          if (serverEditor === 'add') await selectServer(profile);
+          setServerEditor(null);
+        }}
+        onRemove={removeServer}
+      />
+    );
+  }
+
   if (reachability === 'checking' && !verifiedServer) {
     return (
       <View style={[styles.fill, styles.centre]}>
@@ -222,10 +247,11 @@ function Gate() {
   if (reachability === 'unreachable' || (signedIn && verificationFailed)) {
     return (
       <ConnectionErrorScreen
-        serverUrl={server.url}
+        server={server}
         retrying={retrying}
         onRetry={() => void retryConnection()}
-        onChangeServer={() => void changeServer()}
+        onEditServer={() => setServerEditor('edit')}
+        onAddServer={() => setServerEditor('add')}
       />
     );
   }

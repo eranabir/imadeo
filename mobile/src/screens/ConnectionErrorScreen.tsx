@@ -1,12 +1,15 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
-import { colors } from '../theme';
+import type { ServerInfo } from '../lib/server';
+import { colors, radius } from '../theme';
 
 interface Props {
-  serverUrl: string;
+  server: ServerInfo;
   retrying: boolean;
   onRetry: () => void;
-  onChangeServer: () => void;
+  onEditServer: () => void;
+  onAddServer: () => void;
 }
 
 /**
@@ -15,12 +18,13 @@ interface Props {
  * visible underneath this page.
  */
 export function ConnectionErrorScreen({
-  serverUrl,
+  server,
   retrying,
   onRetry,
-  onChangeServer,
+  onEditServer,
+  onAddServer,
 }: Props) {
-  const address = serverUrl.replace(/^https?:\/\//, '');
+  const address = server.url.replace(/^https?:\/\//, '');
 
   return (
     <View
@@ -43,11 +47,44 @@ export function ConnectionErrorScreen({
         can reach it.
       </Text>
 
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          marginTop: 26,
+          padding: 16,
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+        }}
+      >
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: radius.sm,
+            backgroundColor: colors.raised,
+          }}
+        >
+          <Icon name="storage" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: '700' }}>{server.name}</Text>
+          <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 14, marginTop: 3 }}>
+            {address}
+          </Text>
+        </View>
+      </View>
+
       <Pressable
         onPress={onRetry}
         disabled={retrying}
         style={({ pressed }) => ({
-          marginTop: 30,
+          marginTop: 20,
           alignItems: 'center',
           borderRadius: 999,
           backgroundColor: colors.primary,
@@ -65,16 +102,32 @@ export function ConnectionErrorScreen({
       </Pressable>
 
       <Pressable
-        onPress={onChangeServer}
+        onPress={onEditServer}
         disabled={retrying}
         style={({ pressed }) => ({
           alignItems: 'center',
-          marginTop: 18,
-          paddingVertical: 10,
+          marginTop: 12,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: radius.pill,
+          paddingVertical: 14,
           opacity: retrying ? 0.55 : pressed ? 0.7 : 1,
         })}
       >
-        <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Change server</Text>
+        <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Edit server settings</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={onAddServer}
+        disabled={retrying}
+        style={({ pressed }) => ({
+          alignItems: 'center',
+          marginTop: 8,
+          paddingVertical: 12,
+          opacity: retrying ? 0.55 : pressed ? 0.7 : 1,
+        })}
+      >
+        <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Add new server</Text>
       </Pressable>
     </View>
   );

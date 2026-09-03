@@ -20,6 +20,7 @@ interface Props {
   onSelect: (server: ServerProfile) => Promise<void>;
   onSave: (server: ServerProfile) => Promise<void>;
   onRemove: (server: ServerProfile) => Promise<void>;
+  openWith?: 'list' | 'edit' | 'add';
 }
 
 function newDraft(): ServerProfile {
@@ -27,9 +28,11 @@ function newDraft(): ServerProfile {
 }
 
 /** Add, select, and edit the saved addresses without exposing storage mechanics. */
-export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Props) {
+export function ServersScreen({ active, onBack, onSelect, onSave, onRemove, openWith = 'list' }: Props) {
   const [servers, setServers] = useState<ServerProfile[]>([]);
-  const [draft, setDraft] = useState<ServerProfile | null>(null);
+  const [draft, setDraft] = useState<ServerProfile | null>(
+    openWith === 'edit' ? active : openWith === 'add' ? newDraft() : null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clearance = useHeaderClearance();
@@ -69,10 +72,16 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove }: Pr
     fontSize: 16,
   });
 
+  const closeDraft = () => {
+    setError(null);
+    if (openWith !== 'list') onBack();
+    else setDraft(null);
+  };
+
   if (draft) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Header title={draft.id ? 'Edit server' : 'Add server'} icon="storage" onBack={() => { setDraft(null); setError(null); }} />
+      <Header title={draft.id ? 'Edit server' : 'Add server'} icon="storage" onBack={closeDraft} />
       <ScrollView contentContainerStyle={{ paddingTop: clearance + 8, paddingHorizontal: 16, paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21, marginBottom: 24 }}>
           Add an internal address, an external address, or both. With both, Imadeo uses the internal address on the Wi-Fi networks below.
