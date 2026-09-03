@@ -45,7 +45,14 @@ import { SelectionDock } from '../components/SelectionDock';
 import { ConfirmSheet } from '../components/sheets';
 import { Button, Sheet, Touchable } from '../components/ui';
 import { isEnabled, onForegroundBackupRequested } from '../lib/autobackup';
-import { backupInFlight, pendingCount, runBackup, uploadedIds, type Progress } from '../lib/backup';
+import {
+  backupInFlight,
+  cancelBackup,
+  pendingCount,
+  runBackup,
+  uploadedIds,
+  type Progress,
+} from '../lib/backup';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
@@ -115,10 +122,16 @@ export function LibraryScreen({ serverUrl }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** Whether a run is in flight. `progress` outlives it, as the last account. */
   const [running, setRunning] = useState(false);
+  /** A cancellation has reached the native uploader but has not settled yet. */
+  const [stopping, setStopping] = useState(false);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
 
-  const clearance = useHeaderClearance(0);
+  // The progress strip adds 16pt to the floating header. Add the same amount
+  // to the list clearance so the normal gap below the bar does not disappear.
+  const clearance = useHeaderClearance(
+    running && progress !== null && progress.total > 0 ? 16 : 0,
+  );
   const selectionBar = useSelectionBar();
 
   const load = useCallback(async () => {
@@ -172,8 +185,13 @@ export function LibraryScreen({ serverUrl }: Props) {
    */
   const backUp = async (ids?: string[]) => {
     if (running) {
-      // Already running: this press is a stop.
+      // Already running: stop both the queue and the native stream carrying a
+      // potentially multi-gigabyte video. The queue flag alone was only read
+      // after that stream finished, which left the screen saying Stop while
+      // apparently doing nothing.
       stop.current = true;
+      setStopping(true);
+      await cancelBackup();
       return;
     }
     const only = ids ?? (picked.length > 0 ? picked : undefined);
@@ -200,6 +218,7 @@ export function LibraryScreen({ serverUrl }: Props) {
        * in flight; `progress` is the last run's account of itself.
        */
       setRunning(false);
+      setStopping(false);
     }
   };
 
@@ -322,7 +341,11 @@ export function LibraryScreen({ serverUrl }: Props) {
      * verbs in the bar at the bottom instead, near the thumb.
      */
     action: running ? (
-      <HeaderAction label="Stop" icon="close" onPress={() => void backUp()} />
+      <HeaderAction
+        label={stopping ? 'Stopping…' : 'Stop'}
+        icon="close"
+        onPress={() => void backUp()}
+      />
     ) : picked.length > 0 || backedUp ? undefined : (
       <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
     ),

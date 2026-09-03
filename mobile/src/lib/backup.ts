@@ -262,9 +262,29 @@ export interface Progress {
  * component mounted at all.
  */
 let inFlight = false;
+let activeUpload: FileSystem.UploadTask | null = null;
 
 /** Whether something is uploading right now. */
 export const backupInFlight = () => inFlight;
+
+/**
+ * Stops the file that is being streamed right now.
+ *
+ * The loop's `shouldStop` callback prevents the next item from starting, but a
+ * large video can spend minutes inside the native uploader. Cancelling that
+ * task is what makes the visible Stop button mean "stop now" rather than
+ * "stop after this file eventually finishes".
+ */
+export async function cancelBackup(): Promise<void> {
+  const upload = activeUpload;
+  if (!upload) return;
+  try {
+    await upload.cancelAsync();
+  } catch {
+    // The task may have completed between the tap and the native cancellation.
+    // The stop flag still prevents the next item from starting.
+  }
+}
 
 export async function runBackup(
   baseUrl: string,
@@ -376,8 +396,8 @@ async function send(
        * reads it off disk as it goes. Memory then does not depend on how big
        * the video is.
        */
-      const upload = (accessToken: string) =>
-        FileSystem.uploadAsync(`${baseUrl}/api/assets/upload`, uri, {
+      const upload = async (accessToken: string) => {
+        const task = FileSystem.createUploadTask(`${baseUrl}/api/assets/upload`, uri, {
           httpMethod: 'POST',
           uploadType: FileSystem.FileSystemUploadType.MULTIPART,
           fieldName: 'assetData',
@@ -392,9 +412,19 @@ async function send(
             fileModifiedAt: new Date(asset.modificationTime).toISOString(),
           },
         });
+        activeUpload = task;
+        try {
+          const response = await task.uploadAsync();
+          if (!response) throw new Error('Backup stopped');
+          return response;
+        } finally {
+          if (activeUpload === task) activeUpload = null;
+        }
+      };
 
       let response = await upload(token);
       if (response.status === 401) {
+        if (shouldStop()) break;
         token = await refreshToken(baseUrl);
         response = await upload(token);
       }
@@ -434,6 +464,9 @@ async function send(
        */
       await saveDone(done);
     } catch (e) {
+      // Cancellation is a user choice, not a failed media item. Leave this and
+      // everything after it pending so the next run resumes cleanly.
+      if (shouldStop()) break;
       progress.failed += 1;
       /**
        * Kept, rather than only counted.
