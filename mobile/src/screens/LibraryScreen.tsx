@@ -53,12 +53,11 @@ import {
   uploadedIds,
   type Progress,
 } from '../lib/backup';
+import type { ServerInfo } from '../lib/server';
 import { useSelectionBar } from '../selection';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
-interface Props {
-  serverUrl: string;
-}
+interface Props { server: ServerInfo }
 
 const PAGE = 120;
 const COLUMNS = 3;
@@ -84,7 +83,8 @@ const byDay = (assets: MediaLibrary.Asset[]) =>
  * Backup runs in the foreground only on both platforms: a run continues while
  * this screen is open and resumes from where it stopped next time.
  */
-export function LibraryScreen({ serverUrl }: Props) {
+export function LibraryScreen({ server }: Props) {
+  const serverUrl = server.url;
   /**
    * Photos and videos only.
    *
@@ -175,7 +175,7 @@ export function LibraryScreen({ serverUrl }: Props) {
   // granted" rather than shown as a spinner: on Android it can stay null
   // indefinitely, and an endless spinner is worse than a prompt that works.
   const backedUp = pending === 0;
-  const host = serverUrl.replace(/^https?:\/\//, '');
+  const destination = `${server.name} · ${server.connectedVia === 'internal' ? 'Internal' : 'External'}`;
 
   /**
    * Start, or stop what is already running.
@@ -335,13 +335,14 @@ export function LibraryScreen({ serverUrl }: Props) {
   const bar: HeaderConfig = {
     title: picked.length > 0 ? `${picked.length} selected` : 'Library',
     icon: 'phone',
+    subtitleSize: 11,
     subtitle:
       running && progress
-        ? `${progress.done} of ${progress.total} sent to ${host}`
+        ? `${progress.done} of ${progress.total} sent · ${destination}`
         : picked.length > 0
           ? pickedPending === 0
             ? 'Already backed up · tap to change'
-            : `${pickedPending.toLocaleString()} to send to ${host}`
+            : `${pickedPending.toLocaleString()} to send · ${destination}`
           : total === null
             ? 'Reading this phone…'
             : backedUp
@@ -625,7 +626,7 @@ export function LibraryScreen({ serverUrl }: Props) {
           assets={assets}
           start={assets.findIndex((asset) => asset.id === viewing.asset.id)}
           from={viewing.from}
-          host={host}
+          host={server.name}
           uploaded={uploaded}
           busy={running}
           onClose={() => setViewing(null)}
@@ -674,8 +675,8 @@ export function LibraryScreen({ serverUrl }: Props) {
         title={`Remove ${picked.length} ${picked.length === 1 ? 'item' : 'items'} from this phone?`}
         description={
           pickedPending > 0
-            ? `${pickedPending} of these have not been backed up yet — those copies would be gone for good. Everything already sent stays on ${host}; only the copy in this phone's gallery is removed.`
-            : `They stay on ${host}. Only the copy in this phone's gallery is removed, and you can still see them in Browse.`
+            ? `${pickedPending} of these have not been backed up yet — those copies would be gone for good. Everything already sent stays on ${server.name}; only the copy in this phone's gallery is removed.`
+            : `They stay on ${server.name}. Only the copy in this phone's gallery is removed, and you can still see them in Browse.`
         }
         confirmLabel="Remove from phone"
         onConfirm={() => void removeFromPhone()}

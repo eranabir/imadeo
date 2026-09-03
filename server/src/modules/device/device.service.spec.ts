@@ -19,6 +19,7 @@ describe('DeviceService.list', () => {
     };
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       select: expect.objectContaining({
+        clientId: true,
         _count: { select: { assets: { where: { asset: visibleAsset } } } },
         assets: expect.objectContaining({ where: { asset: visibleAsset } }),
       }),

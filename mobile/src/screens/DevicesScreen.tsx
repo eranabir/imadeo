@@ -9,6 +9,8 @@ import { SelectionDock } from '../components/SelectionDock';
 import { ConfirmSheet } from '../components/sheets';
 import { actions } from '../lib/actions';
 import { usePagedResource, useResource, type Asset, type Device } from '../lib/api';
+import { cancelBackup, currentDeviceId } from '../lib/backup';
+import { isEnabled, setEnabled } from '../lib/autobackup';
 import { useMediaViewMode } from '../lib/viewMode';
 import { colors } from '../theme';
 
@@ -88,10 +90,19 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
 
   const removeDevice = async () => {
     setRemoveError(null);
+    let restoreAutomaticBackup = false;
     try {
+      const removesThisPhone = device.data?.clientId === await currentDeviceId();
+      if (removesThisPhone) {
+        restoreAutomaticBackup = await isEnabled();
+        if (restoreAutomaticBackup) await setEnabled(false);
+        await cancelBackup();
+      }
       await actions.removeDevice(serverUrl, deviceId);
+      setConfirmRemove(false);
       router.back();
     } catch (cause) {
+      if (restoreAutomaticBackup) await setEnabled(true);
       setRemoveError(cause instanceof Error ? cause.message : 'Could not remove this device.');
     }
   };
@@ -172,7 +183,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
       <ConfirmSheet
         open={confirmRemove}
         title={`Remove “${device.data?.libraryName ?? title}”?`}
-        description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. It can appear again if it backs up later."
+        description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. Automatic backup is turned off when you remove this phone, so it cannot immediately recreate the library."
         confirmLabel="Remove device"
         onClose={() => setConfirmRemove(false)}
         onConfirm={() => void removeDevice()}

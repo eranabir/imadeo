@@ -76,6 +76,7 @@ export interface Album {
 
 export interface Device {
   id: string;
+  clientId: string;
   name: string;
   libraryName: string;
   platform: string;
@@ -366,8 +367,6 @@ export function useResource<T>(
    */
   const generation = useRef(0);
 
-  // Part of `reload`'s identity, so the effect below re-runs and refetches the
-  // moment anything says the library has moved on.
   const seen = useRevision();
 
   const reload = useCallback(async (silent = false) => {
@@ -398,7 +397,7 @@ export function useResource<T>(
       if (mine === generation.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverUrl, path, seen]);
+  }, [serverUrl, path]);
 
   /**
    * Asks again on a timer, for answers that go stale by themselves.
@@ -416,6 +415,16 @@ export function useResource<T>(
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const seenRef = useRef(seen);
+  useEffect(() => {
+    if (seenRef.current === seen) return;
+    seenRef.current = seen;
+    // Keep the current page visible while a mutation is revalidated. A full
+    // loading state here was especially disruptive after navigating back: a
+    // second focus request superseded it and left the Browse spinner onscreen.
+    void reload(true);
+  }, [reload, seen]);
 
   useReloadOnFocus(reload);
 
@@ -501,6 +510,13 @@ export function usePagedResource<T>(
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  const seenRef = useRef(seen);
+  useEffect(() => {
+    if (seenRef.current === seen) return;
+    seenRef.current = seen;
+    void reload(true);
   }, [reload, seen]);
 
   useReloadOnFocus(reload);

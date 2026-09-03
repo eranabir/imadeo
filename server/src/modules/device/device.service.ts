@@ -60,6 +60,7 @@ export class DeviceService {
       where: { ownerId: userId },
       select: {
         id: true,
+        clientId: true,
         name: true,
         platform: true,
         lastSeenAt: true,

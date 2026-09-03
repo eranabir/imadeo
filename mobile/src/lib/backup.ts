@@ -109,7 +109,7 @@ async function syncDone(
   signal?: AbortSignal,
 ): Promise<Set<string> | null> {
   try {
-    const id = await deviceId();
+    const id = await currentDeviceId();
     const ids = await request<string[]>(
       baseUrl,
       `/assets/backed-up?deviceId=${encodeURIComponent(id)}`,
@@ -127,7 +127,7 @@ async function syncDone(
 }
 
 /** Identifies this phone to the server, so several devices stay distinguishable. */
-async function deviceId(): Promise<string> {
+export async function currentDeviceId(): Promise<string> {
   const existing = await getItem(DEVICE_KEY);
   if (existing) return existing;
   const fresh = `mobile-${Math.random().toString(36).slice(2, 10)}`;
@@ -270,6 +270,7 @@ export interface Progress {
 let inFlight = false;
 let activeUpload: FileSystem.UploadTask | null = null;
 let activeRun: AbortController | null = null;
+let activeRunFinished: Promise<void> | null = null;
 
 class BackupCancelled extends Error {
   constructor() {
@@ -304,13 +305,19 @@ export const backupInFlight = () => inFlight;
 export async function cancelBackup(): Promise<void> {
   activeRun?.abort();
   const upload = activeUpload;
-  if (!upload) return;
-  try {
-    await upload.cancelAsync();
-  } catch {
-    // The task may have completed between the tap and the native cancellation.
-    // The stop flag still prevents the next item from starting.
+  if (upload) {
+    try {
+      await upload.cancelAsync();
+    } catch {
+      // The task may have completed between the tap and the native cancellation.
+      // The stop flag still prevents the next item from starting.
+    }
   }
+
+  // Device removal must not race the stream it is removing. Without waiting,
+  // the in-flight upload can register this installation again immediately
+  // after DELETE /devices/:id completed, leaving a one-item device behind.
+  await activeRunFinished;
 }
 
 export async function runBackup(
@@ -328,16 +335,22 @@ export async function runBackup(
   inFlight = true;
   const controller = new AbortController();
   activeRun = controller;
-  try {
-    return await send(
+  const operation = send(
       baseUrl,
       onProgress,
       () => shouldStop() || controller.signal.aborted,
       only,
       controller.signal,
     );
+  activeRunFinished = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  try {
+    return await operation;
   } finally {
     if (activeRun === controller) activeRun = null;
+    if (activeRunFinished) activeRunFinished = null;
     inFlight = false;
   }
 }
@@ -352,7 +365,7 @@ async function send(
   let token = await storedToken();
   if (!token) throw new Error('Not signed in.');
 
-  const id = await deviceId();
+  const id = await currentDeviceId();
   // Reconciled first, so a run started on a fresh install does not re-send the
   // whole camera roll before it works out that the server already has it.
   const done = await uploadedIds(baseUrl, signal);
