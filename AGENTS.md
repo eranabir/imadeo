@@ -41,6 +41,23 @@ Then verify, before saying it works:
 If any of those fail, fix it — do not hand back a half-running stack, and do not
 ask the user to check for you.
 
+## Shipping changes
+
+Every completed web app change must be committed and pushed. Wait for its
+GitHub Actions workflow to finish successfully, then connect to the NAS and run
+the following from `/Volume2/app/imadeo`:
+
+```sh
+docker-compose pull
+docker-compose up -d
+```
+
+Do not report the web change complete until the updated containers are running.
+
+Every iOS change must be released to TestFlight. Confirm the submission
+has reached App Store Connect processing rather than stopping after the build or
+upload command starts.
+
 ## Use the design system
 
 Every surface — web client, mobile, and the static pages in `docs/` — shares one

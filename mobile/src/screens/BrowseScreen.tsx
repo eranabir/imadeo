@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { Account } from '../components/Account';
@@ -19,7 +19,15 @@ import {
 } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
-import { usePagedResource, useResource, type Album, type Asset, type Device, type FolderContents } from '../lib/api';
+import {
+  usePagedResource,
+  useResource,
+  type Album,
+  type Asset,
+  type Device,
+  type Folder,
+  type FolderContents,
+} from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 import { useMediaViewMode } from '../lib/viewMode';
@@ -30,6 +38,8 @@ interface Props {
   folderId: string | null;
   title?: string;
   onBack?: () => void;
+  /** Opens a folder inside Locked and keeps its private containers visible. */
+  locked?: boolean;
 }
 
 type Shelf = 'photos' | 'folders' | 'albums' | 'places' | 'sharing';
@@ -49,7 +59,7 @@ type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boo
  * already the bottom half of the screen, and a shelf that showed the entire
  * library from within one folder would be lying about where you are.
  */
-export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
+export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = false }: Props) {
   const router = useRouter();
   const atRoot = folderId === null;
 
@@ -106,6 +116,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
         ? '/folders/root?size=1'
         : `/folders/${folderId}/contents?size=1`,
   );
+  const lockedTree = useResource<Folder[]>(
+    serverUrl,
+    locked && folderId ? '/folders/tree?includeLocked=true' : null,
+  );
   const folderAssets = usePagedResource<Asset>(
     serverUrl,
     showing === 'folders' && !atRoot ? `/folders/${folderId}/contents` : null,
@@ -118,12 +132,14 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
 
   const active =
     showing === 'photos' ? timeline : showing === 'albums' ? allAlbums : contents;
-  const token = showing === 'folders' && !atRoot ? folderAssets.token ?? contents.token : active.token;
+  const token = showing === 'folders' && !atRoot
+    ? folderAssets.token ?? contents.token ?? lockedTree.token
+    : active.token;
   const error = showing === 'folders' && !atRoot
-    ? contents.error ?? folderAssets.error
+    ? contents.error ?? folderAssets.error ?? lockedTree.error
     : active.error;
   const loading = showing === 'folders' && !atRoot
-    ? contents.loading || folderAssets.loading
+    ? contents.loading || folderAssets.loading || (locked && lockedTree.loading)
     : active.loading;
 
   const reload = useCallback(() => {
@@ -132,11 +148,34 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
     contents.reload();
     folderAssets.reload();
     devices.reload();
-  }, [timeline.reload, allAlbums.reload, contents.reload, folderAssets.reload, devices.reload]);
+    lockedTree.reload();
+  }, [timeline.reload, allAlbums.reload, contents.reload, folderAssets.reload, devices.reload, lockedTree.reload]);
 
-  const folders = showing === 'folders' ? contents.data?.folders ?? [] : [];
+  const lockedFolder = useMemo(() => {
+    const find = (folders: Folder[]): Folder | null => {
+      for (const folder of folders) {
+        if (folder.id === folderId) return folder;
+        const nested = find(folder.children ?? []);
+        if (nested) return nested;
+      }
+      return null;
+    };
+    return locked ? find(lockedTree.data ?? []) : null;
+  }, [folderId, locked, lockedTree.data]);
+
+  const folders = showing === 'folders'
+    ? locked
+      ? lockedFolder?.children ?? []
+      : contents.data?.folders ?? []
+    : [];
   const albums =
-    showing === 'albums' ? allAlbums.data ?? [] : showing === 'folders' ? contents.data?.albums ?? [] : [];
+    showing === 'albums'
+      ? allAlbums.data ?? []
+      : showing === 'folders'
+        ? locked
+          ? lockedFolder?.albums ?? []
+          : contents.data?.albums ?? []
+        : [];
   const assets =
     showing === 'photos'
       ? timeline.items
@@ -259,7 +298,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
               <FolderCard
                 key={folder.id}
                 folder={folder}
-                onPress={() => router.push({ pathname: '/folder/[id]', params: { id: folder.id, title: folder.name } })}
+                onPress={() => router.push({
+                  pathname: '/folder/[id]',
+                  params: { id: folder.id, title: folder.name, ...(locked ? { locked: '1' } : {}) },
+                })}
                   onLongPress={() =>
                   setMenuFor({ kind: 'folder', id: folder.id, name: folder.name, shared: folder.shared })
                 }
@@ -286,7 +328,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
                   serverUrl={serverUrl}
                   album={album}
                   token={token}
-                  onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
+                  onPress={() => router.push({
+                    pathname: '/album/[id]',
+                    params: { id: album.id, title: album.name, ...(locked ? { locked: '1' } : {}) },
+                  })}
                   onLongPress={() => setMenuFor({ kind: 'album', id: album.id, name: album.name })}
                   layout={viewMode}
                 />
@@ -397,7 +442,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack }: Props) {
         description={menuFor?.kind === 'folder' ? 'Folder' : 'Album'}
         onClose={() => setMenuFor(null)}
       >
-        {menuFor?.kind === 'folder' && !menuFor.shared && <SheetRow
+        {menuFor?.kind === 'folder' && !menuFor.shared && !locked && <SheetRow
           icon="shared"
           label="Share folder"
           hint="View-only access"

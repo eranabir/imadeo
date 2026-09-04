@@ -1,7 +1,8 @@
 import { getItem, removeItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const ACCESS = 'imadeo.access';
-const REFRESH = 'imadeo.refresh';
+const ACCESS = STORAGE_KEYS.access;
+const REFRESH = STORAGE_KEYS.refresh;
 
 /**
  * The access token, held in memory once it has been read.

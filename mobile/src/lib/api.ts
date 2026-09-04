@@ -53,12 +53,15 @@ export interface Folder {
   name: string;
   parentId: string | null;
   ownerId: string;
+  isLocked?: boolean;
   shared?: boolean;
   assetCount: number;
   albumCount: number;
   childCount: number;
   color: string | null;
   icon: string | null;
+  children?: Folder[];
+  albums?: Album[];
 }
 
 export interface Album {
@@ -67,6 +70,7 @@ export interface Album {
   name: string;
   /** The folder it lives in; null means loose, at the root of the tree. */
   folderId?: string | null;
+  isLocked?: boolean;
   assetCount: number;
   coverAssetId: string | null;
   coverAssetIds: string[];

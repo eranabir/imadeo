@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
 export type MediaViewMode = 'grid' | 'list';
 
-const VIEW_MODE_KEY = 'imadeo.mediaViewMode';
+const VIEW_MODE_KEY = STORAGE_KEYS.mediaViewMode;
 
 let current: MediaViewMode = 'grid';
 let restored = false;

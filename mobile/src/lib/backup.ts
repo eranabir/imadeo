@@ -17,9 +17,10 @@ import { libraryChanged, request } from './api';
 import { ensureFreshToken, refreshToken, storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const DONE_KEY = 'imadeo.uploaded';
-const DEVICE_KEY = 'imadeo.deviceId';
+const DONE_KEY = STORAGE_KEYS.legacyUploaded;
+const DEVICE_KEY = STORAGE_KEYS.deviceId;
 
 /**
  * The upload log lives in a file, not the keychain.
@@ -182,6 +183,40 @@ export function mimeOf(filename: string, kind: MediaLibrary.MediaTypeValue): str
 /** Which of the two settings an asset answers to. */
 function kindOf(asset: MediaLibrary.Asset): 'photos' | 'videos' {
   return asset.mediaType === MediaLibrary.MediaType.video ? 'videos' : 'photos';
+}
+
+const DEVICE_LIBRARY_PAGE = 500;
+
+/**
+ * Reads the complete device library without relying on a platform page-size
+ * ceiling. A fixed `first: 10000` looked generous until a real library crossed
+ * it; everything after that point was invisible to backup and to its pending
+ * count. Following the cursor is the only API contract that means "all".
+ */
+async function allDeviceAssets(signal?: AbortSignal): Promise<MediaLibrary.Asset[]> {
+  const assets: MediaLibrary.Asset[] = [];
+  const cursors = new Set<string>();
+  let after: string | undefined;
+
+  while (true) {
+    const page = await abortable(
+      MediaLibrary.getAssetsAsync({
+        first: DEVICE_LIBRARY_PAGE,
+        after,
+        mediaType: ['photo', 'video'],
+        sortBy: [MediaLibrary.SortBy.creationTime],
+      }),
+      signal,
+    );
+    assets.push(...page.assets);
+
+    if (!page.hasNextPage) return assets;
+    if (!page.endCursor || cursors.has(page.endCursor)) {
+      throw new Error('The phone stopped while reading the complete photo library.');
+    }
+    cursors.add(page.endCursor);
+    after = page.endCursor;
+  }
 }
 
 /**
@@ -370,17 +405,10 @@ async function send(
   // whole camera roll before it works out that the server already has it.
   const done = await uploadedIds(baseUrl, signal);
 
-  const page = await abortable(
-    MediaLibrary.getAssetsAsync({
-      first: 10000,
-      mediaType: ['photo', 'video'],
-      sortBy: [MediaLibrary.SortBy.creationTime],
-    }),
-    signal,
-  );
+  const assets = await allDeviceAssets(signal);
 
   const wanted = only ? new Set(only) : null;
-  const unsent = page.assets.filter(
+  const unsent = assets.filter(
     (asset) => !done.has(asset.id) && (wanted === null || wanted.has(asset.id)),
   );
 
@@ -556,6 +584,6 @@ async function send(
 /** How many device items have not been sent from this phone yet. */
 export async function pendingCount(baseUrl?: string): Promise<number> {
   const done = await uploadedIds(baseUrl);
-  const page = await MediaLibrary.getAssetsAsync({ first: 10000, mediaType: ['photo', 'video'] });
-  return page.assets.filter((a) => !done.has(a.id)).length;
+  const assets = await allDeviceAssets();
+  return assets.filter((asset) => !done.has(asset.id)).length;
 }

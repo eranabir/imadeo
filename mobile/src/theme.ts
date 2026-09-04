@@ -48,13 +48,7 @@ export interface Palette {
   overlay: string;
   /** Behind a sheet, dimming everything the sheet is not. */
   backdrop: string;
-  /**
-   * The field a photograph is shown against, full screen.
-   *
-   * Black under a dark app, white under a light one. It was hardcoded to black
-   * either way, so in light mode the whole app was white and the photo sat in a
-   * black letterbox — the one surface that ignored the setting.
-   */
+  /** The neutral letterbox behind full-screen photos and videos. */
   viewer: string;
   /** Android's ripple, which has to invert with the surface under it. */
   ripple: string;
@@ -123,7 +117,9 @@ export const LIGHT: Palette = {
   // photograph is not lighter in light mode.
   overlay: 'rgba(0, 0, 0, 0.45)',
   backdrop: 'rgba(15, 30, 38, 0.35)',
-  viewer: '#ffffff',
+  // Media letterboxing stays neutral in both appearances. A light backdrop
+  // exposed bright strips around portrait video and looked like broken layout.
+  viewer: '#000000',
   ripple: 'rgba(22, 36, 44, 0.09)',
 };
 

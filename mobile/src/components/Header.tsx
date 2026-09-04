@@ -11,6 +11,8 @@ export const HEADER_HEIGHT = 60;
 export interface HeaderConfig {
   title: string;
   subtitle?: string;
+  /** Compact screens can opt into a smaller supporting line. */
+  subtitleSize?: number;
   /**
    * The section's glyph, on a primary plate beside the title.
    *
@@ -58,6 +60,7 @@ interface Props extends HeaderConfig {
 export function Header({
   title,
   subtitle,
+  subtitleSize,
   icon,
   onBack,
   action,
@@ -140,7 +143,12 @@ export function Header({
             {title}
           </Text>
           {subtitle && (
-            <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 12.5, marginTop: 2 }}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              style={{ color: colors.muted, fontSize: subtitleSize ?? 12.5, marginTop: 2 }}
+            >
               {subtitle}
             </Text>
           )}

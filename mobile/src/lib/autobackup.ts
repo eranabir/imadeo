@@ -3,10 +3,11 @@ import * as TaskManager from 'expo-task-manager';
 import { runBackup } from './backup';
 import { findReachable, load as loadServer } from './server';
 import { getItem, removeItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
 const TASK = 'imadeo.autobackup';
-const ENABLED = 'imadeo.autobackup.enabled';
-const LAST_RUN = 'imadeo.autobackup.lastRun';
+const ENABLED = STORAGE_KEYS.autoBackupEnabled;
+const LAST_RUN = STORAGE_KEYS.autoBackupLastRun;
 const foregroundListeners = new Set<() => void>();
 
 /**

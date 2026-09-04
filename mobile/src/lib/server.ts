@@ -1,8 +1,9 @@
 import { getItem, removeItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const LEGACY_KEY = 'imadeo.server';
-const SERVERS_KEY = 'imadeo.servers.v2';
-const ACTIVE_KEY = 'imadeo.server.active';
+const LEGACY_KEY = STORAGE_KEYS.legacyServer;
+const SERVERS_KEY = STORAGE_KEYS.servers;
+const ACTIVE_KEY = STORAGE_KEYS.activeServer;
 
 /** A saved Imadeo installation, independent of the network currently in use. */
 export interface ServerProfile {

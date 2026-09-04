@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { restore as restoreAutoBackup } from './lib/autobackup';
 import { signOut, storedToken } from './lib/auth';
+import { ensureCurrentInstallation } from './lib/install';
 import { currentSsid, subscribeToSsid } from './lib/network';
 import { restorePreferences } from './lib/preferences';
 import {
@@ -51,6 +52,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let alive = true;
     (async () => {
       try {
+        await ensureCurrentInstallation();
         const [saved, token] = await Promise.race([
           Promise.all([loadActiveServer(ssid), storedToken()]),
           new Promise<never>((_, reject) =>
@@ -116,9 +118,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     removeServer: async (profile) => {
       await removeSavedServer(profile.id);
       if (profile.id !== server?.id) return;
+      const currentNetwork = await currentSsid();
+      const nextServer = await loadActiveServer(currentNetwork);
       await signOut();
+      setSsid(currentNetwork);
+      setServer(nextServer);
       setSignedIn(false);
-      setServer(null);
     },
     leave: async () => {
       await signOut();

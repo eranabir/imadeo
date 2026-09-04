@@ -11,13 +11,14 @@ import { useServerUrl } from '../../src/session';
 export default function Route() {
   const serverUrl = useServerUrl();
   const router = useRouter();
-  const { id, title } = useLocalSearchParams<{ id: string; title?: string }>();
+  const { id, title, locked } = useLocalSearchParams<{ id: string; title?: string; locked?: string }>();
 
   return (
     <BrowseScreen
       serverUrl={serverUrl}
       folderId={id}
       title={title}
+      locked={locked === '1'}
       onBack={() => router.back()}
     />
   );

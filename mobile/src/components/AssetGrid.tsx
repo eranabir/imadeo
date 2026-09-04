@@ -10,7 +10,6 @@ import {
 } from 'react';
 import {
   Animated,
-  Easing,
   FlatList,
   Pressable,
   RefreshControl,
@@ -21,7 +20,7 @@ import {
 import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
 import { intoDays } from '../lib/day';
-import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+import { colors, radius, shadow, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
 import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
@@ -468,24 +467,6 @@ export function AssetGrid({
           keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
-          /*
-           * Nothing above a day until there is a reason for one.
-           *
-           * A heading over every date turns a wall of photographs into a list
-           * of dates, and the label under the bar answers the same question
-           * while taking no room in the grid. Selecting is the reason: the
-           * headings come back so a whole day can be taken in one press.
-           */
-          renderSectionHeader={({ section }) =>
-            selecting ? (
-              <DayHeader
-                title={section.title}
-                ids={section.data.flat().map((asset) => asset.id)}
-                selected={selected}
-                onToggleDay={onToggleDay}
-              />
-            ) : null
-          }
           renderItem={({ item: row }) => (
             <View
               style={{ flexDirection: 'row' }}
@@ -510,16 +491,30 @@ export function AssetGrid({
         {/* Under the bar rather than in the grid, and only where the grid is
             cut into days — a folder or a set of results is not a timeline and
             has no date to report. */}
-        {groupByDay && !selecting && (
+        {groupByDay && (
           <View
-            pointerEvents="none"
+            pointerEvents={selecting ? 'box-none' : 'none'}
             // Over the first rows rather than in the gap above them. The bar
             // and the grid meet with 16pt between them and the label is taller
             // than that; floating it is also what Google Photos does with the
             // same label, and it reads as belonging to the photographs.
             style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}
           >
-            <DateLabel visible={away}>{day}</DateLabel>
+            {selecting && onToggleDay ? (
+              <DaySelectionLabel
+                title={day ?? days[0]?.title}
+                ids={
+                  days
+                    .find((section) => section.title === (day ?? days[0]?.title))
+                    ?.data.flat()
+                    .map((asset) => asset.id) ?? []
+                }
+                selected={selected ?? []}
+                onToggleDay={onToggleDay}
+              />
+            ) : (
+              <DateLabel visible={away}>{day}</DateLabel>
+            )}
           </View>
         )}
 
@@ -532,7 +527,6 @@ export function AssetGrid({
             contentHeight={contentHeight}
             viewportHeight={viewportHeight}
             topInset={topInset}
-            label={seeking ? day : undefined}
             visible={away || seeking}
             onSeek={seek}
             onDrag={setSeeking}
@@ -663,126 +657,66 @@ export function Empty({
 }
 
 /**
- * Which photos are picked out, and the two ways that changes.
- *
- * Selection starts on a long press and ends when the last tile is cleared,
- * which is the convention on both platforms — an explicit "select" mode button
- * would be a third thing to find before any of the actions could be reached.
+ * Select the day currently under the floating header without changing the
+ * list's layout. Inserting a header above every section when selection began
+ * moved the visible row — most dramatically at the final image in a library.
  */
-/** The circle's size, and the room it takes once it is there. */
-const DAY_MARK = 24;
-const DAY_SLOT = DAY_MARK + 10;
-
-/**
- * A day's date, and — once a selection is live — a way to take the whole of it.
- *
- * Hidden until then. A circle beside every date on a library scrolled for
- * minutes is a column of controls down a screen meant to be photographs, and
- * there is nothing to select yet; the way in is the long press that starts a
- * selection everywhere else in the app.
- *
- * It arrives from the left, where a checkbox belongs — ahead of the thing it
- * governs rather than stranded at the far edge — and the date steps aside to
- * let it in rather than the two swapping places between one frame and the next.
- *
- * Filled with the accent once the whole day is in, a dash while part of it is,
- * so the day says what it is rather than what pressing it would do.
- */
-export function DayHeader({
+export function DaySelectionLabel({
   title,
   ids,
   selected,
   onToggleDay,
 }: {
-  title: string;
+  title?: string;
   ids: string[];
-  selected?: string[];
-  onToggleDay?: (ids: string[]) => void;
+  selected: string[];
+  onToggleDay: (ids: string[]) => void;
 }) {
-  const showing = !!onToggleDay && !!selected && selected.length > 0;
-  const all = ids.length > 0 && !!selected && ids.every((id) => selected.includes(id));
-  const some = !all && !!selected && ids.some((id) => selected.includes(id));
-
-  const enter = useRef(new Animated.Value(showing ? 1 : 0)).current;
-
-  useEffect(() => {
-    const animation = Animated.timing(enter, {
-      toValue: showing ? 1 : 0,
-      duration: showing ? 220 : 160,
-      easing: Easing.out(Easing.cubic),
-      // Width is what moves the date along, and width is not a property the
-      // native driver can carry.
-      useNativeDriver: false,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [showing, enter]);
+  if (!title || ids.length === 0) return null;
+  const all = ids.every((id) => selected.includes(id));
+  const some = !all && ids.some((id) => selected.includes(id));
 
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        // Inset from the edge, unlike the tiles below it. The date used to sit
-        // flush with them so it read as belonging to the photographs rather
-        // than floating above them — but flush against the screen edge is not
-        // the same as flush with a grid, and the words ended up against the
-        // bezel with nothing to breathe into.
-        paddingLeft: 16,
-        paddingRight: 16,
-        paddingTop: 18,
-        paddingBottom: 6,
-      }}
+    <Touchable
+      onPress={() => onToggleDay(ids)}
+      radius={radius.pill}
+      label={all ? `Deselect ${title}` : `Select all of ${title}`}
     >
-      <Animated.View
-        pointerEvents={showing ? 'auto' : 'none'}
+      <View
         style={{
-          width: enter.interpolate({ inputRange: [0, 1], outputRange: [0, DAY_SLOT] }),
-          opacity: enter,
-          overflow: 'hidden',
-          justifyContent: 'center',
+          alignSelf: 'flex-start',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          marginLeft: 16,
+          paddingHorizontal: 10,
+          paddingVertical: 7,
+          borderRadius: radius.pill,
+          backgroundColor: colors.raised,
+          ...shadow(2),
         }}
       >
-        <Touchable
-          onPress={() => onToggleDay?.(ids)}
-          radius={radius.pill}
-          label={all ? `Deselect ${title}` : `Select all of ${title}`}
+        <View
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            borderWidth: all ? 0 : 2,
+            borderColor: colors.primary,
+            backgroundColor: all ? colors.primary : 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <View
-            style={{
-              width: DAY_MARK,
-              height: DAY_MARK,
-              borderRadius: DAY_MARK / 2,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: all ? 0 : 2,
-              borderColor: colors.primary,
-              backgroundColor: all ? colors.primary : 'transparent',
-            }}
-          >
-            {all ? (
-              <Icon name="check" size={14} color={colors.onPrimary} strong />
-            ) : some ? (
-              <View
-                style={{ width: 10, height: 2.5, borderRadius: 2, backgroundColor: colors.primary }}
-              />
-            ) : null}
-          </View>
-        </Touchable>
-      </Animated.View>
-
-      <Text
-        style={{
-          flex: 1,
-          color: colors.text,
-          fontSize: 15,
-          fontWeight: '700',
-          letterSpacing: -0.3,
-        }}
-      >
-        {title}
-      </Text>
-    </View>
+          {all ? (
+            <Icon name="check" size={12} color={colors.onPrimary} strong />
+          ) : some ? (
+            <View style={{ width: 9, height: 2, borderRadius: 1, backgroundColor: colors.primary }} />
+          ) : null}
+        </View>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{title}</Text>
+      </View>
+    </Touchable>
   );
 }
 

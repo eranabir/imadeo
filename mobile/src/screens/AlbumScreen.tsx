@@ -26,10 +26,11 @@ interface Props {
   albumId: string;
   title: string;
   onBack: () => void;
+  locked?: boolean;
 }
 
 /** Everything inside one album. */
-export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
+export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false }: Props) {
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/albums/${albumId}?sortBy=date&order=desc`,
@@ -66,12 +67,14 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
           compact
           onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
         />
-      <HeaderAction
-        label="Share album"
-        icon="shared"
-        compact
-        onPress={() => setSharing(true)}
-      />
+      {!locked ? (
+        <HeaderAction
+          label="Share album"
+          icon="shared"
+          compact
+          onPress={() => setSharing(true)}
+        />
+      ) : null}
       </View>
     ),
   };
@@ -127,7 +130,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
       <Header {...bar} />
       <SelectionDock />
 
-      <ShareSheet
+      {!locked ? <ShareSheet
         open={sharing}
         serverUrl={serverUrl}
         assetIds={[]}
@@ -148,7 +151,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack }: Props) {
             setShareBusy(false);
           }
         }}
-      />
+      /> : null}
     </View>
   );
 }

@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Appearance as SystemAppearance } from 'react-native';
 import { applyPalette, DARK, LIGHT } from '../theme';
 import { getItem, setItem } from './storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const AUTOPLAY_KEY = 'imadeo.autoplayVideos';
-const APPEARANCE_KEY = 'imadeo.appearance';
-const CELLULAR_KEY = 'imadeo.cellular';
+const AUTOPLAY_KEY = STORAGE_KEYS.autoplayVideos;
+const APPEARANCE_KEY = STORAGE_KEYS.appearance;
+const CELLULAR_KEY = STORAGE_KEYS.cellular;
 
 /** What the user asked for, which is not the same as what is drawn. */
 export type Appearance = 'system' | 'dark' | 'light';

@@ -11,12 +11,11 @@ import { useFocusEffect } from 'expo-router';
  * imported the same way here for the same reason.
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   ActivityIndicator,
   AppState,
-  Easing,
   FlatList,
   Dimensions,
   Linking,
@@ -31,8 +30,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
-import { DayHeader, Empty } from '../components/AssetGrid';
-import { VideoPage } from '../components/AssetViewer';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { DaySelectionLabel, Empty } from '../components/AssetGrid';
+import {
+  VideoPage,
+  ViewerFilmstrip,
+  VIEWER_HEADER_HEIGHT,
+  VIEWER_FILMSTRIP_HEIGHT,
+  viewerDockHeight,
+  viewerFilmstripBottom,
+  viewerMediaViewport,
+  viewerSafeBottom,
+} from '../components/AssetViewer';
+import { ZoomableMedia } from '../components/ZoomableMedia';
 import { useGrowFrom, type Rect } from '../components/grow';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
 import { Account } from '../components/Account';
@@ -99,6 +109,9 @@ export function LibraryScreen({ server }: Props) {
   const [assets, setAssets] = useState<MediaLibrary.Asset[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [endCursor, setEndCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +129,7 @@ export function LibraryScreen({ server }: Props) {
     asset: MediaLibrary.Asset;
     from: Rect | null;
   } | null>(null);
+
   /** The per-item backup list, opened from the progress bar. */
   const [showProgress, setShowProgress] = useState(false);
   /** Set while the "remove from this phone" confirmation is up. */
@@ -126,6 +140,10 @@ export function LibraryScreen({ server }: Props) {
   const [stopping, setStopping] = useState(false);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
+  /** Prevents two end-of-list events from requesting the same page. */
+  const pageInFlight = useRef(false);
+  /** Invalidates a page request when a fresh library load starts. */
+  const libraryVersion = useRef(0);
 
   // The progress strip adds 16pt to the floating header. Add the same amount
   // to the list clearance so the normal gap below the bar does not disappear.
@@ -137,6 +155,7 @@ export function LibraryScreen({ server }: Props) {
   const load = useCallback(async () => {
     // Limited access still reads — of the subset that was shared.
     if (!permission?.granted && permission?.accessPrivileges !== 'limited') return;
+    const version = ++libraryVersion.current;
     setLoading(true);
     try {
       const page = await MediaLibrary.getAssetsAsync({
@@ -144,20 +163,64 @@ export function LibraryScreen({ server }: Props) {
         mediaType: ['photo', 'video'],
         sortBy: [MediaLibrary.SortBy.creationTime],
       });
+      if (version !== libraryVersion.current) return;
       setAssets(page.assets);
       setTotal(page.totalCount);
+      setEndCursor(page.endCursor || null);
+      setHasMore(page.hasNextPage);
       // Both go through the server so a fresh install does not report a phone
       // full of photos as un-backed-up when they are all already there.
-      setPending(await pendingCount(serverUrl));
-      setUploaded(await uploadedIds(serverUrl));
+      const [nextPending, nextUploaded] = await Promise.all([
+        pendingCount(serverUrl),
+        uploadedIds(serverUrl),
+      ]);
+      if (version !== libraryVersion.current) return;
+      setPending(nextPending);
+      setUploaded(nextUploaded);
+    } catch (cause) {
+      if (version === libraryVersion.current) {
+        setError(cause instanceof Error ? cause.message : 'Could not read this phone.');
+      }
     } finally {
-      setLoading(false);
+      if (version === libraryVersion.current) setLoading(false);
     }
   }, [permission?.granted, permission?.accessPrivileges, serverUrl]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || !endCursor || pageInFlight.current) return;
+    const version = libraryVersion.current;
+    pageInFlight.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await MediaLibrary.getAssetsAsync({
+        first: PAGE,
+        after: endCursor,
+        mediaType: ['photo', 'video'],
+        sortBy: [MediaLibrary.SortBy.creationTime],
+      });
+      if (version !== libraryVersion.current) return;
+      setAssets((current) => {
+        const known = new Set(current.map((asset) => asset.id));
+        return [...current, ...page.assets.filter((asset) => !known.has(asset.id))];
+      });
+      setEndCursor(page.endCursor || null);
+      setHasMore(page.hasNextPage);
+    } catch (cause) {
+      if (version === libraryVersion.current) {
+        setError(cause instanceof Error ? cause.message : 'Could not load more photos.');
+      }
+    } finally {
+      pageInFlight.current = false;
+      if (version === libraryVersion.current) setLoadingMore(false);
+    }
+  }, [endCursor, hasMore]);
 
   useFocusEffect(useCallback(() => {
     void load();
   }, [load]));
+
+
+
 
   /**
    * Picking "Select photos" is granting access, not refusing it.
@@ -247,6 +310,23 @@ export function LibraryScreen({ server }: Props) {
   const loadRef = useRef(load);
   loadRef.current = load;
 
+  useEffect(() => {
+    if (!allowed) return;
+    const subscription = MediaLibrary.addListener((event) => {
+      // Updated iCloud metadata does not change which tiles belong here. New,
+      // removed or newly-authorised assets do, so rebuild the first page and
+      // its cursor from Photos rather than leaving dead `ph://` references.
+      if (
+        !event.hasIncrementalChanges ||
+        (event.insertedAssets?.length ?? 0) > 0 ||
+        (event.deletedAssets?.length ?? 0) > 0
+      ) {
+        void loadRef.current();
+      }
+    });
+    return () => subscription.remove();
+  }, [allowed]);
+
   /**
    * A run when the app arrives at the front, if automatic backup is on.
    *
@@ -317,11 +397,21 @@ export function LibraryScreen({ server }: Props) {
   const removeFromPhone = async (ids?: string[]) => {
     setError(null);
     try {
-      const removed = await MediaLibrary.deleteAssetsAsync(ids ?? picked);
+      const deleting = ids ?? picked;
+      const removed = await MediaLibrary.deleteAssetsAsync(deleting);
       // Declining the system prompt is an answer, not a failure.
       if (!removed) return;
+      const gone = new Set(deleting);
+      // Photos sends a library-change event after its transaction, but the UI
+      // should answer the confirmation immediately rather than continue to
+      // show an item whose `ph://` reference has just become invalid.
+      setAssets((current) => {
+        const next = current.filter((asset) => !gone.has(asset.id));
+        setEndCursor(next.at(-1)?.id ?? null);
+        return next;
+      });
+      setTotal((current) => current === null ? null : Math.max(0, current - gone.size));
       if (!ids) setPicked([]);
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
     }
@@ -478,6 +568,8 @@ export function LibraryScreen({ server }: Props) {
         showsVerticalScrollIndicator={false}
         onContentSizeChange={(_, height) => setContentHeight(height)}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+        onEndReached={() => void loadMore()}
+        onEndReachedThreshold={0.7}
         // Every cell reports where it sits, which is what the date is read from.
         CellRendererComponent={Cell}
         // Room under the last row for it to be scrolled up to, so the label can
@@ -487,18 +579,6 @@ export function LibraryScreen({ server }: Props) {
           paddingTop: clearance,
           paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - clearance - rowHeight),
         }}
-        // Nothing above a day until a selection gives it a reason; the label
-        // under the bar answers "when am I" the rest of the time.
-        renderSectionHeader={({ section }) =>
-          picked.length > 0 ? (
-            <DayHeader
-              title={section.title}
-              ids={idsOf([...section.data])}
-              selected={picked}
-              onToggleDay={toggleDay}
-            />
-          ) : null
-        }
         refreshControl={
           <RefreshControl
             refreshing={loading}
@@ -584,6 +664,13 @@ export function LibraryScreen({ server }: Props) {
             />
           )
         }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={{ paddingVertical: 22, alignItems: 'center' }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null
+        }
         />
       </ScrollViewMarker>
 
@@ -592,23 +679,33 @@ export function LibraryScreen({ server }: Props) {
       </Header>
       <SelectionDock />
 
-      {/* The day at the top of the screen, in place of a heading above every
-          one of them. Hidden while selecting, when the headings come back. */}
-      {picked.length === 0 && (
-        <View
-          pointerEvents="none"
-          style={{ position: 'absolute', top: clearance + 6, left: 0, right: 0 }}
-        >
+      {/* The current day floats over the grid so entering selection never
+          changes the list's height or moves the visible photo. */}
+      <View
+        pointerEvents={picked.length > 0 ? 'box-none' : 'none'}
+        style={{ position: 'absolute', top: clearance + 6, left: 0, right: 0 }}
+      >
+        {picked.length > 0 ? (
+          <DaySelectionLabel
+            title={day ?? sections[0]?.title}
+            ids={idsOf([
+              ...(sections.find(
+                (section) => section.title === (day ?? sections[0]?.title),
+              )?.data ?? []),
+            ])}
+            selected={picked}
+            onToggleDay={toggleDay}
+          />
+        ) : (
           <DateLabel visible={away}>{day}</DateLabel>
-        </View>
-      )}
+        )}
+      </View>
 
       <Scrubber
         scrollY={scrollY}
         contentHeight={contentHeight}
         viewportHeight={viewportHeight}
         topInset={clearance}
-        label={seeking ? day : undefined}
         visible={away || seeking}
         onSeek={seek}
         onDrag={setSeeking}
@@ -629,6 +726,9 @@ export function LibraryScreen({ server }: Props) {
           host={server.name}
           uploaded={uploaded}
           busy={running}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
           onClose={() => setViewing(null)}
           onBackUp={(asset) => void backUp([asset.id])}
           onRemove={(asset) => {
@@ -706,6 +806,9 @@ function DeviceViewer({
   host,
   uploaded,
   busy,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onClose,
   onBackUp,
   onRemove,
@@ -718,6 +821,9 @@ function DeviceViewer({
   /** Which of these the server already holds. */
   uploaded: Set<string>;
   busy: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => Promise<void>;
   onClose: () => void;
   onBackUp: (asset: MediaLibrary.Asset) => void;
   onRemove: (asset: MediaLibrary.Asset) => void;
@@ -733,12 +839,19 @@ function DeviceViewer({
    */
   const { width, height } = Dimensions.get('window');
   const insets = useSafeAreaInsets();
+  const pager = useRef<FlatList<MediaLibrary.Asset>>(null);
   const opened = Math.max(0, start);
   const [at, setAt] = useState(opened);
   /** The bar over the photograph, which a tap puts out of the way. */
   const [chrome, setChrome] = useState(true);
+  const [scrubbing, setScrubbing] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   const [details, setDetails] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const chromeOpacity = useRef(new Animated.Value(1)).current;
+  const atRef = useRef(at);
+  const resuming = useRef(false);
+
 
   const asset = assets[at] ?? assets[opened];
 
@@ -749,17 +862,6 @@ function DeviceViewer({
    */
   const [leaving, setLeaving] = useState(false);
   const { mounted, enter, grown } = useGrowFrom(at === opened ? from : null, !leaving);
-
-  const bar = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.timing(bar, {
-      toValue: chrome ? 1 : 0,
-      duration: chrome ? 150 : 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [chrome, bar]);
 
   /*
    * Shrinking back is a state change rather than a call: `useGrowFrom` runs the
@@ -772,11 +874,60 @@ function DeviceViewer({
     if (leaving && !mounted) onClose();
   }, [leaving, mounted, onClose]);
 
+  useEffect(() => {
+    Animated.timing(chromeOpacity, {
+      toValue: chrome ? 1 : 0,
+      duration: chrome ? 180 : 150,
+      useNativeDriver: true,
+    }).start();
+  }, [chrome, chromeOpacity]);
+
+  useEffect(() => {
+    atRef.current = at;
+  }, [at]);
+
+  useEffect(() => {
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      resuming.current = true;
+      requestAnimationFrame(() => {
+        pager.current?.scrollToOffset({ offset: atRef.current * width, animated: false });
+      });
+      settle = setTimeout(() => {
+        pager.current?.scrollToOffset({ offset: atRef.current * width, animated: false });
+        resuming.current = false;
+      }, 250);
+    });
+    return () => {
+      if (settle) clearTimeout(settle);
+      subscription.remove();
+    };
+  }, [width]);
+
   const backedUp = uploaded.has(asset.id);
   const taken = asset.creationTime ? new Date(asset.creationTime) : null;
+  // Keep one stable media viewport. Tapping to hide the toolbar must only
+  // affect the toolbar; it must never resize or reposition the asset.
+  const safeBottom = viewerSafeBottom(insets.bottom);
+  const mediaViewport = viewerMediaViewport(height, insets.top, safeBottom);
+  const mediaTop = mediaViewport.top;
+  const mediaHeight = mediaViewport.height;
+  const dockHeight = viewerDockHeight(safeBottom);
+  const filmstripBottom = viewerFilmstripBottom(safeBottom);
+  const chromeEnter = Animated.multiply(chromeOpacity, enter);
+
+  const showAt = (next: number) => {
+    const bounded = Math.max(0, Math.min(assets.length - 1, next));
+    resuming.current = false;
+    setZoomed(false);
+    setAt(bounded);
+    pager.current?.scrollToOffset({ offset: bounded * width, animated: true });
+  };
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={leave} statusBarTranslucent>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={StyleSheet.absoluteFill}>
         {/* The dark comes up under the photograph rather than with it, so the
             grid is still there to be left behind. */}
@@ -786,28 +937,42 @@ function DeviceViewer({
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
           <FlatList
+            ref={pager}
             data={assets}
             horizontal
             pagingEnabled
+            scrollEnabled={!scrubbing && !zoomed}
             showsHorizontalScrollIndicator={false}
             keyExtractor={(item) => item.id}
             initialScrollIndex={opened}
             // Every page is exactly the screen's width, so the list never has to
             // measure anything to know where a given photo starts.
             getItemLayout={(_data, index) => ({ length: width, offset: width * index, index })}
-            onMomentumScrollEnd={(event) =>
-              setAt(Math.round(event.nativeEvent.contentOffset.x / width))
-            }
+            onScrollBeginDrag={() => {
+              resuming.current = false;
+            }}
+            onMomentumScrollEnd={(event) => {
+              if (resuming.current) {
+                pager.current?.scrollToOffset({ offset: at * width, animated: false });
+                return;
+              }
+              setZoomed(false);
+              setAt(Math.round(event.nativeEvent.contentOffset.x / width));
+            }}
             windowSize={3}
+            onEndReached={() => {
+              if (hasMore) void onLoadMore();
+            }}
+            onEndReachedThreshold={0.8}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : null
+            }
             renderItem={({ item, index }) => (
-              <Pressable
-                // A tap puts the bar away rather than closing, which is what the
-                // server-side viewer does and what leaves the photograph alone.
-                onPress={() => setChrome((on) => !on)}
-                accessibilityRole="image"
-                accessibilityLabel={item.filename}
-                style={{ width, height, justifyContent: 'center' }}
-              >
+              <View style={{ width, height, justifyContent: 'center' }}>
                 {item.mediaType === 'video' ? (
                   <DeviceVideoPage
                     asset={item}
@@ -815,28 +980,39 @@ function DeviceViewer({
                     controlsVisible={chrome && index === at}
                     width={width}
                     height={height}
+                    contentTop={mediaTop}
+                    safeBottom={safeBottom}
+                    onScrubbingChange={setScrubbing}
+                    onZoomChange={setZoomed}
+                    onTap={() => setChrome((on) => !on)}
                   />
                 ) : (
-                  <Image
-                    source={item.uri}
-                    style={{ width, height }}
-                    contentFit="contain"
-                    recyclingKey={item.id}
-                    transition={140}
-                  />
+                  <View
+                    style={{ position: 'absolute', top: mediaTop, left: 0, width, height: mediaHeight }}
+                  >
+                    <ZoomableMedia
+                      width={width}
+                      height={mediaHeight}
+                      active={index === at}
+                      accessibilityLabel={item.filename}
+                      onTap={() => setChrome((on) => !on)}
+                      onZoomChange={setZoomed}
+                    >
+                      <Image
+                        source={item.uri}
+                        style={{ width, height: mediaHeight }}
+                        contentFit="contain"
+                        recyclingKey={item.id}
+                        transition={140}
+                      />
+                    </ZoomableMedia>
+                  </View>
                 )}
-              </Pressable>
+              </View>
             )}
           />
         </Animated.View>
 
-        {/*
-          Everything along the top, and nothing along the bottom.
-
-          The bottom edge of a photo viewer belongs to whatever is being played,
-          and to the home gesture besides. This bar owns the photograph: what it
-          is on the left, what can be done with it on the right.
-        */}
         <Animated.View
           pointerEvents={chrome ? 'box-none' : 'none'}
           style={{
@@ -844,62 +1020,138 @@ function DeviceViewer({
             top: 0,
             left: 0,
             right: 0,
-            paddingTop: insets.top + 8,
-            paddingBottom: 12,
-            paddingHorizontal: 12,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: colors.overlay,
-            opacity: Animated.multiply(bar, enter),
+            height: insets.top + VIEWER_HEADER_HEIGHT,
+            opacity: chromeEnter,
           }}
         >
-          <Touchable onPress={leave} radius={radius.pill} label="Close" style={{ width: 38, height: 38 }}>
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="close" size={22} color="#fff" />
+          <View
+            style={{
+              position: 'absolute',
+              top: Math.max(8, insets.top - 1),
+              left: 16,
+              right: 16,
+              height: 44,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                width: 44,
+                height: 44,
+                borderRadius: radius.pill,
+                backgroundColor: colors.surface,
+              }}
+            >
+              <Touchable onPress={leave} radius={radius.pill} label="Close" style={{ flex: 1 }}>
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="back" size={24} color={colors.text} />
+                </View>
+              </Touchable>
             </View>
-          </Touchable>
 
-          <View style={{ flex: 1, marginLeft: 4 }}>
-            <Text numberOfLines={1} style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+            <View
+              pointerEvents="none"
+              style={{
+                maxWidth: Math.max(160, width - 156),
+                minWidth: Math.min(160, width - 156),
+                minHeight: 44,
+                paddingHorizontal: 16,
+                paddingVertical: 5,
+                borderRadius: radius.pill,
+                backgroundColor: colors.surface,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text numberOfLines={1} style={{ color: colors.text, fontSize: 14, fontWeight: '700' }}>
               {asset.filename}
-            </Text>
-            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 1 }}>
-              {[
-                `${at + 1} of ${assets.length}`,
-                taken ? taken.toLocaleDateString() : null,
-                asset.mediaType === 'video' ? runningTime(asset.duration) : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
+              </Text>
+              <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11.5, marginTop: 1 }}>
+                {[
+                  `${at + 1} of ${assets.length}`,
+                  taken ? taken.toLocaleDateString() : null,
+                  asset.mediaType === 'video' ? runningTime(asset.duration) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents={chrome ? 'box-none' : 'none'}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: filmstripBottom,
+            height: VIEWER_FILMSTRIP_HEIGHT,
+            opacity: chromeEnter,
+          }}
+        >
+          <ViewerFilmstrip
+            items={assets.map((item) => ({ id: item.id, source: item.uri }))}
+            current={at}
+            onSelect={showAt}
+          />
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents={chrome ? 'box-none' : 'none'}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: dockHeight,
+            paddingBottom: safeBottom,
+            paddingHorizontal: 28,
+            backgroundColor: colors.viewer,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            opacity: chromeEnter,
+          }}
+        >
+          <ViewerActionPlate>
+            <ViewerAction
+              icon={backedUp ? 'cloud-done' : 'backup'}
+              label={backedUp ? `Already on ${host}` : 'Back up now'}
+              tint={colors.text}
+              disabled={backedUp || busy}
+              onPress={() => onBackUp(asset)}
+            />
+          </ViewerActionPlate>
+
+          <View
+            style={{
+              paddingHorizontal: 8,
+              borderRadius: radius.pill,
+              backgroundColor: colors.surface,
+            }}
+          >
+            <ViewerAction
+              icon="info"
+              label="Details"
+              tint={colors.text}
+              onPress={() => setDetails(true)}
+            />
           </View>
 
-          <ViewerAction icon="info" label="Details" tint="#fff" onPress={() => setDetails(true)} />
-
-          {/*
-            Backed up or not is the one thing this tab exists to answer, so the
-            state and the action are the same control: a tick once the server
-            has it, and the way to send it until then.
-          */}
-          <ViewerAction
-            icon={backedUp ? 'cloud-done' : 'backup'}
-            label={backedUp ? `Already on ${host}` : 'Back up now'}
-            // White like everything else over a photograph. The accent picked
-            // out one control on a bar where nothing else is coloured, which
-            // read as a button to press rather than the state it is.
-            tint="#fff"
-            disabled={backedUp || busy}
-            onPress={() => onBackUp(asset)}
-          />
-
-          <ViewerAction
-            icon="trash"
-            label="Remove from this phone"
-            tint="#fff"
-            disabled={busy}
-            onPress={() => setRemoving(true)}
-          />
+          <ViewerActionPlate>
+            <ViewerAction
+              icon="trash"
+              label="Remove from this phone"
+              tint={colors.text}
+              disabled={busy}
+              onPress={() => setRemoving(true)}
+            />
+          </ViewerActionPlate>
         </Animated.View>
 
         <Sheet open={details} title={asset.filename} onClose={() => setDetails(false)}>
@@ -924,94 +1176,50 @@ function DeviceViewer({
           }}
         />
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
 
-/**
- * Resolve a Photos-library video to a file the native player can open.
- *
- * iOS gives the grid a `ph://` database reference. That is enough for
- * `expo-image` to ask Photos for a thumbnail, but it is not a video URL. Asking
- * MediaLibrary for the asset info turns it into a `file://` URL and downloads
- * an iCloud-offloaded original when playback actually reaches this page.
- */
+/** Play the Photos asset through expo-video's native PHAsset support. */
 function DeviceVideoPage({
   asset,
   active,
   controlsVisible,
   width,
   height,
+  contentTop,
+  safeBottom,
+  onScrubbingChange,
+  onZoomChange,
+  onTap,
 }: {
   asset: MediaLibrary.Asset;
   active: boolean;
   controlsVisible: boolean;
   width: number;
   height: number;
+  contentTop: number;
+  safeBottom: number;
+  onScrubbingChange: (scrubbing: boolean) => void;
+  onZoomChange: (zoomed: boolean) => void;
+  onTap: () => void;
 }) {
-  const [uri, setUri] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    if (!active || uri) return;
-
-    let alive = true;
-    setFailed(false);
-
-    void MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: true })
-      .then((info) => {
-        if (!alive) return;
-        const playable = info.localUri ?? (asset.uri.startsWith('ph://') ? null : asset.uri);
-        if (!playable) throw new Error('No playable file is available');
-        setUri(playable);
-      })
-      .catch(() => {
-        if (alive) setFailed(true);
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [active, asset, attempt, uri]);
-
-  if (uri) {
-    return (
-      <VideoPage
-        uri={uri}
-        token={null}
-        active={active}
-        controlsVisible={controlsVisible}
-        width={width}
-        height={height}
-        rotation={0}
-      />
-    );
-  }
-
   return (
-    <View style={{ width, height, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-      {failed ? (
-        <>
-          <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
-            This video could not be opened.
-          </Text>
-          <Touchable
-            onPress={() => setAttempt((value) => value + 1)}
-            radius={radius.pill}
-            label="Try video again"
-            style={{ paddingHorizontal: 18, paddingVertical: 10, backgroundColor: colors.surface }}
-          >
-            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '700' }}>Try again</Text>
-          </Touchable>
-        </>
-      ) : (
-        <>
-          <ActivityIndicator color={colors.primary} />
-          <Text style={{ color: colors.muted, fontSize: 14 }}>Preparing video…</Text>
-        </>
-      )}
-    </View>
+    <VideoPage
+      uri={asset.uri}
+      token={null}
+      active={active}
+      controlsVisible={controlsVisible}
+      width={width}
+      height={height}
+      rotation={0}
+      contentTop={contentTop}
+      safeBottom={safeBottom}
+      onScrubbingChange={onScrubbingChange}
+      onZoomChange={onZoomChange}
+      onTap={onTap}
+    />
   );
 }
 
@@ -1120,6 +1328,23 @@ function Fact({ label, value, tint }: { label: string; value: string; tint?: str
 }
 
 /** One round control in the viewer's bar, sized to sit beside a title. */
+function ViewerActionPlate({ children }: { children: ReactNode }) {
+  return (
+    <View
+      style={{
+        width: 48,
+        height: 48,
+        borderRadius: radius.pill,
+        backgroundColor: colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
 function ViewerAction({
   icon,
   label,
@@ -1343,37 +1568,39 @@ function AskForAccess({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
-      <View
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 36,
-          backgroundColor: colors.surface,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 22,
-        }}
-      >
-        <Icon name="phone" size={32} color={colors.primary} />
+      <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+        <View
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            backgroundColor: colors.surface,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 22,
+          }}
+        >
+          <Icon name="phone" size={32} color={colors.primary} />
+        </View>
+
+        <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.6 }}>
+          {settled ? 'Imadeo cannot see your photos' : 'Let Imadeo see your photos'}
+        </Text>
+        <Text
+          style={{ color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 12, marginBottom: 28 }}
+        >
+          {settled
+            ? 'Nothing on this phone can be backed up until photo access is switched on. You can turn it on for Imadeo in your phone’s settings.'
+            : 'Nothing is uploaded until you ask for it. Access is only used to work out which photos your server does not have yet.'}
+        </Text>
+
+        <Button
+          label={settled ? 'Open Settings' : 'Allow access'}
+          icon={settled ? 'settings' : 'check'}
+          busy={asking}
+          onPress={() => (settled ? void Linking.openSettings() : void ask())}
+        />
       </View>
-
-      <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700', letterSpacing: -0.6 }}>
-        {settled ? 'Imadeo cannot see your photos' : 'Let Imadeo see your photos'}
-      </Text>
-      <Text
-        style={{ color: colors.muted, fontSize: 16, lineHeight: 24, marginTop: 12, marginBottom: 28 }}
-      >
-        {settled
-          ? 'Nothing on this phone can be backed up until photo access is switched on. You can turn it on for Imadeo in your phone’s settings.'
-          : 'Nothing is uploaded until you ask for it. Access is only used to work out which photos your server does not have yet.'}
-      </Text>
-
-      <Button
-        label={settled ? 'Open Settings' : 'Allow access'}
-        icon={settled ? 'settings' : 'check'}
-        busy={asking}
-        onPress={() => (settled ? void Linking.openSettings() : void ask())}
-      />
     </View>
   );
 }

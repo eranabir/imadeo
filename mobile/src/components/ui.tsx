@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   Modal,
   PanResponder,
   Platform,
@@ -12,6 +13,7 @@ import {
   Text,
   View,
   type StyleProp,
+  type KeyboardEvent,
   type ViewStyle,
 } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
@@ -215,7 +217,36 @@ export function Sheet({
    * `shown` lags `open` so there is something left on screen to animate out.
    */
   const [shown, setShown] = useState(open);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const enter = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!shown) {
+      setKeyboardHeight(0);
+      return;
+    }
+
+    const move = (event: KeyboardEvent) => {
+      Keyboard.scheduleLayoutAnimation(event);
+      setKeyboardHeight(event.endCoordinates.height);
+    };
+    const hide = (event: KeyboardEvent) => {
+      Keyboard.scheduleLayoutAnimation(event);
+      setKeyboardHeight(0);
+    };
+    const showListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow',
+      move,
+    );
+    const hideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      hide,
+    );
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, [shown]);
 
   /**
    * Everything moving this panel runs on the JS driver.
@@ -336,7 +367,10 @@ export function Sheet({
               borderTopLeftRadius: radius.xl,
               borderTopRightRadius: radius.xl,
               paddingTop: 10,
-              paddingBottom: Math.max(HOME_INDICATOR, 16),
+              // The keyboard covers this lower part of the panel. Keeping the
+              // background behind it avoids a second exposed edge while the
+              // spacer leaves every field and action above the keyboard.
+              paddingBottom: keyboardHeight > 0 ? keyboardHeight + 12 : Math.max(HOME_INDICATOR, 16),
               ...(tall ? { height: '85%' } : { maxHeight: '85%' }),
               transform: [{ translateY: lift }],
             },

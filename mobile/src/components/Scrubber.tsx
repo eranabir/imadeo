@@ -28,7 +28,7 @@ const RAIL = 34;
  * A grid of thousands has one honest problem: the only way to reach last March
  * is to keep flinging at it. The platform's own scroll indicator says where you
  * are and will not take you anywhere, so this replaces it with a handle you can
- * grab, and says what you are passing while you do.
+ * grab.
  *
  * It appears when the content is longer than a couple of screens and there is
  * somewhere to go. On a folder of nine photographs it would be a control with
@@ -39,7 +39,6 @@ export function Scrubber({
   contentHeight,
   viewportHeight,
   topInset,
-  label,
   visible,
   onSeek,
   onDrag,
@@ -50,8 +49,6 @@ export function Scrubber({
   viewportHeight: number;
   /** Room the floating header takes, which the rail starts below. */
   topInset: number;
-  /** What is under the handle right now — a date, usually. */
-  label?: string;
   /** Only while the list is moving, or being dragged by the handle itself. */
   visible: boolean;
   onSeek: (offset: number) => void;
@@ -153,36 +150,6 @@ export function Scrubber({
         </View>
       </Animated.View>
 
-      {label && (
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            opacity: fade,
-            position: 'absolute',
-            right: RAIL + 8,
-            transform: [{ translateY: y }],
-            height: HANDLE,
-            justifyContent: 'center',
-          }}
-        >
-          <View
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 7,
-              borderRadius: radius.pill,
-              backgroundColor: colors.raised,
-              ...shadow(3),
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}
-            >
-              {label}
-            </Text>
-          </View>
-        </Animated.View>
-      )}
     </View>
   );
 }
