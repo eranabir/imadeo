@@ -9,7 +9,7 @@ interface Props {
   retrying: boolean;
   onRetry: () => void;
   onEditServer: () => void;
-  onAddServer: () => void;
+  onManageServers: () => void;
 }
 
 /**
@@ -22,7 +22,7 @@ export function ConnectionErrorScreen({
   retrying,
   onRetry,
   onEditServer,
-  onAddServer,
+  onManageServers,
 }: Props) {
   const address = server.url.replace(/^https?:\/\//, '');
 
@@ -118,7 +118,7 @@ export function ConnectionErrorScreen({
       </Pressable>
 
       <Pressable
-        onPress={onAddServer}
+        onPress={onManageServers}
         disabled={retrying}
         style={({ pressed }) => ({
           alignItems: 'center',
@@ -127,7 +127,7 @@ export function ConnectionErrorScreen({
           opacity: retrying ? 0.55 : pressed ? 0.7 : 1,
         })}
       >
-        <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Add new server</Text>
+        <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Manage servers</Text>
       </Pressable>
     </View>
   );

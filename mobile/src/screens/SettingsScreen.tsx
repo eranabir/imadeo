@@ -128,6 +128,7 @@ export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) 
             icon="backup"
             label="Server"
             value={serverUrl.replace(/^https?:\/\//, '')}
+            onPress={onManageServers}
             // A green dot only when the server has actually answered — the
             // statistics request is the proof, so nothing else has to be asked.
             dot={data ? colors.online : me.error ? colors.danger : undefined}

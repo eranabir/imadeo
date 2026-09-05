@@ -45,10 +45,12 @@ const initialsOf = (name: string) =>
  */
 export function AccountScreen({
   serverUrl,
+  onManageServers,
   onSignOut,
   onBack,
 }: {
   serverUrl: string;
+  onManageServers: () => void;
   onSignOut: () => void;
   onBack: () => void;
 }) {
@@ -119,6 +121,7 @@ export function AccountScreen({
             label="Server"
             value={serverUrl.replace(/^https?:\/\//, '')}
             dot={data ? colors.online : me.error ? colors.danger : undefined}
+            onPress={onManageServers}
           />
           {/* Said plainly rather than as a badge: it changes what the account
               can do on the server, and a coloured pill is easy to miss. */}

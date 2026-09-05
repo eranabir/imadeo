@@ -9,6 +9,7 @@ export default function Route() {
   return (
     <AccountScreen
       serverUrl={server?.url ?? ''}
+      onManageServers={() => router.push('/servers')}
       onSignOut={() => void leave()}
       onBack={() => router.back()}
     />

@@ -95,7 +95,6 @@ function Gate() {
     restoring,
     connect,
     signedInNow,
-    changeServer,
     activateServerAddress,
     selectServer,
     updateServer,
@@ -105,7 +104,7 @@ function Gate() {
   const [verifiedServer, setVerifiedServer] = useState<string | null>(null);
   const [verificationFailed, setVerificationFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [serverEditor, setServerEditor] = useState<'edit' | 'add' | null>(null);
+  const [serverEditor, setServerEditor] = useState<'list' | 'edit' | 'add' | null>(null);
   const justSignedIn = useRef(false);
 
   // Check the selected server before mounting any route. Signed-in sessions
@@ -229,7 +228,7 @@ function Gate() {
         onSave={async (profile) => {
           await updateServer(profile);
           if (serverEditor === 'add') await selectServer(profile);
-          setServerEditor(null);
+          if (serverEditor !== 'list') setServerEditor(null);
         }}
         onRemove={removeServer}
       />
@@ -251,7 +250,7 @@ function Gate() {
         retrying={retrying}
         onRetry={() => void retryConnection()}
         onEditServer={() => setServerEditor('edit')}
-        onAddServer={() => setServerEditor('add')}
+        onManageServers={() => setServerEditor('list')}
       />
     );
   }
@@ -259,14 +258,14 @@ function Gate() {
   if (!signedIn) {
     return (
       <SignInScreen
-        serverUrl={server.url}
+        server={server}
         onSignedIn={() => {
           justSignedIn.current = true;
           setVerificationFailed(false);
           setVerifiedServer(server.url);
           signedInNow();
         }}
-        onChangeServer={changeServer}
+        onBackToServers={() => setServerEditor('list')}
       />
     );
   }

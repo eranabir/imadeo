@@ -11,16 +11,20 @@ import {
   View,
 } from 'react-native';
 import { login, registrationStatus, type Session } from '../lib/auth';
+import { Header, useHeaderClearance } from '../components/Header';
 import { LogoLockup } from '../components/Logo';
+import type { ServerInfo } from '../lib/server';
 import { colors } from '../theme';
 
 interface Props {
-  serverUrl: string;
+  server: ServerInfo;
   onSignedIn: (session: Session) => void;
-  onChangeServer: () => void;
+  onBackToServers: () => void;
 }
 
-export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
+export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
+  const serverUrl = server.url;
+  const clearance = useHeaderClearance();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,7 +72,13 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 28 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          paddingTop: clearance + 24,
+          paddingBottom: 28,
+          paddingHorizontal: 28,
+        }}
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
@@ -78,15 +88,9 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
             Welcome back
           </Text>
 
-          {/* Which server this is matters here in a way it never does in a hosted
-              app — someone may have several, and the address is the only thing
-              that tells them apart. */}
-          <Pressable onPress={onChangeServer} hitSlop={8} style={{ marginTop: 8, marginBottom: 30 }}>
-            <Text style={{ color: colors.muted, fontSize: 15 }}>
-              {serverUrl.replace(/^https?:\/\//, '')}
-              <Text style={{ color: colors.primary }}>  Change</Text>
-            </Text>
-          </Pressable>
+          <Text style={{ color: colors.muted, fontSize: 15, marginTop: 8, marginBottom: 30 }}>
+            Sign in to {server.name}
+          </Text>
 
           {needsAdminSetup ? (
             <View
@@ -163,9 +167,9 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
             })}
           >
             {busy ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.onPrimary} />
             ) : (
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Sign in</Text>
+              <Text style={{ color: colors.onPrimary, fontSize: 16, fontWeight: '600' }}>Sign in</Text>
             )}
           </Pressable>
 
@@ -174,6 +178,12 @@ export function SignInScreen({ serverUrl, onSignedIn, onChangeServer }: Props) {
           </Text>
         </View>
       </ScrollView>
+      <Header
+        title={server.name}
+        subtitle={`${server.connectedVia === 'internal' ? 'Internal' : 'External'} · ${serverUrl.replace(/^https?:\/\//, '')}`}
+        icon="storage"
+        onBack={onBackToServers}
+      />
     </KeyboardAvoidingView>
   );
 }

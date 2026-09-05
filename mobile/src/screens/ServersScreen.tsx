@@ -27,7 +27,7 @@ function newDraft(): ServerProfile {
   return { id: '', name: '', externalUrl: '', internalUrl: '', ssids: [], version: 'unknown' };
 }
 
-/** Add, select, and edit the saved addresses without exposing storage mechanics. */
+/** Add and edit saved servers; switching is an explicit, confirmed action. */
 export function ServersScreen({ active, onBack, onSelect, onSave, onRemove, openWith = 'list' }: Props) {
   const [servers, setServers] = useState<ServerProfile[]>([]);
   const [draft, setDraft] = useState<ServerProfile | null>(
@@ -78,6 +78,17 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove, open
     else setDraft(null);
   };
 
+  const select = (profile: ServerProfile) => {
+    Alert.alert(
+      `Use ${profile.name}?`,
+      'Switching servers takes you to that server’s sign-in screen.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Use server', onPress: () => void onSelect(profile) },
+      ],
+    );
+  };
+
   if (draft) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -114,13 +125,13 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove, open
     <Header title="Servers" icon="storage" onBack={onBack} />
     <ScrollView contentContainerStyle={{ paddingTop: clearance + 8, paddingHorizontal: 16, paddingBottom: TAB_BAR_CLEARANCE }}>
       <Text style={{ color: colors.muted, fontSize: 15, lineHeight: 21, marginBottom: 16 }}>
-        Choose a server or add another one. Imadeo asks you to sign in again when you switch servers.
+        Edit or remove a saved server. Switching to another server is always a separate action.
       </Text>
       {servers.map((item) => {
         const selected = item.id === active.id;
         return (
           <View key={item.id} style={{ backgroundColor: colors.surface, borderRadius: radius.lg, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: selected ? colors.primary : colors.border }}>
-            <Pressable onPress={() => void onSelect(item)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 13, padding: 16, opacity: pressed ? 0.72 : 1 })}>
+            <Pressable onPress={() => { setDraft(item); setError(null); }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 13, padding: 16, opacity: pressed ? 0.72 : 1 })}>
               <View style={{ width: 38, height: 38, borderRadius: radius.sm, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}><Icon name="storage" size={20} color={colors.primary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontSize: 17, fontWeight: '700' }}>{item.name}</Text>
@@ -137,7 +148,22 @@ export function ServersScreen({ active, onBack, onSelect, onSave, onRemove, open
               </View>
               {selected ? <Icon name="check" size={20} color={colors.primary} strong /> : null}
             </Pressable>
-            <Pressable onPress={() => { setDraft(item); setError(null); }} style={{ borderTopWidth: 1, borderTopColor: colors.border, padding: 12, alignItems: 'center' }}><Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>Edit connection details</Text></Pressable>
+            <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Pressable
+                onPress={() => { setDraft(item); setError(null); }}
+                style={({ pressed }) => ({ flex: 1, padding: 12, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}
+              >
+                <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>Edit server</Text>
+              </Pressable>
+              {!selected ? (
+                <Pressable
+                  onPress={() => select(item)}
+                  style={({ pressed }) => ({ flex: 1, padding: 12, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: colors.border, opacity: pressed ? 0.7 : 1 })}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700' }}>Use server</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         );
       })}

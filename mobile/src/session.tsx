@@ -23,8 +23,6 @@ interface Session {
   connect: (server: ServerProfile) => Promise<void>;
   signedInNow: () => void;
   activateServerAddress: (address: string) => Promise<void>;
-  /** Leaves the signed-in server picker without deleting saved server details. */
-  changeServer: () => Promise<void>;
   selectServer: (server: ServerProfile) => Promise<void>;
   updateServer: (server: ServerProfile) => Promise<void>;
   removeServer: (server: ServerProfile) => Promise<void>;
@@ -102,11 +100,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         url: address,
         connectedVia: address === server.internalUrl ? 'internal' : 'external',
       });
-    },
-    changeServer: async () => {
-      await signOut();
-      setSignedIn(false);
-      setServer(null);
     },
     selectServer: async (profile) => {
       await useProfile(profile, profile.id !== server?.id);
