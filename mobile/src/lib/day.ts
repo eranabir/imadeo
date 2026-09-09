@@ -65,14 +65,16 @@ export function intoDays<T>(
   items: T[],
   at: (item: T) => When,
   columns: number,
-): { title: string; data: T[][] }[] {
-  const days: { title: string; data: T[][] }[] = [];
+): { key: string; title: string; data: T[][] }[] {
+  const days: { key: string; title: string; data: T[][] }[] = [];
 
   for (const item of items) {
     const title = dayLabel(at(item));
     let day = days[days.length - 1];
     if (!day || day.title !== title) {
-      day = { title, data: [] };
+      // SectionList otherwise keys sections by position. Removing the final
+      // photo from one day would then remount every later day's thumbnails.
+      day = { key: title, title, data: [] };
       days.push(day);
     }
     const row = day.data[day.data.length - 1];

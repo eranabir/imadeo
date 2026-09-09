@@ -144,6 +144,8 @@ export function LibraryScreen({ server }: Props) {
   const pageInFlight = useRef(false);
   /** Invalidates a page request when a fresh library load starts. */
   const libraryVersion = useRef(0);
+  /** Deletions can arrive once from our call and again from Photos' listener. */
+  const appliedDeletions = useRef(new Map<string, number>());
 
   // The progress strip adds 16pt to the floating header. Add the same amount
   // to the list clearance so the normal gap below the bar does not disappear.
@@ -310,22 +312,50 @@ export function LibraryScreen({ server }: Props) {
   const loadRef = useRef(load);
   loadRef.current = load;
 
+  /**
+   * Apply a Photos deletion without rebuilding the camera roll.
+   *
+   * Re-querying the first page remounted every visible `ph://` image after the
+   * native deletion prompt closed. Removing only the affected ids keeps the
+   * other decoded thumbnails mounted. The short-lived record makes the
+   * optimistic result and subsequent Photos event one idempotent operation.
+   */
+  const applyDeletedAssets = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const now = Date.now();
+    for (const [id, appliedAt] of appliedDeletions.current) {
+      if (now - appliedAt > 30_000) appliedDeletions.current.delete(id);
+    }
+    const fresh = ids.filter((id) => now - (appliedDeletions.current.get(id) ?? 0) > 30_000);
+    for (const id of fresh) appliedDeletions.current.set(id, now);
+    const gone = new Set(ids);
+
+    setAssets((current) => {
+      const next = current.filter((asset) => !gone.has(asset.id));
+      if (next.length !== current.length) setEndCursor(next.at(-1)?.id ?? null);
+      return next;
+    });
+    setPicked((current) => current.filter((id) => !gone.has(id)));
+    if (fresh.length > 0) {
+      setTotal((current) => current === null ? null : Math.max(0, current - fresh.length));
+    }
+  }, []);
+
   useEffect(() => {
     if (!allowed) return;
     const subscription = MediaLibrary.addListener((event) => {
-      // Updated iCloud metadata does not change which tiles belong here. New,
-      // removed or newly-authorised assets do, so rebuild the first page and
-      // its cursor from Photos rather than leaving dead `ph://` references.
-      if (
-        !event.hasIncrementalChanges ||
-        (event.insertedAssets?.length ?? 0) > 0 ||
-        (event.deletedAssets?.length ?? 0) > 0
-      ) {
+      const deleted = event.deletedAssets ?? [];
+      if (deleted.length > 0) applyDeletedAssets(deleted.map((asset) => asset.id));
+
+      // A new or newly-authorised asset changes ordering and pagination, so it
+      // still needs a fresh first page. An incremental deletion was handled
+      // above and must not blank and rebuild all surviving thumbnails.
+      if (!event.hasIncrementalChanges || (event.insertedAssets?.length ?? 0) > 0) {
         void loadRef.current();
       }
     });
     return () => subscription.remove();
-  }, [allowed]);
+  }, [allowed, applyDeletedAssets]);
 
   /**
    * A run when the app arrives at the front, if automatic backup is on.
@@ -410,17 +440,10 @@ export function LibraryScreen({ server }: Props) {
       const removed = await MediaLibrary.deleteAssetsAsync(deleting);
       // Declining the system prompt is an answer, not a failure.
       if (!removed) return;
-      const gone = new Set(deleting);
       // Photos sends a library-change event after its transaction, but the UI
       // should answer the confirmation immediately rather than continue to
       // show an item whose `ph://` reference has just become invalid.
-      setAssets((current) => {
-        const next = current.filter((asset) => !gone.has(asset.id));
-        setEndCursor(next.at(-1)?.id ?? null);
-        return next;
-      });
-      setTotal((current) => current === null ? null : Math.max(0, current - gone.size));
-      if (!ids) setPicked([]);
+      applyDeletedAssets(deleting);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
     }
@@ -563,7 +586,9 @@ export function LibraryScreen({ server }: Props) {
       <ScrollViewMarker style={{ flex: 1 }}>
         <SectionList
         sections={sections}
-        keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
+        // A deletion repacks the three-column rows. Their positions are stable;
+        // their first asset is not, so key by position to preserve mounted images.
+        keyExtractor={(_row, index) => `row-${index}`}
         stickySectionHeadersEnabled={false}
         ref={list}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
@@ -1452,6 +1477,7 @@ function Tile({
                   borderRadius: on ? 4 : 0,
                 }}
                 contentFit="cover"
+                cachePolicy="memory-disk"
                 recyclingKey={item.id}
                 transition={120}
               />

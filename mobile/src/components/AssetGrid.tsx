@@ -185,6 +185,7 @@ export function AssetGrid({
                 transform: [{ rotate: `${item.rotation ?? 0}deg` }],
               }}
               contentFit="cover"
+              cachePolicy="memory-disk"
               recyclingKey={item.id}
               transition={120}
             />
@@ -307,6 +308,7 @@ export function AssetGrid({
                 transform: [{ rotate: `${item.rotation ?? 0}deg` }],
               }}
               contentFit="cover"
+              cachePolicy="memory-disk"
               recyclingKey={item.id}
               transition={120}
             />
@@ -464,7 +466,9 @@ export function AssetGrid({
         <ScrollViewMarker style={{ flex: 1 }}>
           <SectionList
           sections={days}
-          keyExtractor={(row, index) => row[0]?.id ?? `row-${index}`}
+          // Deletion repacks a day's rows. Keep the row instances mounted so
+          // surviving thumbnails do not flash through their empty state.
+          keyExtractor={(_row, index) => `row-${index}`}
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
           renderItem={({ item: row }) => (
