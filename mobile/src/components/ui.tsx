@@ -17,7 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
-import { BRAND, colors, radius, ripple, shadow, wash } from '../theme';
+import { BRAND, colors, motion, radius, ripple, shadow, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 
 /**
@@ -249,17 +249,6 @@ export function Sheet({
   }, [shown]);
 
   /**
-   * Everything moving this panel runs on the JS driver.
-   *
-   * The finger's position arrives as `setValue` on `drag`, and `drag` is added
-   * to `enter` to make one translation — so if `enter` were native, the sum
-   * would be a native node and the JS writes to `drag` would never reach the
-   * view. It looked exactly like a dead gesture. A single sheet's opacity and
-   * translation are cheap enough to animate from JS.
-   */
-  const NATIVE = false;
-
-  /**
    * Dragged down to dismiss.
    *
    * A sheet that rises from the bottom edge invites being pushed back to it,
@@ -276,18 +265,18 @@ export function Sheet({
       setShown(true);
       Animated.timing(enter, {
         toValue: 1,
-        duration: 260,
+        duration: motion.enter,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: NATIVE,
+        useNativeDriver: true,
       }).start();
       return;
     }
 
     Animated.timing(enter, {
       toValue: 0,
-      duration: 190,
+      duration: motion.exit,
       easing: Easing.in(Easing.cubic),
-      useNativeDriver: NATIVE,
+      useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setShown(false);
     });
@@ -320,12 +309,12 @@ export function Sheet({
         if (gesture.dy > 110 || gesture.vy > 0.9) {
           Animated.timing(drag, {
             toValue: TRAVEL,
-            duration: 180,
+            duration: motion.exit,
             easing: Easing.out(Easing.quad),
-            useNativeDriver: NATIVE,
+            useNativeDriver: false,
           }).start(onClose);
         } else {
-          Animated.spring(drag, { toValue: 0, useNativeDriver: NATIVE, bounciness: 2 }).start();
+          Animated.spring(drag, { toValue: 0, useNativeDriver: false, bounciness: 2 }).start();
         }
       },
     }),
@@ -335,10 +324,7 @@ export function Sheet({
 
   // Further than any sheet is tall, so one constant covers every panel: it only
   // has to be off the bottom of the screen.
-  const lift = Animated.add(
-    enter.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, 0] }),
-    drag,
-  );
+  const lift = enter.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, 0] });
 
   return (
     <Modal transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
@@ -361,60 +347,71 @@ export function Sheet({
         </Animated.View>
 
         <Animated.View
-          style={[
-            {
-              backgroundColor: colors.raised,
-              borderTopLeftRadius: radius.xl,
-              borderTopRightRadius: radius.xl,
-              paddingTop: 10,
-              // The keyboard covers this lower part of the panel. Keeping the
-              // background behind it avoids a second exposed edge while the
-              // spacer leaves every field and action above the keyboard.
-              paddingBottom: keyboardHeight > 0 ? keyboardHeight + 12 : Math.max(HOME_INDICATOR, 16),
-              ...(tall ? { height: '85%' } : { maxHeight: '85%' }),
-              transform: [{ translateY: lift }],
-            },
-            shadow(3),
-          ]}
+          style={{
+            width: '100%',
+            maxHeight: '85%',
+            ...(tall ? { height: '85%' } : null),
+            transform: [{ translateY: lift }],
+          }}
         >
-          {/* The head is the handle: grabber, title and description together,
-              so there is a comfortable band to pull rather than a 4pt bar. */}
-          <View {...grip.panHandlers}>
-            {/* The grabber says the panel is dismissable before anyone tries. */}
-            <View
-              style={{
-                alignSelf: 'center',
-                width: 38,
-                height: 4,
-                borderRadius: radius.pill,
-                backgroundColor: colors.border,
-                marginBottom: 14,
-              }}
-            />
-
-            <View style={{ paddingHorizontal: 20, marginBottom: description ? 14 : 12 }}>
-              <Text
-                style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}
-              >
-                {title}
-              </Text>
-              {description && (
-                <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
-                  {description}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          <ScrollView
-            style={tall ? { flex: 1 } : { flexGrow: 0 }}
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
-            keyboardShouldPersistTaps="handled"
+          {/* Entrance runs on the UI thread. Drag stays on its own nested view
+              so PanResponder can update it directly without mixing drivers. */}
+          <Animated.View
+            style={[
+              {
+                backgroundColor: colors.raised,
+                borderTopLeftRadius: radius.xl,
+                borderTopRightRadius: radius.xl,
+                paddingTop: 10,
+                // The keyboard covers this lower part of the panel. Keeping the
+                // background behind it avoids a second exposed edge while the
+                // spacer leaves every field and action above the keyboard.
+                paddingBottom: keyboardHeight > 0 ? keyboardHeight + 12 : Math.max(HOME_INDICATOR, 16),
+                ...(tall ? { flex: 1 } : { maxHeight: '100%' }),
+                transform: [{ translateY: drag }],
+              },
+              shadow(3),
+            ]}
           >
-            {children}
-          </ScrollView>
+            {/* The head is the handle: grabber, title and description together,
+                so there is a comfortable band to pull rather than a 4pt bar. */}
+            <View {...grip.panHandlers}>
+              {/* The grabber says the panel is dismissable before anyone tries. */}
+              <View
+                style={{
+                  alignSelf: 'center',
+                  width: 38,
+                  height: 4,
+                  borderRadius: radius.pill,
+                  backgroundColor: colors.border,
+                  marginBottom: 14,
+                }}
+              />
 
-          {footer && <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>{footer}</View>}
+              <View style={{ paddingHorizontal: 20, marginBottom: description ? 14 : 12 }}>
+                <Text
+                  style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}
+                >
+                  {title}
+                </Text>
+                {description && (
+                  <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
+                    {description}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <ScrollView
+              style={tall ? { flex: 1 } : { flexGrow: 0 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {children}
+            </ScrollView>
+
+            {footer && <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>{footer}</View>}
+          </Animated.View>
         </Animated.View>
       </View>
     </Modal>
@@ -492,7 +489,7 @@ export function Toggle({
   useEffect(() => {
     Animated.timing(slide, {
       toValue: on ? 1 : 0,
-      duration: 160,
+      duration: motion.quick,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();

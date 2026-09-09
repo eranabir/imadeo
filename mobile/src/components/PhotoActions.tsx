@@ -226,7 +226,6 @@ export function DeviceActions({
           icon="trash"
           label="Remove"
           danger
-          disabled={busy}
           onPress={onRemove}
         />
       </Dock>

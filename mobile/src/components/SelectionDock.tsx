@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, StyleSheet } from 'react-native';
 import { useSelectionBar } from '../selection';
+import { motion } from '../theme';
 
 /** The selected-media toolbar, owned by the active route rather than UIKit. */
 export function SelectionDock() {
@@ -13,7 +14,7 @@ export function SelectionDock() {
 
     const animation = Animated.timing(enter, {
       toValue: dock ? 1 : 0,
-      duration: dock ? 260 : 180,
+      duration: dock ? motion.enter : motion.exit,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     });

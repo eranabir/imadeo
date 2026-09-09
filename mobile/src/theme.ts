@@ -160,6 +160,11 @@ export const wash = (hex: string) => `${hex}36`;
  */
 export const ripple = { color: DARK.ripple, borderless: false };
 
+/** Shared interaction timing: short on iOS so app-owned movement follows UIKit. */
+export const motion = Platform.OS === 'ios'
+  ? { quick: 100, enter: 180, exit: 130 }
+  : { quick: 140, enter: 240, exit: 180 };
+
 /**
  * Depth, expressed the way each platform actually draws it.
  *

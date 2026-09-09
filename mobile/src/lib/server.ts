@@ -66,16 +66,17 @@ export async function probe(input: string): Promise<{ url: string; version: stri
   }
 
   let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
     response = await fetch(`${url}/api`, { signal: controller.signal });
-    clearTimeout(timer);
   } catch {
     const help = isLocalAddress(url)
       ? 'Check the address and that your phone is on the same network.'
       : 'Check the public address and port forwarding.';
     throw new Error(`Could not reach ${url}. ${help}`);
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!response.ok) {
@@ -147,12 +148,17 @@ export function resolveServer(profile: ServerProfile, ssid: string | null): Serv
 /** Finds a working route without changing which saved server is selected. */
 export async function findReachable(server: ServerInfo): Promise<string | null> {
   const candidates = [...new Set([server.url, server.internalUrl, server.externalUrl].filter(Boolean) as string[])];
-  for (const address of candidates) {
+  // Network transitions briefly reject new sockets on iOS. Probe both routes
+  // together, then retry one fast failure before declaring a saved server
+  // offline; a dead LAN address must never delay a working public address.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      await probe(address);
-      return address;
+      return await Promise.any(candidates.map(async (address) => {
+        await probe(address);
+        return address;
+      }));
     } catch {
-      // Try the next route to this same installation.
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
     }
   }
   return null;

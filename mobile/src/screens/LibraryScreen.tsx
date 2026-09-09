@@ -65,7 +65,7 @@ import {
 } from '../lib/backup';
 import type { ServerInfo } from '../lib/server';
 import { useSelectionBar } from '../selection';
-import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+import { colors, motion, radius, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Props { server: ServerInfo }
 
@@ -398,6 +398,15 @@ export function LibraryScreen({ server }: Props) {
     setError(null);
     try {
       const deleting = ids ?? picked;
+      if (deleting.length === 0) return;
+
+      // Deletion remains available during automatic backup. Stop the native
+      // stream before removing a Photos asset so it never holds a dead URI.
+      if (backupInFlight()) {
+        stop.current = true;
+        if (runningRef.current) setStopping(true);
+        await cancelBackup();
+      }
       const removed = await MediaLibrary.deleteAssetsAsync(deleting);
       // Declining the system prompt is an answer, not a failure.
       if (!removed) return;
@@ -877,7 +886,7 @@ function DeviceViewer({
   useEffect(() => {
     Animated.timing(chromeOpacity, {
       toValue: chrome ? 1 : 0,
-      duration: chrome ? 180 : 150,
+      duration: chrome ? motion.enter : motion.quick,
       useNativeDriver: true,
     }).start();
   }, [chrome, chromeOpacity]);
@@ -1148,7 +1157,6 @@ function DeviceViewer({
               icon="trash"
               label="Remove from this phone"
               tint={colors.text}
-              disabled={busy}
               onPress={() => setRemoving(true)}
             />
           </ViewerActionPlate>

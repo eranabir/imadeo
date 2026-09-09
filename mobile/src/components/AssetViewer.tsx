@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { ApiError, duration as formatDuration, type Asset } from '../lib/api';
 import { ensureFreshToken } from '../lib/auth';
-import { colors, radius } from '../theme';
+import { colors, motion, radius } from '../theme';
 import { useGrowFrom, type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { ConfirmSheet, VaultSheet } from './sheets';
@@ -145,7 +145,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
   useEffect(() => {
     Animated.timing(chromeOpacity, {
       toValue: chrome ? 1 : 0,
-      duration: chrome ? 180 : 150,
+      duration: chrome ? motion.enter : motion.quick,
       useNativeDriver: true,
     }).start();
   }, [chrome, chromeOpacity]);

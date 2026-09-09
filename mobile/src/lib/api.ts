@@ -131,6 +131,16 @@ let reachabilityEpoch = 0;
 let confirmingReachability: { url: string; promise: Promise<boolean> } | null = null;
 const watchers = new Set<(state: ServerReachability) => void>();
 
+class TransportError extends Error {
+  constructor(message: string, readonly elapsedMs: number) {
+    super(message);
+    this.name = 'TransportError';
+  }
+}
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
 function setReachability(next: ServerReachability) {
   if (next === reachability) return;
   reachability = next;
@@ -171,20 +181,30 @@ export async function ping(serverUrl: string) {
 
   const probeEpoch = reachabilityEpoch;
   const promise = (async () => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    try {
-      await fetch(`${serverUrl}/api`, { signal: controller.signal });
-      markServerReachable();
-      return true;
-    } catch {
-      // A later successful request or address switch wins over this stale
-      // probe; never let the old route replace a working app with an error.
-      if (reachabilityEpoch === probeEpoch) setReachability('unreachable');
-      return false;
-    } finally {
-      clearTimeout(timer);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const started = Date.now();
+      try {
+        await fetch(`${serverUrl}/api`, { signal: controller.signal });
+        markServerReachable();
+        return true;
+      } catch {
+        // A fast socket/DNS failure commonly occurs while iOS moves between
+        // Wi-Fi and cellular. Retry it once; a real timeout is already final.
+        if (attempt === 0 && Date.now() - started < 4000) {
+          await wait(400);
+          continue;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
     }
+
+    // A later successful request or address switch wins over this stale
+    // probe; never let the old route replace a working app with an error.
+    if (reachabilityEpoch === probeEpoch) setReachability('unreachable');
+    return false;
   })().finally(() => {
     if (confirmingReachability?.promise === promise) confirmingReachability = null;
   });
@@ -208,6 +228,7 @@ export async function request<T>(
   const token = await storedToken();
 
   const send = async (accessToken: string | null) => {
+    const started = Date.now();
     const controller = new AbortController();
     const callerSignal = init.signal;
     const cancel = () => controller.abort();
@@ -226,26 +247,47 @@ export async function request<T>(
           ...init.headers,
         },
       });
-    } catch {
+    } catch (cause) {
+      // A caller intentionally cancelling its own request is not evidence that
+      // the selected server disappeared, and must never trigger a reconnect.
+      if (callerSignal?.aborted) throw cause;
       // A busy media endpoint can time out while the lightweight server root
       // still answers. Confirm the connection before replacing the entire app
       // with the reconnect screen; simultaneous failures share one probe.
       void ping(serverUrl);
-      throw new Error('Could not reach your server. Check your connection.');
+      throw new TransportError(
+        'Could not reach your server. Check your connection.',
+        Date.now() - started,
+      );
     } finally {
       clearTimeout(timer);
       callerSignal?.removeEventListener('abort', cancel);
     }
   };
 
-  let response = await send(token);
+  const method = (init.method ?? 'GET').toUpperCase();
+  const mayRetry = method === 'GET' || method === 'HEAD';
+  const sendResiliently = async (accessToken: string | null) => {
+    try {
+      return await send(accessToken);
+    } catch (cause) {
+      // Retry only fast, idempotent failures. Repeating a timed-out mutation
+      // could perform it twice, while repeating a full 12-second timeout would
+      // merely make the offline screen feel broken for twice as long.
+      if (!(cause instanceof TransportError) || !mayRetry || cause.elapsedMs >= 4000) throw cause;
+      await wait(400);
+      return send(accessToken);
+    }
+  };
+
+  let response = await sendResiliently(token);
 
   // Native sessions use short-lived access tokens and rotating refresh tokens.
   // Retry the original request once, after one shared refresh, so simultaneous
   // tab loads cannot race each other and invalidate the session.
   if (response.status === 401 && token) {
     try {
-      response = await send(await refreshToken(serverUrl));
+      response = await sendResiliently(await refreshToken(serverUrl));
     } catch (cause) {
       if (cause instanceof SessionRefreshError && cause.unreachable) void ping(serverUrl);
       else markServerReachable();

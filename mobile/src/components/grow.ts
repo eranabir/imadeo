@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing } from 'react-native';
+import { motion } from '../theme';
 
 /** Where a tile sat when it was tapped, so the photograph can grow out of it. */
 export interface Rect {
@@ -43,7 +44,7 @@ export function useGrowFrom(origin: Rect | null, open: boolean) {
       setMounted(true);
       Animated.timing(enter, {
         toValue: 1,
-        duration: 280,
+        duration: motion.enter,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start();
@@ -52,7 +53,7 @@ export function useGrowFrom(origin: Rect | null, open: boolean) {
 
     Animated.timing(enter, {
       toValue: 0,
-      duration: 200,
+      duration: motion.exit,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {

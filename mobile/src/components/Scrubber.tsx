@@ -16,7 +16,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { colors, radius, shadow } from '../theme';
+import { colors, motion, radius, shadow } from '../theme';
 
 /** The handle's size, and the rail it runs in. */
 const HANDLE = 44;
@@ -73,7 +73,7 @@ export function Scrubber({
   useEffect(() => {
     const animation = Animated.timing(fade, {
       toValue: visible ? 1 : 0,
-      duration: visible ? 140 : 260,
+      duration: visible ? motion.quick : motion.exit,
       useNativeDriver: true,
     });
     animation.start();
@@ -331,7 +331,7 @@ export function DateLabel({ children, visible }: { children: ReactNode; visible:
   useEffect(() => {
     const animation = Animated.timing(fade, {
       toValue: showing ? 1 : 0,
-      duration: showing ? 140 : 260,
+      duration: showing ? motion.quick : motion.exit,
       useNativeDriver: true,
     });
     animation.start();
