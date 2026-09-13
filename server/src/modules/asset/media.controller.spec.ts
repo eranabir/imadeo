@@ -13,6 +13,12 @@ describe('mimeFor', () => {
     expect(mimeFor('/data/users/id/library/asset', 'IMG_1234.MOV')).toBe('video/quicktime');
   });
 
+  it('does not treat dots in an extensionless stored filename as its media type', () => {
+    expect(
+      mimeFor('/data/users/id/library/2019-05-10 22.06.59', '2019-05-10 22.06.59.mov'),
+    ).toBe('video/quicktime');
+  });
+
   it('prefers the generated derivative extension', () => {
     expect(mimeFor('/data/users/id/encoded-video/asset.mp4', 'IMG_1234.MOV')).toBe('video/mp4');
   });

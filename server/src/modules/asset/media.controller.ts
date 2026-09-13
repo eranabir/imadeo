@@ -26,8 +26,14 @@ const MIME_TYPES: Record<string, string> = {
  * native media players receive a useful Content-Type while processing catches up.
  */
 export const mimeFor = (path: string, originalFileName?: string) => {
-  const extension = extname(path).toLowerCase() || extname(originalFileName ?? '').toLowerCase();
-  return MIME_TYPES[extension] ?? 'application/octet-stream';
+  const storedType = MIME_TYPES[extname(path).toLowerCase()];
+  if (storedType) return storedType;
+
+  // Originals are stored without their final extension, but their stem may
+  // still contain dots (for example "2019-05-10 22.06.59"). Do not mistake
+  // that timestamp suffix for a real file type and lose the uploaded MOV MIME.
+  const uploadedType = MIME_TYPES[extname(originalFileName ?? '').toLowerCase()];
+  return uploadedType ?? 'application/octet-stream';
 };
 
 /**

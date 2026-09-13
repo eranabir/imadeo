@@ -3,7 +3,7 @@ export const VIEWER_HEADER_HEIGHT = 38;
 export const VIEWER_MEDIA_TOP_GAP = 10;
 export const VIEWER_ACTION_DOCK_HEIGHT = 38;
 export const VIEWER_FILMSTRIP_HEIGHT = 38;
-export const VIEWER_FILMSTRIP_GAP = 8;
+export const VIEWER_FILMSTRIP_GAP = 14;
 /** Keep the three bottom rows on one rhythm: controls → filmstrip → actions. */
 export const VIEWER_CONTROLS_GAP = VIEWER_FILMSTRIP_GAP;
 
