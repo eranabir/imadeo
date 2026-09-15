@@ -24,6 +24,8 @@ function createService(
   const assetUpdate = vi.fn().mockResolvedValue({ id: existing.id });
   const assetUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const assetUserDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
+  const assetUserCreateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const userFindMany = vi.fn().mockResolvedValue([{ id: 'recipient-id' }]);
   const sharedLinkAssetDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
   const albumFindFirst = vi.fn().mockResolvedValue({ id: 'album-id' });
   const albumAssetCreateMany = vi.fn().mockResolvedValue({ count: 1 });
@@ -43,7 +45,8 @@ function createService(
         update: assetUpdate,
         updateMany: assetUpdateMany,
       },
-      assetUser: { deleteMany: assetUserDeleteMany },
+      assetUser: { deleteMany: assetUserDeleteMany, createMany: assetUserCreateMany },
+      user: { findMany: userFindMany },
       sharedLinkAsset: { deleteMany: sharedLinkAssetDeleteMany },
       album: { findFirst: albumFindFirst, update: albumUpdate },
       albumAsset: { createMany: albumAssetCreateMany },
@@ -77,6 +80,8 @@ function createService(
     assetUpdate,
     assetUpdateMany,
     assetUserDeleteMany,
+    assetUserCreateMany,
+    userFindMany,
     sharedLinkAssetDeleteMany,
     storageRemove,
     ensurePath,
@@ -89,6 +94,32 @@ function createService(
     albumUpdate,
   };
 }
+
+describe('AssetService explicit sharing', () => {
+  it('shares owned device backups without promoting or moving them', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([{ id: 'asset-id', visibility: 'TIMELINE' }]);
+    await test.service.share('owner-id', { ids: ['asset-id'], userIds: ['recipient-id'] });
+    const where = test.assetFindMany.mock.calls[0][0].where;
+    expect(where.ownerId).toBe('owner-id');
+    expect(where.deletedAt).toBeNull();
+    expect(where.isDeviceOnly).toBeUndefined();
+    expect(where.visibility.in).not.toContain('LOCKED');
+    expect(test.assetUserCreateMany).toHaveBeenCalledOnce();
+    expect(test.assetUpdateMany).not.toHaveBeenCalled();
+  });
+  it('rejects unowned or missing files without granting partial access', async () => {
+    const test = createService({ id: 'asset-id' });
+    await expect(test.service.share('owner-id', { ids: ['asset-id'], userIds: ['recipient-id'] })).rejects.toBeInstanceOf(NotFoundException);
+    expect(test.assetUserCreateMany).not.toHaveBeenCalled();
+  });
+  it('never shares locked files', async () => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([{ id: 'asset-id', visibility: 'LOCKED' }]);
+    await expect(test.service.share('owner-id', { ids: ['asset-id'], userIds: ['recipient-id'] })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(test.assetUserCreateMany).not.toHaveBeenCalled();
+  });
+});
 
 describe('AssetService browser thumbnail', () => {
   it('validates and stores a provisional JPEG without completing canonical processing', async () => {

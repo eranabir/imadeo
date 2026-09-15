@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import {
   useCallback,
   useEffect,
@@ -18,10 +17,11 @@ import {
   View,
 } from 'react-native';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
-import { duration as formatDuration, thumbnail, type Asset } from '../lib/api';
+import { duration as formatDuration, type Asset } from '../lib/api';
 import { intoDays } from '../lib/day';
 import { colors, radius, shadow, TAB_BAR_CLEARANCE } from '../theme';
 import { AssetViewer } from './AssetViewer';
+import { AssetThumbnail } from './AssetThumbnail';
 import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton, ListSkeleton } from './Loading';
@@ -162,6 +162,10 @@ export function AssetGrid({
           delayLongPress={280}
           accessibilityRole={selecting ? 'checkbox' : 'image'}
           accessibilityLabel={item.originalFileName ?? 'Photo'}
+          accessibilityActions={[{ name: 'longpress', label: 'Select item' }]}
+          onAccessibilityAction={({ nativeEvent }) => {
+            if (nativeEvent.actionName === 'longpress') onStartSelecting?.(item.id);
+          }}
           accessibilityState={selecting ? { checked: on } : undefined}
           style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
         >
@@ -175,8 +179,8 @@ export function AssetGrid({
               borderRadius: on ? radius.sm : 0,
             }}
           >
-            <Image
-              source={thumbnail(serverUrl, item.id, token)}
+            <AssetThumbnail
+              serverUrl={serverUrl} assetId={item.id} token={token}
               style={{
                 width: '100%',
                 height: '100%',
@@ -267,6 +271,10 @@ export function AssetGrid({
         delayLongPress={280}
         accessibilityRole={selecting ? 'checkbox' : 'button'}
         accessibilityLabel={item.originalFileName ?? 'Photo'}
+        accessibilityActions={[{ name: 'longpress', label: 'Select item' }]}
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (nativeEvent.actionName === 'longpress') onStartSelecting?.(item.id);
+        }}
         accessibilityState={selecting ? { checked: on } : undefined}
         style={{ marginHorizontal: 16, marginBottom: 8 }}
       >
@@ -298,8 +306,8 @@ export function AssetGrid({
             </View>
           ) : null}
           <View style={{ width: 56, height: 56 }}>
-            <Image
-              source={thumbnail(serverUrl, item.id, token)}
+            <AssetThumbnail
+              serverUrl={serverUrl} assetId={item.id} token={token}
               style={{
                 width: 56,
                 height: 56,

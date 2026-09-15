@@ -185,6 +185,7 @@ export function Sheet({
   title,
   description,
   onClose,
+  onDismiss,
   children,
   footer,
   tall = false,
@@ -193,6 +194,8 @@ export function Sheet({
   title: string;
   description?: string;
   onClose: () => void;
+  /** Called after native dismissal, safe for presenting the next sheet. */
+  onDismiss?: () => void;
   children: ReactNode;
   footer?: ReactNode;
   /**
@@ -219,6 +222,10 @@ export function Sheet({
   const [shown, setShown] = useState(open);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const enter = useRef(new Animated.Value(0)).current;
+  const closeRef = useRef(onClose);
+  const dismissRef = useRef(onDismiss);
+  closeRef.current = onClose;
+  dismissRef.current = onDismiss;
 
   useEffect(() => {
     if (!shown) {
@@ -263,23 +270,29 @@ export function Sheet({
     if (open) {
       drag.setValue(0);
       setShown(true);
-      Animated.timing(enter, {
+      const animation = Animated.timing(enter, {
         toValue: 1,
         duration: motion.enter,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }).start();
-      return;
+      });
+      animation.start();
+      return () => animation.stop();
     }
 
-    Animated.timing(enter, {
+    const animation = Animated.timing(enter, {
       toValue: 0,
       duration: motion.exit,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) setShown(false);
     });
+    animation.start(({ finished }) => {
+      if (finished) {
+        setShown(false);
+        if (Platform.OS !== 'ios') dismissRef.current?.();
+      }
+    });
+    return () => animation.stop();
   }, [open, drag, enter]);
 
   const grip = useRef(
@@ -312,7 +325,7 @@ export function Sheet({
             duration: motion.exit,
             easing: Easing.out(Easing.quad),
             useNativeDriver: false,
-          }).start(onClose);
+          }).start(() => closeRef.current());
         } else {
           Animated.spring(drag, { toValue: 0, useNativeDriver: false, bounciness: 2 }).start();
         }
@@ -320,14 +333,13 @@ export function Sheet({
     }),
   ).current;
 
-  if (!shown) return null;
-
   // Further than any sheet is tall, so one constant covers every panel: it only
   // has to be off the bottom of the screen.
   const lift = enter.interpolate({ inputRange: [0, 1], outputRange: [TRAVEL, 0] });
 
   return (
-    <Modal transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={shown} transparent animationType="none" onRequestClose={onClose}
+      onDismiss={() => dismissRef.current?.()} statusBarTranslucent>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         {/* Tapping the dimmed area is how a sheet is dismissed on both
             platforms, and it has to be a sibling of the panel — a panel nested

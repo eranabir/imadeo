@@ -104,6 +104,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
     } catch (cause) {
       if (restoreAutomaticBackup) await setEnabled(true);
       setRemoveError(cause instanceof Error ? cause.message : 'Could not remove this device.');
+      return false;
     }
   };
 
@@ -118,7 +119,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
           device.reload();
           assets.reload();
         }}
-        topInset={clearance}
+        topInset={clearance + 16}
         selected={selection.ids}
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
@@ -153,7 +154,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         }}
       />
       <Header
-        title={device.data?.libraryName ?? title}
+        title={selection.active ? `${selection.ids.length} selected` : device.data?.libraryName ?? title}
         subtitle={
           device.data
             ? `${device.data.assetCount.toLocaleString()} ${device.data.assetCount === 1 ? 'item' : 'items'}`
@@ -163,6 +164,11 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         onBack={onBack}
         action={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {assets.items.length > 0 && <HeaderAction
+              label={selection.active ? 'Clear selection' : 'Select loaded items'}
+              icon="check" compact
+              onPress={() => selection.active ? selection.clear() : selection.toggleMany(assets.items.map((asset) => asset.id))}
+            />}
             <HeaderAction
               label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
               icon={viewMode === 'grid' ? 'list' : 'grid'}
@@ -186,7 +192,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         description="Every photo and video in this device library will move to Trash for 30 days, and the device will be removed. Automatic backup is turned off when you remove this phone, so it cannot immediately recreate the library."
         confirmLabel="Remove device"
         onClose={() => setConfirmRemove(false)}
-        onConfirm={() => void removeDevice()}
+        onConfirm={removeDevice}
       />
     </View>
   );

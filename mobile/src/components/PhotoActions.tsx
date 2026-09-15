@@ -10,7 +10,6 @@ import {
   ConfirmSheet,
   MoveSheet,
   ShareSheet,
-  type MoveDestination,
 } from './sheets';
 import { Touchable } from './ui';
 
@@ -19,6 +18,7 @@ interface Props {
   ids: string[];
   /** Whether every selected photo is already a favourite, so the button flips. */
   allFavorite?: boolean;
+  locked?: boolean;
   /** Exact detections to move when this selection came from a subject page. */
   assignmentFaceIds?: string[];
   onClear: () => void;
@@ -37,15 +37,16 @@ export function PhotoActions({
   serverUrl,
   ids,
   allFavorite = false,
+  locked = false,
   assignmentFaceIds,
   onClear,
   onDone,
 }: Props) {
   const [moving, setMoving] = useState(false);
-  const [moveDestination, setMoveDestination] = useState<MoveDestination | null>(null);
   const [assigning, setAssigning] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [trashing, setTrashing] = useState(false);
+  const [locking, setLocking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,6 +54,15 @@ export function PhotoActions({
   // the way out — including when the whole screen is popped mid-selection.
   const { setActive } = useSelectionBar();
   const showing = ids.length > 0;
+  useEffect(() => {
+    if (showing) return;
+    setMoving(false);
+    setAssigning(false);
+    setSharing(false);
+    setTrashing(false);
+    setLocking(false);
+    setError(null);
+  }, [showing]);
   useEffect(() => {
     setActive(showing);
     return () => setActive(false);
@@ -64,8 +74,10 @@ export function PhotoActions({
     try {
       await work();
       onDone();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That did not work.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -90,9 +102,10 @@ export function PhotoActions({
           onPress={() => run(() => actions.favorite(serverUrl, ids, !allFavorite))}
         />
         <ToolbarAction icon="move" label="Move" disabled={busy} onPress={() => setMoving(true)} />
+        <ToolbarAction icon={locked ? 'unlock' : 'lock'} label={locked ? 'Unlock' : 'Lock'} disabled={busy} onPress={() => setLocking(true)} />
         <ToolbarAction
           icon="people-and-pets"
-          label="Who is this"
+          label="Identify"
           disabled={busy}
           onPress={() => setAssigning(true)}
         />
@@ -106,7 +119,7 @@ export function PhotoActions({
         />
       </Dock>
     ) : null,
-    [showing, ids.join(','), allFavorite, busy, error, serverUrl],
+    [showing, ids.join(','), allFavorite, locked, busy, error, serverUrl],
   );
 
   if (!showing) return null;
@@ -118,30 +131,16 @@ export function PhotoActions({
         serverUrl={serverUrl}
         count={ids.length}
         allowAlbums
+        includeLocked={locked}
         onClose={() => setMoving(false)}
-        onSelect={setMoveDestination}
+        onSelect={(destination, copy) => run(() => destination.kind === 'folder'
+          ? actions.toFolder(serverUrl, destination.id, ids)
+          : actions.toAlbum(serverUrl, destination.id, ids, copy))}
       />
-
-      <ConfirmSheet
-        open={moveDestination !== null}
-        title={
-          ids.length === 1
-            ? `Move this item to “${moveDestination?.name ?? ''}”?`
-            : `Move ${ids.length} items to “${moveDestination?.name ?? ''}”?`
-        }
-        description={`The selected ${ids.length === 1 ? 'item' : 'items'} will be moved to this ${moveDestination?.kind ?? 'destination'}.`}
-        confirmLabel="Move"
-        variant="primary"
-        onClose={() => setMoveDestination(null)}
-        onConfirm={() => {
-          if (!moveDestination) return;
-          void run(() =>
-            moveDestination.kind === 'folder'
-              ? actions.toFolder(serverUrl, moveDestination.id, ids)
-              : actions.toAlbum(serverUrl, moveDestination.id, ids),
-          );
-        }}
-      />
+      <ConfirmSheet open={locking} title={locked ? 'Remove from Locked?' : 'Lock selected items?'}
+        description={locked ? 'The selected items will be visible in the library again.' : 'The items keep their folders and albums, but can only be viewed from Locked.'}
+        variant="primary" confirmLabel={locked ? 'Unlock' : 'Lock'} onClose={() => setLocking(false)}
+        onConfirm={() => run(() => actions.setLock(serverUrl, ids, !locked))} />
 
       <AssignSheet
         open={assigning}
@@ -158,6 +157,7 @@ export function PhotoActions({
         serverUrl={serverUrl}
         assetIds={ids}
         busy={busy}
+        error={error}
         onClose={() => setSharing(false)}
         onShare={(userIds) =>
           run(async () => {

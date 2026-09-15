@@ -37,6 +37,7 @@ import {
   ViewerFilmstrip,
   VIEWER_HEADER_HEIGHT,
   VIEWER_FILMSTRIP_HEIGHT,
+  VIEWER_ACTION_DOCK_HEIGHT,
   viewerDockHeight,
   viewerFilmstripBottom,
   viewerMediaViewport,
@@ -446,6 +447,7 @@ export function LibraryScreen({ server }: Props) {
       applyDeletedAssets(deleting);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
+      return false;
     }
   };
 
@@ -813,7 +815,7 @@ export function LibraryScreen({ server }: Props) {
             : `They stay on ${server.name}. Only the copy in this phone's gallery is removed, and you can still see them in Browse.`
         }
         confirmLabel="Remove from phone"
-        onConfirm={() => void removeFromPhone()}
+        onConfirm={() => removeFromPhone()}
         onClose={() => setConfirmDelete(false)}
       />
     </View>
@@ -1397,7 +1399,7 @@ function ViewerAction({
       disabled={disabled}
       radius={radius.pill}
       label={label}
-      style={{ width: 40, height: 40 }}
+      style={{ width: VIEWER_ACTION_DOCK_HEIGHT, height: VIEWER_ACTION_DOCK_HEIGHT }}
     >
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={21} color={tint} />

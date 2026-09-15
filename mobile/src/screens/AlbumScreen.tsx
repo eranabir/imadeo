@@ -115,6 +115,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
       />
 
       <PhotoActions
+        locked={locked}
         serverUrl={serverUrl}
         ids={selection.ids}
         allFavorite={

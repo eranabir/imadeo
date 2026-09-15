@@ -898,7 +898,9 @@ export class AssetService implements OnModuleInit {
 
     const [assets, recipients] = await Promise.all([
       this.prisma.asset.findMany({
-        where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId) },
+        // Sharing is an explicit action on an owned file, not global discovery.
+        // Device backups are shareable without moving them out of their device.
+        where: { id: { in: assetIds }, ...mainLibraryAssetWhere(userId), isDeviceOnly: undefined },
         select: { id: true, visibility: true },
       }),
       this.prisma.user.findMany({
@@ -967,7 +969,11 @@ export class AssetService implements OnModuleInit {
             isDeviceOnly: true,
             deviceAssets: { some: { deviceId: query.deviceId } },
           }
-        : { isDeviceOnly: false }),
+        : ownership === 'shared'
+          ? {}
+          : ownership === 'all'
+            ? { OR: [{ isDeviceOnly: false }, { ownerId: { not: userId }, sharedWith: { some: { userId } } }] }
+            : { isDeviceOnly: false }),
       ...(query.personId ? { faces: { some: { personId: query.personId, deletedAt: null } } } : {}),
       ...(query.filename
         ? { originalFileName: { contains: query.filename, mode: 'insensitive' } }

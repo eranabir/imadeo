@@ -180,9 +180,14 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
+    setActionError(null);
     try {
       await work();
       onChanged();
+      return true;
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'The change could not be saved.');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -212,7 +217,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
     resuming.current = false;
     setZoomed(false);
     setCurrent(bounded);
-    list.current?.scrollToOffset({ offset: bounded * width, animated: true });
+    list.current?.scrollToOffset({ offset: bounded * width, animated: Math.abs(bounded - current) === 1 });
   };
 
   return (
@@ -422,10 +427,12 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
               label="Rotate clockwise"
               tint={colors.text}
               disabled={busy}
-              onPress={() => {
+              onPress={async () => {
                 const next = ((rotation + 90) % 360) as 0 | 90 | 180 | 270;
                 setRotations((current) => ({ ...current, [asset.id]: next }));
-                void run(() => actions.rotateAsset(serverUrl, asset.id, next));
+                if (!await run(() => actions.rotateAsset(serverUrl, asset.id, next))) {
+                  setRotations((current) => ({ ...current, [asset.id]: rotation }));
+                }
               }}
             />
           </ViewerActionPlate>
@@ -444,9 +451,11 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
               label={favorite ? 'Remove from favourites' : 'Favourite'}
               tint={favorite ? colors.danger : colors.text}
               disabled={busy}
-              onPress={() => {
+              onPress={async () => {
                 setFavorites((f) => ({ ...f, [asset.id]: !favorite }));
-                void run(() => actions.favorite(serverUrl, [asset.id], !favorite));
+                if (!await run(() => actions.favorite(serverUrl, [asset.id], !favorite))) {
+                  setFavorites((f) => ({ ...f, [asset.id]: favorite }));
+                }
               }}
             />
             <ViewerAction
@@ -493,10 +502,10 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
           description="It stays in the trash for 30 days, and can be put back from the web app at any point before that."
           confirmLabel="Move to trash"
           onClose={() => setTrashing(false)}
-          onConfirm={() => {
-            // Nothing left to look at on this page once it is gone.
-            void run(() => actions.trash(serverUrl, [asset.id]));
-            onClose();
+          onConfirm={async () => {
+            const saved = await run(() => actions.trash(serverUrl, [asset.id]));
+            if (saved) onClose();
+            return saved;
           }}
         />
         <VaultSheet
@@ -636,6 +645,7 @@ export function VideoPage({
   const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'readyToPlay' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
+  const autoplayPending = useRef(false);
   const player = useVideoPlayer(null, (instance) => {
     instance.loop = false;
     instance.timeUpdateEventInterval = 0.25;
@@ -673,6 +683,7 @@ export function VideoPage({
     setStatus('loading');
     setCurrentTime(0);
     setDuration(0);
+    autoplayPending.current = autoplayVideos();
 
     const load = async () => {
       const accessToken = serverUrl ? await ensureFreshToken(serverUrl) : token;
@@ -711,8 +722,11 @@ export function VideoPage({
   useEffect(() => {
     // Read at the moment the page becomes active rather than subscribed to:
     // changing the setting mid-video should not start or stop what is playing.
-    if (active && status === 'readyToPlay' && autoplayVideos()) player.play();
-    else player.pause();
+    if (!active) player.pause();
+    else if (status === 'readyToPlay' && autoplayPending.current && !scrubbing.current) {
+      autoplayPending.current = false;
+      player.play();
+    }
   }, [active, player, status]);
 
   const displayedTime = scrubbingTime ?? currentTime;
@@ -1041,10 +1055,12 @@ export function ViewerFilmstrip({
   onSelect: (index: number) => void;
 }) {
   const strip = useRef<FlatList<ViewerFilmstripItem>>(null);
+  const previous = useRef(current);
 
   useEffect(() => {
     if (!items[current]) return;
-    strip.current?.scrollToIndex({ index: current, animated: true, viewPosition: 0.5 });
+    strip.current?.scrollToIndex({ index: current, animated: Math.abs(previous.current - current) === 1, viewPosition: 0.5 });
+    previous.current = current;
   }, [current, items.length]);
 
   return (
@@ -1125,7 +1141,7 @@ function ViewerAction({
       disabled={disabled}
       radius={radius.pill}
       label={label}
-      style={{ width: 40, height: 40 }}
+      style={{ width: VIEWER_ACTION_DOCK_HEIGHT, height: VIEWER_ACTION_DOCK_HEIGHT }}
     >
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={22} color={tint} />

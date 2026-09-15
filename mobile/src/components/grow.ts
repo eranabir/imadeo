@@ -42,23 +42,26 @@ export function useGrowFrom(origin: Rect | null, open: boolean) {
   useEffect(() => {
     if (open) {
       setMounted(true);
-      Animated.timing(enter, {
+      const animation = Animated.timing(enter, {
         toValue: 1,
         duration: motion.enter,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }).start();
-      return;
+      });
+      animation.start();
+      return () => animation.stop();
     }
 
-    Animated.timing(enter, {
+    const animation = Animated.timing(enter, {
       toValue: 0,
       duration: motion.exit,
       easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
-    }).start(({ finished }) => {
+    });
+    animation.start(({ finished }) => {
       if (finished) setMounted(false);
     });
+    return () => animation.stop();
   }, [open, enter]);
 
   const between = (small: number, full: number) =>

@@ -2284,6 +2284,7 @@ __metadata:
     "@types/react": "npm:~19.2.2"
     "@types/react-dom": "npm:^19"
     "@types/react-native-web": "npm:^0"
+    "@types/react-test-renderer": "npm:^19.3.0"
     eas-cli: "npm:^21.6.0"
     expo: "npm:^57.0.0"
     expo-background-task: "npm:~57.0.8"
@@ -2313,7 +2314,9 @@ __metadata:
     react-native-svg: "npm:15.15.4"
     react-native-web: "npm:^0.21.0"
     react-native-worklets: "npm:0.10.1"
+    react-test-renderer: "npm:19.2.3"
     typescript: "npm:~6.0.3"
+    vitest: "npm:4.1.10"
   languageName: unknown
   linkType: soft
 
@@ -5543,6 +5546,15 @@ __metadata:
   dependencies:
     "@types/react": "npm:*"
   checksum: 10c0/799654e430df10aeaf267d71507fb64ec151359ead7e3774111bfd4abce7e0911dba461811195c06c22a6d17496ea92537d3185320ff4112fe29954cad1b9152
+  languageName: node
+  linkType: hard
+
+"@types/react-test-renderer@npm:^19.3.0":
+  version: 19.3.0
+  resolution: "@types/react-test-renderer@npm:19.3.0"
+  dependencies:
+    "@types/react": "npm:*"
+  checksum: 10c0/37f5588f698a057a33c1f4d5fd28a042f3df7f29a3554ddebb7f9c8ecd3e5fba085e5b12d14b30734c30b51959ef17544650b2a9704d629d0af251f126d8ae73
   languageName: node
   linkType: hard
 
@@ -13186,6 +13198,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-is@npm:^19.2.3":
+  version: 19.3.0
+  resolution: "react-is@npm:19.3.0"
+  checksum: 10c0/99b16fc1009222ec0bbe05286566c865908430778ea6ba90dd418c7a11594c6cbb8db58432735b9203e3c6463e3eef5a399df1317ee2d75fd96b3a88cfaa662e
+  languageName: node
+  linkType: hard
+
 "react-native-drawer-layout@npm:^4.2.2":
   version: 4.2.10
   resolution: "react-native-drawer-layout@npm:4.2.10"
@@ -13468,6 +13487,18 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/841938ff16d16a6b76895f4cb2e1fea957e5fe3b30febbf03a54892dae1c9153f2383e231dea0b3ba41192ad2f2849448fa859caccd288943bce32639e971bee
+  languageName: node
+  linkType: hard
+
+"react-test-renderer@npm:19.2.3":
+  version: 19.2.3
+  resolution: "react-test-renderer@npm:19.2.3"
+  dependencies:
+    react-is: "npm:^19.2.3"
+    scheduler: "npm:^0.27.0"
+  peerDependencies:
+    react: ^19.2.3
+  checksum: 10c0/842b82239dbddbc536083a6260c3e1b0507c02a3400bd05879fc19160468fd0f8ab79fec5dceffa6113b131835cc7621212f8415b46ea5156ab66bbfd7e24297
   languageName: node
   linkType: hard
 
@@ -15636,7 +15667,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vitest@npm:^4.1.10":
+"vitest@npm:4.1.10, vitest@npm:^4.1.10":
   version: 4.1.10
   resolution: "vitest@npm:4.1.10"
   dependencies:

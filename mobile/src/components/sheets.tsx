@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { actions } from '../lib/actions';
 import { request, subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
@@ -183,38 +183,50 @@ export function PromptSheet({
   placeholder: string;
   initial?: string;
   confirmLabel?: string;
-  onSubmit: (value: string) => void;
+  onSubmit: (value: string) => unknown | Promise<unknown>;
   onClose: () => void;
 }) {
   const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pending = useRef(false);
 
   // The sheet is kept mounted between uses, so the previous answer would still
   // be in the box the next time it opens.
   useEffect(() => {
-    if (open) setValue(initial);
+    if (open) { setValue(initial); setError(null); }
   }, [open, initial]);
 
-  const submit = () => {
+  const submit = async () => {
     const trimmed = value.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
-    onClose();
+    if (!trimmed || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      if (await onSubmit(trimmed) === false) setError('The change could not be saved. Please try again.');
+      else onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The change could not be saved.');
+    } finally { pending.current = false; setBusy(false); }
   };
+  const close = () => { if (!pending.current) onClose(); };
 
   return (
     <Sheet
       open={open}
       title={title}
       description={description}
-      onClose={onClose}
+      onClose={close}
       footer={
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
-          <Button label={confirmLabel} onPress={submit} disabled={!value.trim()} style={{ flex: 1 }} />
+          <Button label="Cancel" variant="secondary" onPress={close} disabled={busy} style={{ flex: 1 }} />
+          <Button label={busy ? 'Saving…' : confirmLabel} onPress={() => void submit()} disabled={!value.trim() || busy} style={{ flex: 1 }} />
         </View>
       }
     >
       <Field value={value} onChange={setValue} placeholder={placeholder} onSubmit={submit} />
+      {error && <Text style={{ color: colors.danger }}>{error}</Text>}
     </Sheet>
   );
 }
@@ -234,25 +246,44 @@ export function ConfirmSheet({
   description: string;
   confirmLabel: string;
   variant?: 'primary' | 'danger';
-  onConfirm: () => void;
+  onConfirm: () => unknown | Promise<unknown>;
   onClose: () => void;
 }) {
+  const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { if (open) setError(null); }, [open]);
+  const close = () => { if (!pending.current) onClose(); };
+  const confirm = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onConfirm();
+      if (result === false) setError('The change could not be saved. Please try again.');
+      else onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The change could not be saved.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  };
   return (
     <Sheet
       open={open}
       title={title}
       description={description}
-      onClose={onClose}
+      onClose={close}
       footer={
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button label="Cancel" variant="secondary" onPress={onClose} style={{ flex: 1 }} />
+          <Button label="Cancel" variant="secondary" disabled={busy} onPress={close} style={{ flex: 1 }} />
           <Button
-            label={confirmLabel}
+            label={busy ? 'Saving…' : confirmLabel}
             variant={variant}
-            onPress={() => {
-              onConfirm();
-              onClose();
-            }}
+            disabled={busy}
+            onPress={() => void confirm()}
             style={[
               { flex: 1 },
               variant === 'danger' ? { borderWidth: 1, borderColor: colors.danger } : null,
@@ -261,7 +292,7 @@ export function ConfirmSheet({
         </View>
       }
     >
-      <View />
+      {error ? <Text style={{ color: colors.danger }}>{error}</Text> : <View />}
     </Sheet>
   );
 }
@@ -282,6 +313,7 @@ export function ShareSheet({
   description,
   confirmLabel = 'Share privately',
   busy,
+  error,
   onShare,
   onClose,
 }: {
@@ -293,6 +325,7 @@ export function ShareSheet({
   description?: string;
   confirmLabel?: string;
   busy?: boolean;
+  error?: string | null;
   onShare: (userIds: string[]) => void;
   onClose: () => void;
 }) {
@@ -332,6 +365,7 @@ export function ShareSheet({
       }
     >
       <ScrollView contentContainerStyle={{ gap: 6, paddingBottom: 8 }}>
+        {(error || peers.error) && <Text style={{ color: colors.danger }}>{error || peers.error}</Text>}
         {peers.loading ? (
           <Text style={{ color: colors.muted, fontSize: 15 }}>Loading accounts…</Text>
         ) : peers.data?.length ? (
@@ -412,6 +446,7 @@ export function MoveSheet({
   allowAlbums,
   /** A folder cannot be moved inside itself. */
   excludeFolderId,
+  includeLocked = false,
   onSelect,
   onClose,
 }: {
@@ -420,10 +455,33 @@ export function MoveSheet({
   count: number;
   allowAlbums: boolean;
   excludeFolderId?: string;
-  onSelect: (destination: MoveDestination) => void;
+  includeLocked?: boolean;
+  onSelect: (destination: MoveDestination, copy: boolean) => unknown | Promise<unknown>;
   onClose: () => void;
 }) {
   const [needle, setNeedle] = useState('');
+  const [copy, setCopy] = useState(false);
+  const [destination, setDestination] = useState<MoveDestination | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pending = useRef(false);
+  const close = () => { if (!pending.current) onClose(); };
+  const confirm = async () => {
+    if (!destination || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onSelect(destination, copy);
+      if (result === false) setError('The move could not be completed. Please try again.');
+      else onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The move could not be completed.');
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  };
   /**
    * Folders the pointer has closed.
    *
@@ -433,8 +491,9 @@ export function MoveSheet({
    * long one.
    */
   const [closed, setClosed] = useState<Set<string>>(new Set());
-  const tree = useResource<FolderRow[]>(serverUrl, open ? '/folders/tree' : null);
-  const albums = useResource<Album[]>(serverUrl, open && allowAlbums ? '/albums' : null);
+  const privateQuery = includeLocked ? '?includeLocked=true' : '';
+  const tree = useResource<FolderRow[]>(serverUrl, open ? `/folders/tree${privateQuery}` : null);
+  const albums = useResource<Album[]>(serverUrl, open && allowAlbums ? `/albums${privateQuery}` : null);
 
   // A sheet that stays open remembers what was typed into it last time, which is
   // never what is wanted the next time it is opened.
@@ -442,6 +501,9 @@ export function MoveSheet({
     if (!open) {
       setNeedle('');
       setClosed(new Set());
+      setDestination(null);
+      setError(null);
+      setCopy(false);
     }
   }, [open]);
 
@@ -518,11 +580,12 @@ export function MoveSheet({
     ...inFolder(null).map((album) => ({ kind: 'album' as const, depth: 0, album, trail: '' })),
   ];
 
+  const available = copy ? all.filter((row) => row.kind === 'album') : all;
   const rows = query
-    ? all
+    ? available
         .filter((row) => hit(row.kind === 'folder' ? row.folder.name : row.album.name))
         .map((row) => ({ ...row, depth: 0 }))
-    : all;
+    : available;
 
   const subject = count === 1 ? 'this item' : `these ${count} items`;
   const loading = tree.loading || albums.loading;
@@ -530,12 +593,27 @@ export function MoveSheet({
   return (
     <Sheet
       open={open}
-      title="Move to…"
-      description={`Where ${subject} should go.`}
-      tall
-      onClose={onClose}
-      footer={<Button label="Cancel" variant="secondary" onPress={onClose} />}
+      title={destination ? `${copy ? 'Add' : 'Move'} to “${destination.name}”?` : copy ? 'Copy to album' : 'Move to…'}
+      description={copy ? 'Add to an album without removing the items from their current folder or albums.' : destination ? `Move ${subject} to this ${destination.kind}.` : `Where ${subject} should go.`}
+      tall={!destination}
+      onClose={close}
+      footer={
+        <View style={{ gap: 12 }}>
+          {(error || tree.error || albums.error) && <Text style={{ color: colors.danger }}>{error || tree.error || albums.error}</Text>}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <Button label={destination ? 'Back' : 'Cancel'} variant="secondary" disabled={busy}
+              onPress={destination ? () => { setDestination(null); setError(null); } : close} style={{ flex: 1 }} />
+            {destination && <Button label={busy ? 'Saving…' : copy ? 'Add to album' : 'Move'} disabled={busy}
+              onPress={() => void confirm()} style={{ flex: 1 }} />}
+          </View>
+        </View>
+      }
     >
+      {destination ? <Text style={{ color: colors.muted }}>Your selection will stay here until the server confirms the move.</Text> : <>
+      {allowAlbums && <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+        <Chip label="Move" active={!copy} onPress={() => setCopy(false)} />
+        <Chip label="Copy to album" active={copy} onPress={() => setCopy(true)} />
+      </View>}
       {/* Typing narrows folders and albums together — picking a destination
           means knowing its name, rarely which of the two kinds it is. */}
       {/* The list is what this sheet is for; the field is there for when it is
@@ -549,14 +627,13 @@ export function MoveSheet({
 
       <View style={{ height: 12 }} />
 
-      {!query && (
+      {!query && !copy && (
         <Destination
           icon="library"
           label="Top level"
           hint="Not filed in any folder"
           onPress={() => {
-            onSelect({ kind: 'folder', id: null, name: 'Top level' });
-            onClose();
+            setDestination({ kind: 'folder', id: null, name: 'Top level' });
           }}
         />
       )}
@@ -574,8 +651,7 @@ export function MoveSheet({
               folded={query || !row.holds ? undefined : closed.has(row.folder.id)}
               onToggle={() => toggleFolder(row.folder.id)}
               onPress={() => {
-                onSelect({ kind: 'folder', id: row.folder.id, name: row.folder.name });
-                onClose();
+                setDestination({ kind: 'folder', id: row.folder.id, name: row.folder.name });
               }}
             />
           ) : (
@@ -590,8 +666,7 @@ export function MoveSheet({
               }
               indent={row.depth}
               onPress={() => {
-                onSelect({ kind: 'album', id: row.album.id, name: row.album.name });
-                onClose();
+                setDestination({ kind: 'album', id: row.album.id, name: row.album.name });
               }}
             />
           ),
@@ -604,6 +679,7 @@ export function MoveSheet({
           Nothing here is called “{needle.trim()}”.
         </Text>
       )}
+      </>}
     </Sheet>
   );
 }

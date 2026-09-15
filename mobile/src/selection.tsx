@@ -47,7 +47,7 @@ export function useSelectionDock(dock: ReactNode, deps: unknown[]) {
 
   useEffect(() => {
     publish(dock);
-    return () => publish(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publish, ...deps]);
+  useEffect(() => () => publish(null), [publish]);
 }

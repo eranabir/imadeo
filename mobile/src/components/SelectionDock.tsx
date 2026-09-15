@@ -8,23 +8,24 @@ export function SelectionDock() {
   const { dock } = useSelectionBar();
   const [shown, setShown] = useState<ReactNode>(dock);
   const enter = useRef(new Animated.Value(dock ? 1 : 0)).current;
+  const visible = Boolean(dock);
+
+  useEffect(() => { if (dock) setShown(dock); }, [dock]);
 
   useEffect(() => {
-    if (dock) setShown(dock);
-
     const animation = Animated.timing(enter, {
-      toValue: dock ? 1 : 0,
-      duration: dock ? motion.enter : motion.exit,
+      toValue: visible ? 1 : 0,
+      duration: visible ? motion.enter : motion.exit,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     });
 
     animation.start(({ finished }) => {
-      if (finished && !dock) setShown(null);
+      if (finished && !visible) setShown(null);
     });
 
     return () => animation.stop();
-  }, [dock, enter]);
+  }, [visible, enter]);
 
   if (!shown) return null;
 
@@ -41,7 +42,7 @@ export function SelectionDock() {
         },
       ]}
     >
-      {shown}
+      {dock || shown}
     </Animated.View>
   );
 }

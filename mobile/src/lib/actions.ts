@@ -1,4 +1,5 @@
 import { libraryChanged, request } from './api';
+import { assertActionResults } from './actionResults';
 
 /**
  * Every write the app can make, in one place.
@@ -63,10 +64,10 @@ const writes = {
           body: JSON.stringify({ ids, folderId: null }),
         }),
 
-  toAlbum: (server: string, albumId: string, ids: string[]) =>
+  toAlbum: (server: string, albumId: string, ids: string[], copy = false) =>
     request(server, `/albums/${albumId}/assets`, {
       method: 'PUT',
-      body: JSON.stringify({ assetIds: ids, removeFromFolder: true }),
+      body: JSON.stringify({ assetIds: ids, removeFromFolder: !copy }),
     }),
 
   share: (server: string, ids: string[], userIds: string[]) =>
@@ -166,6 +167,7 @@ export const actions = Object.fromEntries(
     async (...args: never[]) => {
       const result = await (write as (...a: never[]) => Promise<unknown>)(...args);
       libraryChanged();
+      assertActionResults(result);
       return result;
     },
   ]),

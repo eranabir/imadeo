@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { Account } from '../components/Account';
@@ -15,7 +15,6 @@ import {
   MoveSheet,
   PromptSheet,
   ShareSheet,
-  type MoveDestination,
 } from '../components/sheets';
 import { Sheet, SheetRow } from '../components/ui';
 import { actions } from '../lib/actions';
@@ -69,12 +68,13 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
 
   const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
   const [menuFor, setMenuFor] = useState<Target | null>(null);
+  const afterMenu = useRef<(() => void) | null>(null);
+  const transitionFromMenu = (next: () => void) => {
+    afterMenu.current = next;
+    setMenuFor(null);
+  };
   const [renaming, setRenaming] = useState<Target | null>(null);
   const [moving, setMoving] = useState<Target | null>(null);
-  const [moveConfirmation, setMoveConfirmation] = useState<{
-    item: Target;
-    destination: MoveDestination;
-  } | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
   const [sharingFolder, setSharingFolder] = useState<Target | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -258,8 +258,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
     try {
       await work();
       reload();
+      return true;
     } catch (e) {
       setFailure(e instanceof Error ? e.message : 'That did not work.');
+      return false;
     }
   };
 
@@ -416,6 +418,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
       )}
 
       <PhotoActions
+        locked={locked}
         serverUrl={serverUrl}
         ids={selection.ids}
         allFavorite={
@@ -441,22 +444,25 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         title={menuFor?.name ?? ''}
         description={menuFor?.kind === 'folder' ? 'Folder' : 'Album'}
         onClose={() => setMenuFor(null)}
+        onDismiss={() => {
+          const next = afterMenu.current;
+          afterMenu.current = null;
+          next?.();
+        }}
       >
         {menuFor?.kind === 'folder' && !menuFor.shared && !locked && <SheetRow
           icon="shared"
           label="Share folder"
           hint="View-only access"
           onPress={() => {
-            setSharingFolder(menuFor);
-            setMenuFor(null);
+            transitionFromMenu(() => setSharingFolder(menuFor));
           }}
         />}
         {!menuFor?.shared && <SheetRow
           icon="edit"
           label="Rename"
           onPress={() => {
-            setRenaming(menuFor);
-            setMenuFor(null);
+            transitionFromMenu(() => setRenaming(menuFor));
           }}
         />}
         {!menuFor?.shared && <SheetRow
@@ -464,8 +470,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
           label="Move to…"
           hint="Another folder"
           onPress={() => {
-            setMoving(menuFor);
-            setMenuFor(null);
+            transitionFromMenu(() => setMoving(menuFor));
           }}
         />}
         {!menuFor?.shared && <SheetRow
@@ -473,8 +478,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
           label={menuFor?.kind === 'folder' ? 'Delete folder' : 'Delete album'}
           danger
           onPress={() => {
-            setDeleting(menuFor);
-            setMenuFor(null);
+            transitionFromMenu(() => setDeleting(menuFor));
           }}
         />}
       </Sheet>
@@ -486,9 +490,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         title={`Share “${sharingFolder?.name ?? ''}”`}
         description="People you choose can view this folder, its albums, and everything inside it. They cannot change your library."
         confirmLabel="Share folder"
+        error={failure}
         onClose={() => setSharingFolder(null)}
         onShare={(userIds) =>
-          run(() => actions.shareFolder(serverUrl, sharingFolder!.id, userIds)).then(() => setSharingFolder(null))
+          run(() => actions.shareFolder(serverUrl, sharingFolder!.id, userIds)).then((saved) => { if (saved) setSharingFolder(null); })
         }
       />
 
@@ -536,26 +541,14 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         // an album — an album holds photos, not containers.
         allowAlbums={false}
         excludeFolderId={moving?.kind === 'folder' ? moving.id : undefined}
+        includeLocked={locked}
         onClose={() => setMoving(null)}
         onSelect={(destination) => {
-          if (moving) setMoveConfirmation({ item: moving, destination });
-        }}
-      />
-
-      <ConfirmSheet
-        open={moveConfirmation !== null}
-        title={`Move “${moveConfirmation?.item.name ?? ''}” to “${moveConfirmation?.destination.name ?? ''}”?`}
-        description={`The ${moveConfirmation?.item.kind ?? 'item'} will be moved to this folder.`}
-        confirmLabel="Move"
-        variant="primary"
-        onClose={() => setMoveConfirmation(null)}
-        onConfirm={() => {
-          if (!moveConfirmation || moveConfirmation.destination.kind !== 'folder') return;
-          const { item, destination } = moveConfirmation;
-          void run(() =>
-            item.kind === 'folder'
-              ? actions.moveFolder(serverUrl, item.id, destination.id)
-              : actions.moveAlbum(serverUrl, item.id, destination.id),
+          if (!moving || destination.kind !== 'folder') return false;
+          return run(() =>
+            moving.kind === 'folder'
+              ? actions.moveFolder(serverUrl, moving.id, destination.id)
+              : actions.moveAlbum(serverUrl, moving.id, destination.id),
           );
         }}
       />

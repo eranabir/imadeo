@@ -40,10 +40,14 @@
     "@types/react": "~19.2.2",
     "@types/react-dom": "^19",
     "@types/react-native-web": "^0",
+    "@types/react-test-renderer": "^19.3.0",
     "eas-cli": "^21.6.0",
-    "typescript": "~6.0.3"
+    "react-test-renderer": "19.2.3",
+    "typescript": "~6.0.3",
+    "vitest": "4.1.10"
   },
   "scripts": {
+    "test": "vitest run",
     "start": "npx expo start",
     "android": "npx expo run:android",
     "ios": "npx expo run:ios",

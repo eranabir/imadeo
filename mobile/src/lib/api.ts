@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { refreshPages } from './pagedRefresh';
 import {
   expireSession,
   onTokenChanged,
@@ -511,18 +512,21 @@ export function usePagedResource<T>(
       setError(null);
       try {
         const separator = path.includes('?') ? '&' : '?';
-        const body = await request<Paged<T> | AssetPage<T>>(
-          serverUrl,
-          `${path}${separator}page=${nextPage}&size=${size}`,
-        );
+        const fetchPage = async (requestedPage: number) => {
+          const body = await request<Paged<T> | AssetPage<T>>(serverUrl,
+            `${path}${separator}page=${requestedPage}&size=${size}`);
+          const values = itemsKey === 'assets'
+            ? ('assets' in body ? body.assets : undefined)
+            : ('items' in body ? body.items : undefined);
+          if (!Array.isArray(values)) throw new Error('The server returned an invalid media page.');
+          return { items: values, pagination: body.pagination };
+        };
+        const body = replace
+          ? await refreshPages(page.current, fetchPage)
+          : await fetchPage(nextPage);
         const auth = await storedToken();
         if (mine !== generation.current) return;
-        const nextItems = itemsKey === 'assets'
-          ? ('assets' in body ? body.assets : undefined)
-          : ('items' in body ? body.items : undefined);
-        if (!Array.isArray(nextItems)) {
-          throw new Error('The server returned an invalid media page.');
-        }
+        const nextItems = body.items;
         page.current = body.pagination?.page ?? nextPage;
         setItems((current) => (replace ? nextItems : [...current, ...nextItems]));
         setPagination(body.pagination ?? null);
@@ -555,7 +559,11 @@ export function usePagedResource<T>(
   }, [path, load]);
 
   useEffect(() => {
+    page.current = 0;
+    setItems([]);
+    setPagination(null);
     void reload();
+    return () => { generation.current++; };
   }, [reload]);
 
   const seenRef = useRef(seen);
