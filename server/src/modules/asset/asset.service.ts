@@ -969,7 +969,9 @@ export class AssetService implements OnModuleInit {
             isDeviceOnly: true,
             deviceAssets: { some: { deviceId: query.deviceId } },
           }
-        : ownership === 'shared'
+        : query.visibility === AssetVisibility.LOCKED || ownership === 'shared'
+          // Vault visibility is independent of filing location. A locked
+          // device backup must remain discoverable without promoting it.
           ? {}
           : ownership === 'all'
             ? { OR: [{ isDeviceOnly: false }, { ownerId: { not: userId }, sharedWith: { some: { userId } } }] }

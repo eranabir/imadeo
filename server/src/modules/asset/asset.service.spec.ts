@@ -224,6 +224,25 @@ describe('AssetService library filters', () => {
       where: expect.objectContaining({ AND: expect.any(Array) }),
     });
   });
+
+  it('includes locked device backups without weakening vault ownership', async () => {
+    const test = createService({ id: 'asset-id' });
+    await test.service.queryLocked('owner-id', { ownership: 'all' });
+    const baseWhere = test.assetFindMany.mock.calls[0][0].where.AND[0];
+    expect(baseWhere.AND[0]).toEqual({ ownerId: 'owner-id' });
+    expect(baseWhere.AND[1]).toMatchObject({ visibility: 'LOCKED', deletedAt: null });
+    expect(baseWhere.AND[1].isDeviceOnly).toBeUndefined();
+    expect(test.assetUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps unfiled backups out of the normal library but permits explicit recipient sharing', () => {
+    const { service } = createService({ id: 'asset-id' });
+    const owned = service.buildWhere('owner-id', {});
+    expect((owned.AND as any[])[1].isDeviceOnly).toBe(false);
+    const shared = service.buildWhere('recipient-id', { ownership: 'shared' });
+    expect((shared.AND as any[])[0]).toEqual({ ownerId: { not: 'recipient-id' }, sharedWith: { some: { userId: 'recipient-id' } } });
+    expect((shared.AND as any[])[1].isDeviceOnly).toBeUndefined();
+  });
 });
 
 describe('AssetService individual media locking', () => {
