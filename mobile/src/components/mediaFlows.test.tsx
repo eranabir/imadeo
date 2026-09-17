@@ -3,7 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { refreshPages } from '../lib/pagedRefresh';
 import { assertActionResults } from '../lib/actionResults';
-import { containedMediaSize, viewerMediaViewport, viewerFilmstripBottom, viewerVideoControlsBottom, viewerDockHeight, VIEWER_FILMSTRIP_HEIGHT, VIEWER_FILMSTRIP_GAP, VIEWER_ACTION_DOCK_HEIGHT } from './viewerGeometry';
+import { clampViewerSafeBottom, containedMediaSize, viewerMediaViewport, viewerFilmstripBottom, viewerVideoControlsBottom, viewerDockHeight, viewerBottomPanelHeight, VIEWER_FILMSTRIP_HEIGHT, VIEWER_FILMSTRIP_GAP, VIEWER_ACTION_DOCK_HEIGHT } from './viewerGeometry';
 
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView' }));
 vi.mock('expo-image', () => ({ Image: 'Image' }));
@@ -100,6 +100,18 @@ describe('Refresh and bulk result safety', () => {
   });
 });
 describe('Viewer layout matrix', () => {
+  it('lowers the iPhone dock and recovers media height without shrinking touch targets or row gaps', () => {
+    const bottom = clampViewerSafeBottom(34, true);
+    expect(bottom).toBe(26);
+    expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
+    for (const video of [false, true]) {
+      expect(viewerBottomPanelHeight(34, video) - viewerBottomPanelHeight(bottom, video)).toBe(8);
+      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(8);
+    }
+    expect(clampViewerSafeBottom(20, true)).toBe(20);
+    expect(clampViewerSafeBottom(0, true)).toBe(0);
+    expect(clampViewerSafeBottom(48, false)).toBe(48);
+  });
   for(const [width,height,top,bottom] of [[320,568,20,0],[375,812,44,34],[402,874,62,34],[440,956,62,34],[1024,1366,24,20],[1366,1024,24,20]]) {
     for(const [mw,mh] of [[4032,3024],[3024,4032],[1920,1080],[1080,1920],[640,640],[8000,1500],[1000,5000]]) {
       it(`fits ${mw}×${mh} in ${width}×${height} with even bottom gaps`, () => {

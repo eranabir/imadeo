@@ -7,10 +7,12 @@ export const VIEWER_FILMSTRIP_GAP = 14;
 /** Keep the three bottom rows on one rhythm: controls → filmstrip → actions. */
 export const VIEWER_CONTROLS_GAP = VIEWER_FILMSTRIP_GAP;
 export const VIEWER_VIDEO_CONTROLS_HEIGHT = 48;
+/** Lower the iPhone action row by 8pt without entering the home-indicator area. */
+export const VIEWER_IOS_BOTTOM_CLEARANCE = 26;
 
 export function clampViewerSafeBottom(safeBottom: number, isIOS: boolean) {
   const inset = Math.max(0, safeBottom);
-  return isIOS ? Math.min(inset, 34) : inset;
+  return isIOS ? Math.min(inset, VIEWER_IOS_BOTTOM_CLEARANCE) : inset;
 }
 
 export const viewerDockHeight = (safeBottom: number) =>
