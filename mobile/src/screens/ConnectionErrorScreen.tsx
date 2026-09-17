@@ -13,9 +13,8 @@ interface Props {
 }
 
 /**
- * The only mounted app state while the saved server cannot be reached.
- * Authenticated routes stay unmounted so cached private data can never remain
- * visible underneath this page.
+ * Covers a temporarily unavailable connection without discarding the current
+ * route. Authentication failure is separate and unmounts protected screens.
  */
 export function ConnectionErrorScreen({
   server,
@@ -103,7 +102,6 @@ export function ConnectionErrorScreen({
 
       <Pressable
         onPress={onEditServer}
-        disabled={retrying}
         style={({ pressed }) => ({
           alignItems: 'center',
           marginTop: 12,
@@ -111,7 +109,7 @@ export function ConnectionErrorScreen({
           borderColor: colors.border,
           borderRadius: radius.pill,
           paddingVertical: 14,
-          opacity: retrying ? 0.55 : pressed ? 0.7 : 1,
+          opacity: pressed ? 0.7 : 1,
         })}
       >
         <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Edit server settings</Text>
@@ -119,12 +117,11 @@ export function ConnectionErrorScreen({
 
       <Pressable
         onPress={onManageServers}
-        disabled={retrying}
         style={({ pressed }) => ({
           alignItems: 'center',
           marginTop: 8,
           paddingVertical: 12,
-          opacity: retrying ? 0.55 : pressed ? 0.7 : 1,
+          opacity: pressed ? 0.7 : 1,
         })}
       >
         <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>Manage servers</Text>
