@@ -37,7 +37,7 @@ import type {
   UpdateAssetDto,
   UploadAssetDto,
 } from './asset.dto';
-import { AssetLifecycleService } from './asset-lifecycle.service';
+import { AssetLifecycleService, recordBackupExclusions } from './asset-lifecycle.service';
 import { assetLocations } from './asset-location';
 
 const IMAGE_EXTENSIONS = new Set([
@@ -265,6 +265,17 @@ export class AssetService implements OnModuleInit {
     dto: UploadAssetDto,
     checksum: Uint8Array<ArrayBuffer>,
   ) {
+    if (dto.deviceId && dto.deviceAssetId) {
+      const where = { ownerId: userId, clientId: dto.deviceId, deviceAssetId: dto.deviceAssetId };
+      if (dto.restoreDeletedBackup) {
+        await this.prisma.deviceBackupExclusion.deleteMany({ where });
+      } else if (await this.prisma.deviceBackupExclusion.findUnique({
+        where: { ownerId_clientId_deviceAssetId: where },
+      })) {
+        await this.storage.remove(file.path);
+        throw new ConflictException({ code: 'BACKUP_EXCLUDED', message: 'This item was deleted from Imadeo. Select it explicitly to back it up again.' });
+      }
+    }
     const sourceDevice = await this.devices.register(userId, {
       clientId: dto.deviceId,
       assetId: dto.deviceAssetId,
@@ -312,6 +323,10 @@ export class AssetService implements OnModuleInit {
     });
 
     if (existing) {
+      if (sourceDevice && existing.deletedAt && !dto.restoreDeletedBackup) {
+        await this.storage.remove(file.path);
+        throw new ConflictException({ code: 'BACKUP_EXCLUDED', message: 'This item is in Trash. Restore it or select it explicitly to back it up again.' });
+      }
       // The bytes are already here, but the requested destination still
       // matters. Re-uploading a deleted directory must rebuild its folder tree
       // instead of restoring assets underneath the old, deleted folder.
@@ -330,8 +345,9 @@ export class AssetService implements OnModuleInit {
         await this.prisma.asset.update({
           where: { id: existing.id },
           data: {
-            deletedAt: null,
-            status: 'ACTIVE',
+            // An automatic retry must not undo a concurrent delete.
+            deletedAt: sourceDevice && !dto.restoreDeletedBackup ? undefined : null,
+            status: sourceDevice && !dto.restoreDeletedBackup ? undefined : 'ACTIVE',
             ...(promotedToPhotos ? { isDeviceOnly: false } : {}),
             ...(dto.uploadId
               ? { uploadId: dto.uploadId, uploadBatchId: dto.uploadBatchId ?? null }
@@ -483,6 +499,14 @@ export class AssetService implements OnModuleInit {
       },
       select: { id: true, folder: { select: { deletedAt: true } } },
     });
+  }
+
+  async backupExclusions(userId: string, clientId?: string) {
+    if (!clientId) return [];
+    const rows = await this.prisma.deviceBackupExclusion.findMany({
+      where: { ownerId: userId, clientId }, select: { deviceAssetId: true },
+    });
+    return rows.map((row) => row.deviceAssetId);
   }
 
   private async attachUploadToAlbum(userId: string, albumId: string, assetId: string) {
@@ -1642,7 +1666,8 @@ export class AssetService implements OnModuleInit {
         assets.flatMap((asset) => [asset.id, ...(asset.livePhotoVideoId ? [asset.livePhotoVideoId] : [])]),
       ),
     ];
-    const [trashed, removedShares] = await this.prisma.$transaction([
+    const [, trashed, removedShares] = await this.prisma.$transaction([
+      recordBackupExclusions(this.prisma, userId, affectedIds),
       this.prisma.asset.updateMany({
         where: { id: { in: affectedIds } },
         data: { deletedAt: new Date(), status: 'TRASHED' },

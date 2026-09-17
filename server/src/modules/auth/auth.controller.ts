@@ -113,6 +113,7 @@ export class AuthController {
       type: ua.getDevice().type ?? ua.getBrowser().name ?? 'unknown',
       os: ua.getOS().name ?? 'unknown',
       ip: req.ip ?? '',
+      native: req.header('x-imadeo-client') === 'native',
     };
   }
 
@@ -240,7 +241,8 @@ export class AuthController {
     const token = dto.refreshToken ?? (req.cookies?.[AUTH_COOKIE.REFRESH] as string | undefined);
     if (!token) throw new UnauthorizedException('No refresh token supplied');
 
-    const result = await this.authService.refresh(token);
+    const native = req.header('x-imadeo-client') === 'native';
+    const result = await this.authService.refresh(token, native ? dto.requestId : undefined, native);
     if (this.isBrowserRequest(req)) {
       this.setAuthCookies(req, res, result.accessToken, result.refreshToken);
     }

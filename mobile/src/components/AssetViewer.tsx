@@ -25,6 +25,7 @@ import { Icon, type IconName } from './Icon';
 import { ConfirmSheet, VaultSheet } from './sheets';
 import { Touchable } from './ui';
 import { ZoomableMedia } from './ZoomableMedia';
+import { withoutViewerItem } from './viewerItems';
 import {
   clampViewerSafeBottom,
   VIEWER_ACTION_DOCK_HEIGHT,
@@ -35,6 +36,7 @@ import {
   viewerMediaBottom,
   viewerMediaViewport,
   viewerVideoControlsBottom,
+  viewerBottomPanelHeight,
 } from './viewerGeometry';
 
 /**
@@ -80,7 +82,10 @@ interface Props {
  * cover a pushed folder screen as readily as a tab — and it is genuinely modal,
  * with its own back behaviour and nothing underneath worth showing.
  */
-export function AssetViewer({ serverUrl, token, assets, index, from, onClose, onChanged }: Props) {
+export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, from, onClose, onChanged }: Props) {
+  // Keep the open browsing session stable while the grid refreshes in the
+  // background. Deletion changes this snapshot only after the server confirms.
+  const [assets, setAssets] = useState(sourceAssets);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const list = useRef<FlatList<Asset>>(null);
@@ -109,6 +114,7 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
   useEffect(() => {
     if (index === null) return;
     opened.current = index;
+    setAssets(sourceAssets);
     setCurrent(index);
     setChrome(true);
     setZoomed(false);
@@ -229,6 +235,11 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer, opacity: enter }]}
         />
+
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0,
+          bottom: 0, height: viewerBottomPanelHeight(safeBottom, asset.type === 'VIDEO'),
+          backgroundColor: colors.surface, borderTopLeftRadius: radius.lg,
+          borderTopRightRadius: radius.lg, opacity: chromeEnter }} />
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
         <FlatList
@@ -414,7 +425,6 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
             height: dockHeight,
             paddingBottom: safeBottom,
             paddingHorizontal: 28,
-            backgroundColor: colors.viewer,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -504,7 +514,18 @@ export function AssetViewer({ serverUrl, token, assets, index, from, onClose, on
           onClose={() => setTrashing(false)}
           onConfirm={async () => {
             const saved = await run(() => actions.trash(serverUrl, [asset.id]));
-            if (saved) onClose();
+            if (saved) {
+              const { items: remaining, index: next } = withoutViewerItem(assets, current, asset.id);
+              if (!remaining.length) onClose();
+              else {
+                setAssets(remaining);
+                opened.current = -1;
+                setCurrent(next);
+                currentRef.current = next;
+                setZoomed(false);
+                requestAnimationFrame(() => list.current?.scrollToOffset({ offset: next * width, animated: false }));
+              }
+            }
             return saved;
           }}
         />
@@ -731,7 +752,7 @@ export function VideoPage({
 
   const displayedTime = scrubbingTime ?? currentTime;
   const videoTop = Math.max(0, Math.min(contentTop, height));
-  const availableHeight = Math.max(1, viewerMediaBottom(height, safeBottom) - videoTop);
+  const availableHeight = Math.max(1, viewerMediaBottom(height, safeBottom, true) - videoTop);
   const rotated = rotation === 90 || rotation === 270;
 
   const seekPreview = (next: number) => {

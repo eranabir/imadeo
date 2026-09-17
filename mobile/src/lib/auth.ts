@@ -3,6 +3,46 @@ import { STORAGE_KEYS } from './storageKeys';
 
 const ACCESS = STORAGE_KEYS.access;
 const REFRESH = STORAGE_KEYS.refresh;
+const SESSION = STORAGE_KEYS.session;
+interface StoredSession { accessToken: string; refreshToken: string; serverId: string | null; requestId?: string }
+let generation = 0;
+let storageWrites: Promise<unknown> = Promise.resolve();
+
+// Serialize logout and credential commits: a late response cannot restore an
+// account after the user has signed out or selected a different server.
+function commit(value: StoredSession | null, expected: number) {
+  const operation = storageWrites.catch(() => undefined).then(async () => {
+    if (expected !== generation) throw new Error('The selected session changed.');
+    if (value) await setItem(SESSION, JSON.stringify(value));
+    else await removeItem(SESSION);
+    await Promise.all([removeItem(ACCESS), removeItem(REFRESH)]);
+  });
+  storageWrites = operation;
+  return operation;
+}
+
+async function readSession(): Promise<StoredSession | null> {
+  const expected = generation;
+  await storageWrites.catch(() => undefined);
+  const serverId = await getItem(STORAGE_KEYS.activeServer);
+  const raw = await getItem(SESSION);
+  if (raw) {
+    const session = JSON.parse(raw) as StoredSession;
+    return session.serverId === serverId ? session : null;
+  }
+  const [accessToken, refreshToken] = await Promise.all([getItem(ACCESS), getItem(REFRESH)]);
+  if (!accessToken || !refreshToken) return null;
+  const session = { accessToken, refreshToken, serverId };
+  await commit(session, expected);
+  return session;
+}
+
+async function authFetch(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  try { return await fetch(url, { ...init, credentials: 'omit', signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
 
 /**
  * The access token, held in memory once it has been read.
@@ -56,9 +96,10 @@ export async function registrationStatus(baseUrl: string): Promise<RegistrationS
  * a rooted device.
  */
 export async function login(baseUrl: string, email: string, password: string): Promise<Session> {
+  const expected = generation;
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/auth/login`, {
+    response = await authFetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-imadeo-client': 'native' },
       body: JSON.stringify({ email: email.trim(), password }),
@@ -73,10 +114,11 @@ export async function login(baseUrl: string, email: string, password: string): P
   if (!response.ok) {
     throw new Error(body?.message ?? `Sign in failed (${response.status}).`);
   }
-  if (!body?.accessToken) throw new Error('The server did not return a session.');
+  if (!body?.accessToken || !body?.refreshToken) throw new Error('The server did not return a session.');
 
-  await setItem(ACCESS, body.accessToken);
-  if (body.refreshToken) await setItem(REFRESH, body.refreshToken);
+  await commit({ accessToken: body.accessToken, refreshToken: body.refreshToken,
+    serverId: await getItem(STORAGE_KEYS.activeServer) }, expected);
+  if (expected !== generation) throw new Error('The selected session changed.');
   lastSuccessfulRefresh = Date.now();
   setCachedToken(body.accessToken);
   return body as Session;
@@ -84,7 +126,10 @@ export async function login(baseUrl: string, email: string, password: string): P
 
 export async function storedToken() {
   if (cached) return cached;
-  setCachedToken(await getItem(ACCESS));
+  const expected = generation;
+  const session = await readSession();
+  if (expected !== generation) return null;
+  setCachedToken(session?.accessToken ?? null);
   return cached;
 }
 
@@ -118,7 +163,8 @@ export class SessionRefreshError extends Error {
   }
 }
 
-export async function expireSession() {
+export async function expireSession(expected = generation) {
+  if (expected !== generation) return;
   // Move the shell to sign-in before waiting for Keychain/Keystore writes. No
   // authenticated screen should survive while secure storage is being cleared.
   for (const listener of expiredListeners) listener();
@@ -135,27 +181,33 @@ export async function expireSession() {
 export async function refreshToken(baseUrl: string): Promise<string> {
   if (refreshing) return refreshing;
 
-  refreshing = (async () => {
-    const refresh = await getItem(REFRESH);
-    if (!refresh) {
-      await expireSession();
+  const expected = generation;
+  const operation = (async () => {
+    const session = await readSession();
+    if (!session) {
+      await expireSession(expected);
       throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
     }
 
+    // Persist BEFORE sending, and retain on timeout or response/storage loss.
+    // A retry from either address (or after restart) repeats the same rotation.
+    const requestId = session.requestId ?? `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    await commit({ ...session, requestId }, expected);
     let response: Response;
     try {
-      response = await fetch(`${baseUrl}/api/auth/refresh`, {
+      response = await authFetch(`${baseUrl}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-imadeo-client': 'native' },
-        body: JSON.stringify({ refreshToken: refresh }),
+        body: JSON.stringify({ refreshToken: session.refreshToken, requestId }),
       });
     } catch {
       throw new SessionRefreshError('Could not reach your server. Check your connection.', true);
     }
 
     const body = await response.json().catch(() => null);
-    if (response.status === 401 || response.status === 403) {
-      await expireSession();
+    if (expected !== generation) throw new Error('The selected session changed.');
+    if (response.status === 401) {
+      await expireSession(expected);
       throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
     }
     if (!response.ok) {
@@ -166,17 +218,16 @@ export async function refreshToken(baseUrl: string): Promise<string> {
       throw new SessionRefreshError('The server returned an invalid session.', false);
     }
 
-    await Promise.all([
-      setItem(ACCESS, body.accessToken),
-      setItem(REFRESH, body.refreshToken),
-    ]);
+    await commit({ accessToken: body.accessToken, refreshToken: body.refreshToken,
+      serverId: session.serverId }, expected);
+    if (expected !== generation) throw new Error('The selected session changed.');
     lastSuccessfulRefresh = Date.now();
     setCachedToken(body.accessToken);
     return body.accessToken as string;
   })().finally(() => {
-    refreshing = null;
+    if (refreshing === operation) refreshing = null;
   });
-
+  refreshing = operation;
   return refreshing;
 }
 
@@ -192,11 +243,11 @@ export async function ensureFreshToken(baseUrl: string, maxAgeMs = TOKEN_FRESHNE
 }
 
 export async function signOut() {
+  generation += 1;
   setCachedToken(null);
   refreshing = null;
   lastSuccessfulRefresh = 0;
-  await Promise.all([
-    removeItem(ACCESS),
-    removeItem(REFRESH),
-  ]);
+  await commit(null, generation);
 }
+
+export function sessionGeneration() { return generation; }

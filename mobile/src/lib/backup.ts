@@ -408,8 +408,12 @@ async function send(
   const assets = await allDeviceAssets(signal);
 
   const wanted = only ? new Set(only) : null;
+  // Deleted items are not backed up, but must not return automatically.
+  const excluded = wanted ? new Set<string>() : new Set(await request<string[]>(
+    baseUrl, `/assets/backup-exclusions?deviceId=${encodeURIComponent(id)}`, { signal },
+  ));
   const unsent = assets.filter(
-    (asset) => !done.has(asset.id) && (wanted === null || wanted.has(asset.id)),
+    (asset) => !done.has(asset.id) && !excluded.has(asset.id) && (wanted === null || wanted.has(asset.id)),
   );
 
   /*
@@ -489,6 +493,7 @@ async function send(
           headers: { Authorization: `Bearer ${accessToken}`, 'x-imadeo-client': 'native' },
           parameters: {
             deviceAssetId: asset.id,
+            restoreDeletedBackup: wanted ? 'true' : 'false',
             deviceId: id,
             deviceName: deviceName(),
             devicePlatform: Platform.OS,
@@ -514,6 +519,14 @@ async function send(
       }
 
       if (response.status < 200 || response.status >= 300) {
+        let excludedByServer = false;
+        try { excludedByServer = response.status === 409 && JSON.parse(response.body).code === 'BACKUP_EXCLUDED'; } catch { /* normal error below */ }
+        if (excludedByServer) {
+          progress.held += 1;
+          progress.total -= 1;
+          onProgress({ ...progress });
+          continue;
+        }
         // The status alone ends up in front of someone as the reason a photo
         // is missing, and "413" is not a reason. The server's own message is
         // used when it sends one — `uploadAsync` hands back the body as text,

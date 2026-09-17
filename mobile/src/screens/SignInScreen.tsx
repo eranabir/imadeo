@@ -11,10 +11,11 @@ import {
   View,
 } from 'react-native';
 import { login, registrationStatus, type Session } from '../lib/auth';
-import { Header, useHeaderClearance } from '../components/Header';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Icon } from '../components/Icon';
 import { LogoLockup } from '../components/Logo';
 import type { ServerInfo } from '../lib/server';
-import { colors } from '../theme';
+import { colors, radius } from '../theme';
 
 interface Props {
   server: ServerInfo;
@@ -24,7 +25,7 @@ interface Props {
 
 export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
   const serverUrl = server.url;
-  const clearance = useHeaderClearance();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,6 +45,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
   }, [serverUrl]);
 
   const submit = async () => {
+    if (busy || !email.trim() || !password) return;
     setBusy(true);
     setError(null);
     try {
@@ -59,7 +61,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: invalid ? colors.danger : colors.border,
-    borderRadius: 12,
+    borderRadius: radius.md,
     paddingHorizontal: 16,
     paddingVertical: 14,
     color: colors.text,
@@ -75,7 +77,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
         contentContainerStyle={{
           flexGrow: 1,
           justifyContent: 'center',
-          paddingTop: clearance + 24,
+          paddingTop: insets.top + 68,
           paddingBottom: 28,
           paddingHorizontal: 28,
         }}
@@ -97,7 +99,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
               style={{
                 backgroundColor: colors.raised,
                 borderColor: colors.border,
-                borderRadius: 12,
+                borderRadius: radius.md,
                 borderWidth: 1,
                 marginBottom: 24,
                 padding: 16,
@@ -160,7 +162,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
             style={({ pressed }) => ({
               marginTop: 26,
               backgroundColor: colors.primary,
-              borderRadius: 999,
+              borderRadius: radius.pill,
               paddingVertical: 15,
               alignItems: 'center',
               opacity: busy || !email.trim() || !password ? 0.45 : pressed ? 0.85 : 1,
@@ -178,12 +180,13 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
           </Text>
         </View>
       </ScrollView>
-      <Header
-        title={server.name}
-        subtitle={`${server.connectedVia === 'internal' ? 'Internal' : 'External'} · ${serverUrl.replace(/^https?:\/\//, '')}`}
-        icon="storage"
-        onBack={onBackToServers}
-      />
+      <Pressable accessibilityRole="button" accessibilityLabel="Back to servers"
+        onPress={onBackToServers} disabled={busy}
+        style={{ position: 'absolute', top: insets.top + 8, left: 16, minHeight: 44,
+          flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 }}>
+        <Icon name="back" size={24} color={colors.primary} />
+        <Text style={{ color: colors.primary, fontSize: 17 }}>Back</Text>
+      </Pressable>
     </KeyboardAvoidingView>
   );
 }

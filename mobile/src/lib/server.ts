@@ -24,12 +24,16 @@ export interface ServerInfo extends ServerProfile {
 }
 
 export function isLocalAddress(value: string): boolean {
-  const host = value.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
-  return (
-    /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host) ||
-    /^localhost(:\d+)?$/i.test(host) ||
-    /\.local(:\d+)?$/i.test(host)
-  );
+  let host: string;
+  try { host = new URL(/^https?:\/\//i.test(value) ? value : `http://${value}`).hostname.replace(/^\[|\]$/g, '').toLowerCase(); }
+  catch { return false; }
+  if (host === 'localhost' || host.endsWith('.local') || host === '::1') return true;
+  if (host.includes(':')) return /^(fc|fd)[0-9a-f]{2}:|^fe[89ab][0-9a-f]:/.test(host);
+  const octets = host.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((v) => !Number.isInteger(v) || v < 0 || v > 255)) return false;
+  const [a, b] = octets;
+  return a === 10 || a === 127 || (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
 }
 
 /** Fills in the scheme people commonly leave out when typing an address. */

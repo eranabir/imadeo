@@ -364,8 +364,9 @@ function shapes(name: IconName, color: string) {
     case 'rotate':
       return (
         <>
-          <Path d="M20 11a8 8 0 1 1-2.3-5.7" />
-          <Path d="M20 4v7h-7" />
+          {/* A picture frame plus a quarter-turn arrow, not the refresh glyph. */}
+          <Path d="m10 9 7 7-7 7-7-7Z" />
+          <Path d="M8 4h6a6 6 0 0 1 6 6v1m-3-3 3 3 3-3" />
         </>
       );
 

@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Permission, UserStatus } from '../../db';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import type { AuthDto } from '../../common/auth.types';
@@ -56,7 +56,7 @@ export class AuthService {
   async login(
     email: string,
     password: string,
-    device: { type: string; os: string; ip: string },
+    device: { type: string; os: string; ip: string; native?: boolean },
   ): Promise<LoginResult> {
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
 
@@ -156,7 +156,7 @@ export class AuthService {
   }
 
   /** Mints a session for an account that authenticated through an identity provider. */
-  loginWithUserId(userId: string, device: { type: string; os: string; ip: string }) {
+  loginWithUserId(userId: string, device: { type: string; os: string; ip: string; native?: boolean }) {
     return this.issueSession(userId, device);
   }
 
@@ -164,7 +164,7 @@ export class AuthService {
 
   private async issueSession(
     userId: string,
-    device: { type: string; os: string; ip: string },
+    device: { type: string; os: string; ip: string; native?: boolean },
   ): Promise<LoginResult> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
@@ -179,7 +179,8 @@ export class AuthService {
         ipAddress: device.ip,
         // The guard checks the session row too, so a non-expiring token still
         // needs a session that outlives it.
-        expiresAt: this.sessionExpiry(),
+        native: device.native ?? false,
+        expiresAt: this.sessionExpiry(device.native),
       },
     });
 
@@ -222,9 +223,13 @@ export class AuthService {
   }
 
   /** Exchanges a refresh token for a new access token, rotating the refresh token. */
-  async refresh(refreshToken: string) {
-    const session = await this.prisma.session.findUnique({
-      where: { tokenHash: AuthService.hashToken(refreshToken) },
+  async refresh(refreshToken: string, requestId?: string, native = false) {
+    const tokenHash = AuthService.hashToken(refreshToken);
+    const session = await this.prisma.session.findFirst({
+      where: { OR: [
+        { tokenHash },
+        ...(requestId ? [{ previousTokenHash: tokenHash, refreshRequestId: requestId }] : []),
+      ] },
       include: { user: true },
     });
 
@@ -235,15 +240,36 @@ export class AuthService {
       throw new UnauthorizedException('Account is not active');
     }
 
-    const nextToken = randomBytes(48).toString('base64url');
-
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: {
-        tokenHash: AuthService.hashToken(nextToken),
-        expiresAt: this.sessionExpiry(),
-      },
-    });
+    // Reconstruct exactly the same rotation after a lost response, without
+    // storing a raw refresh token. A different request id cannot replay it.
+    const nextToken = requestId
+      ? createHmac('sha384', this.config.get('auth.jwtSecret', { infer: true }))
+        .update(JSON.stringify(['native-refresh-v1', session.id, refreshToken, requestId]))
+        .digest('base64url')
+      : randomBytes(48).toString('base64url');
+    const nextHash = AuthService.hashToken(nextToken);
+    if (session.tokenHash === tokenHash) {
+      const rotated = await this.prisma.session.updateMany({
+        where: { id: session.id, tokenHash },
+        data: {
+          tokenHash: nextHash,
+          previousTokenHash: requestId ? tokenHash : null,
+          refreshRequestId: requestId ?? null,
+          native: native || session.native,
+          expiresAt: this.sessionExpiry(native || session.native),
+        },
+      });
+      if (!rotated.count) {
+        // Concurrent retry of the same operation is safe; competing rotations
+        // and revoked sessions must never mint another valid credential.
+        const completed = requestId && await this.prisma.session.findFirst({
+          where: { id: session.id, tokenHash: nextHash, previousTokenHash: tokenHash, refreshRequestId: requestId },
+        });
+        if (!completed) throw new UnauthorizedException('Session expired');
+      }
+    } else if (session.tokenHash !== nextHash) {
+      throw new UnauthorizedException('Session expired');
+    }
 
     return {
       accessToken: await this.signAccessToken(session.userId, session.id),
@@ -399,8 +425,10 @@ export class AuthService {
    * When the session row lapses. In development this is pushed far out so it
    * outlives the non-expiring access token; otherwise it follows JWT_REFRESH_TTL.
    */
-  private sessionExpiry(): Date {
-    if (this.config.get('auth.persistentSession', { infer: true })) {
+  private sessionExpiry(native = false): Date {
+    // Native sessions remain explicitly revocable (logout, device removal,
+    // password change). Access JWTs still expire normally in production.
+    if (native || this.config.get('auth.persistentSession', { infer: true })) {
       return new Date('2999-12-31T00:00:00.000Z');
     }
     const days = this.parseTtlDays(this.config.get('auth.refreshTtl', { infer: true }));

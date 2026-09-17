@@ -81,6 +81,7 @@ enum ReactionType {
 // ---------------------------------------------------------------------------
 
 model User {
+  backupExclusions DeviceBackupExclusion[]
   id               String     @id @default(uuid()) @db.Uuid
   email            String     @unique
   name             String
@@ -148,6 +149,10 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// sha256 of the refresh token; the raw value never touches the database.
   tokenHash    String   @unique
+  /// One recoverable rotation: retries must carry the same request identifier.
+  previousTokenHash String? @unique
+  refreshRequestId String?
+  native       Boolean  @default(false)
   deviceType   String   @default("")
   deviceOS     String   @default("")
   ipAddress    String   @default("")
@@ -392,6 +397,18 @@ model DeviceAsset {
   @@id([deviceId, deviceAssetId])
   @@index([assetId])
   @@map("device_assets")
+}
+
+/// Deletion decisions survive empty Trash and removal of the device folder.
+/// These are NOT backed-up items; explicitly selected uploads can override them.
+model DeviceBackupExclusion {
+  ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  clientId String
+  deviceAssetId String
+  createdAt DateTime @default(now())
+  @@id([ownerId, clientId, deviceAssetId])
+  @@map("device_backup_exclusions")
 }
 
 /// A private, account-to-account share of one photo or video. The owner keeps

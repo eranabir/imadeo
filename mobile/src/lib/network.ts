@@ -1,6 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import * as Location from 'expo-location';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 type SsidListener = (ssid: string | null) => void;
 
@@ -17,6 +17,8 @@ export interface SsidLookupResult {
 }
 
 const listeners = new Set<SsidListener>();
+const networkListeners = new Set<() => void>();
+let networkFingerprint = '';
 let nativeUnsubscribe: (() => void) | null = null;
 let ssidLookupEnabled = false;
 
@@ -27,10 +29,16 @@ function ssidFrom(state: Awaited<ReturnType<typeof NetInfo.fetch>>): string | nu
 }
 
 function startNativeSubscription() {
-  if (nativeUnsubscribe || listeners.size === 0) return;
+  if (nativeUnsubscribe || (listeners.size === 0 && networkListeners.size === 0)) return;
   nativeUnsubscribe = NetInfo.addEventListener((state) => {
     const ssid = ssidFrom(state);
     listeners.forEach((listener) => listener(ssid));
+    const fingerprint = JSON.stringify([state.type, state.isConnected, ssid,
+      (state.details as { ipAddress?: string } | null)?.ipAddress]);
+    if (fingerprint !== networkFingerprint) {
+      networkFingerprint = fingerprint;
+      networkListeners.forEach((listener) => listener());
+    }
   });
 }
 
@@ -83,7 +91,28 @@ export function subscribeToSsid(onChange: (ssid: string | null) => void): () => 
   startNativeSubscription();
   return () => {
     listeners.delete(onChange);
-    if (listeners.size === 0) {
+    if (listeners.size === 0 && networkListeners.size === 0) {
+      nativeUnsubscribe?.();
+      nativeUnsubscribe = null;
+    }
+  };
+}
+
+/** Route changes do not require permission to read a Wi-Fi name. iOS suspends
+ * network events in the background, so foregrounding always rechecks routes. */
+export function subscribeToNetwork(onChange: () => void) {
+  networkListeners.add(onChange);
+  startNativeSubscription();
+  const foreground = AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      void NetInfo.refresh().catch(() => undefined);
+      onChange();
+    }
+  });
+  return () => {
+    foreground.remove();
+    networkListeners.delete(onChange);
+    if (!listeners.size && !networkListeners.size) {
       nativeUnsubscribe?.();
       nativeUnsubscribe = null;
     }

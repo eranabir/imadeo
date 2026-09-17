@@ -18,6 +18,7 @@ import {
   AppState,
   FlatList,
   Dimensions,
+  useWindowDimensions,
   Linking,
   Modal,
   Pressable,
@@ -44,6 +45,8 @@ import {
   viewerSafeBottom,
 } from '../components/AssetViewer';
 import { ZoomableMedia } from '../components/ZoomableMedia';
+import { viewerBottomPanelHeight } from '../components/viewerGeometry';
+import { withoutViewerItem } from '../components/viewerItems';
 import { useGrowFrom, type Rect } from '../components/grow';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
 import { Account } from '../components/Account';
@@ -429,7 +432,7 @@ export function LibraryScreen({ server }: Props) {
     setError(null);
     try {
       const deleting = ids ?? picked;
-      if (deleting.length === 0) return;
+      if (deleting.length === 0) return false;
 
       // Deletion remains available during automatic backup. Stop the native
       // stream before removing a Photos asset so it never holds a dead URI.
@@ -440,11 +443,12 @@ export function LibraryScreen({ server }: Props) {
       }
       const removed = await MediaLibrary.deleteAssetsAsync(deleting);
       // Declining the system prompt is an answer, not a failure.
-      if (!removed) return;
+      if (!removed) return false;
       // Photos sends a library-change event after its transaction, but the UI
       // should answer the confirmation immediately rather than continue to
       // show an item whose `ph://` reference has just become invalid.
       applyDeletedAssets(deleting);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not remove those from this phone.');
       return false;
@@ -767,11 +771,7 @@ export function LibraryScreen({ server }: Props) {
           onLoadMore={loadMore}
           onClose={() => setViewing(null)}
           onBackUp={(asset) => void backUp([asset.id])}
-          onRemove={(asset) => {
-            // Nothing left to look at on this page once it is gone.
-            setViewing(null);
-            void removeFromPhone([asset.id]);
-          }}
+          onRemove={(asset) => removeFromPhone([asset.id])}
         />
       )}
 
@@ -836,7 +836,7 @@ export function LibraryScreen({ server }: Props) {
  * are the same door — one that shuts with the animation rather than through it.
  */
 function DeviceViewer({
-  assets,
+  assets: sourceAssets,
   start,
   from,
   host,
@@ -862,7 +862,7 @@ function DeviceViewer({
   onLoadMore: () => Promise<void>;
   onClose: () => void;
   onBackUp: (asset: MediaLibrary.Asset) => void;
-  onRemove: (asset: MediaLibrary.Asset) => void;
+  onRemove: (asset: MediaLibrary.Asset) => Promise<boolean>;
 }) {
   /*
    * Measured straight from the window, not through the hook.
@@ -873,10 +873,19 @@ function DeviceViewer({
    * collapse, and the tab underneath showed through where the photograph
    * should have been.
    */
-  const { width, height } = Dimensions.get('window');
+  const { width, height } = useWindowDimensions();
+  const [assets, setAssets] = useState(sourceAssets);
+  const removedIds = useRef(new Set<string>());
+  useEffect(() => {
+    setAssets((current) => {
+      const known = new Set(current.map((item) => item.id));
+      const added = sourceAssets.filter((item) => !known.has(item.id) && !removedIds.current.has(item.id));
+      return added.length ? [...current, ...added] : current;
+    });
+  }, [sourceAssets]);
   const insets = useSafeAreaInsets();
   const pager = useRef<FlatList<MediaLibrary.Asset>>(null);
-  const opened = Math.max(0, start);
+  const opened = useRef(Math.max(0, start)).current;
   const [at, setAt] = useState(opened);
   /** The bar over the photograph, which a tap puts out of the way. */
   const [chrome, setChrome] = useState(true);
@@ -897,7 +906,7 @@ function DeviceViewer({
    * shrinking into the wrong square is worse than not shrinking at all.
    */
   const [leaving, setLeaving] = useState(false);
-  const { mounted, enter, grown } = useGrowFrom(at === opened ? from : null, !leaving);
+  const { mounted, enter, grown } = useGrowFrom(at === opened && !removedIds.current.size ? from : null, !leaving);
 
   /*
    * Shrinking back is a state change rather than a call: `useGrowFrom` runs the
@@ -970,6 +979,11 @@ function DeviceViewer({
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer, opacity: enter }]}
         />
+
+        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0,
+          bottom: 0, height: viewerBottomPanelHeight(safeBottom, asset.mediaType === 'video'),
+          backgroundColor: colors.surface, borderTopLeftRadius: radius.lg,
+          borderTopRightRadius: radius.lg, opacity: chromeEnter }} />
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
           <FlatList
@@ -1147,7 +1161,6 @@ function DeviceViewer({
             height: dockHeight,
             paddingBottom: safeBottom,
             paddingHorizontal: 28,
-            backgroundColor: colors.viewer,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1205,9 +1218,19 @@ function DeviceViewer({
           }
           confirmLabel="Remove from phone"
           onClose={() => setRemoving(false)}
-          onConfirm={() => {
-            setRemoving(false);
-            onRemove(asset);
+          onConfirm={async () => {
+            if (!await onRemove(asset)) return false;
+            removedIds.current.add(asset.id);
+            const { items: remaining, index: next } = withoutViewerItem(assets, at, asset.id);
+            if (!remaining.length) leave();
+            else {
+              setAssets(remaining);
+              setAt(next);
+              atRef.current = next;
+              setZoomed(false);
+              requestAnimationFrame(() => pager.current?.scrollToOffset({ offset: next * width, animated: false }));
+            }
+            return true;
           }}
         />
       </View>

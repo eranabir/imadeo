@@ -7,6 +7,7 @@ import {
   refreshToken,
   SessionRefreshError,
   storedToken,
+  sessionGeneration,
 } from './auth';
 
 /** The asset fields every grid in the app needs, and no more. */
@@ -226,6 +227,7 @@ export async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const generation = sessionGeneration();
   const token = await storedToken();
 
   const send = async (accessToken: string | null) => {
@@ -240,6 +242,7 @@ export async function request<T>(
     try {
       return await fetch(`${serverUrl}/api${path}`, {
         ...init,
+        credentials: 'omit',
         signal: controller.signal,
         headers: {
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),
@@ -282,27 +285,32 @@ export async function request<T>(
   };
 
   let response = await sendResiliently(token);
+  if (generation !== sessionGeneration()) throw new Error('The selected session changed.');
 
   // Native sessions use short-lived access tokens and rotating refresh tokens.
   // Retry the original request once, after one shared refresh, so simultaneous
   // tab loads cannot race each other and invalidate the session.
   if (response.status === 401 && token) {
     try {
-      response = await sendResiliently(await refreshToken(serverUrl));
+      const current = await storedToken();
+      response = await sendResiliently(current && current !== token ? current : await refreshToken(serverUrl));
     } catch (cause) {
       if (cause instanceof SessionRefreshError && cause.unreachable) void ping(serverUrl);
       else markServerReachable();
       throw cause;
     }
   }
+  if (generation !== sessionGeneration()) throw new Error('The selected session changed.');
 
   // A missing token, or a token the server still rejects after refreshing, is
   // one global signed-out state. Never leave a single tab to render a local
   // "Authentication required" error over data from the old session.
   if (response.status === 401) {
     markServerReachable();
-    await expireSession();
-    throw new SessionRefreshError('Your session has expired. Please sign in again.', false);
+    // Only a rejected refresh is authoritative about session revocation. A
+    // proxy or a stale access request must not erase valid saved credentials.
+    if (!token) await expireSession(generation);
+    throw new SessionRefreshError('The server could not authenticate this request. Try again.', false);
   }
 
   markServerReachable();

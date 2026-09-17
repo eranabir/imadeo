@@ -181,6 +181,11 @@ export class AssetController {
     return this.assetService.backedUpDeviceAssetIds(userId, deviceId);
   }
 
+  @Get('backup-exclusions')
+  backupExclusions(@AuthedUserId() userId: string, @Query('deviceId') deviceId?: string) {
+    return this.assetService.backupExclusions(userId, deviceId);
+  }
+
   @Get('places')
   @ApiOperation({
     summary: 'Places the library has photos in, most photographed first',

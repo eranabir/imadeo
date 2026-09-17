@@ -50,6 +50,12 @@ export class UploadAssetDto {
   @IsString()
   deviceAssetId?: string;
 
+  @ApiPropertyOptional({ description: 'Explicitly selected to back up again after deletion' })
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  restoreDeletedBackup?: boolean;
+
   @IsOptional()
   @IsString()
   deviceId?: string;

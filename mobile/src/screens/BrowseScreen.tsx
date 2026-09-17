@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Alert, Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { Account } from '../components/Account';
 import { AlbumCard, FolderCard, Section } from '../components/Cards';
@@ -225,7 +225,14 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         <HeaderAction
           label="New"
           icon="plus"
-          onPress={() => setCreating(showing === 'albums' ? 'album' : 'folder')}
+          onPress={() => {
+            if (!folderId) { setCreating(showing === 'albums' ? 'album' : 'folder'); return; }
+            Alert.alert('Create in this folder', 'What would you like to create?', [
+              { text: 'Album', onPress: () => setCreating('album') },
+              { text: 'Folder', onPress: () => setCreating('folder') },
+              { text: 'Cancel', style: 'cancel' },
+            ]);
+          }}
         />
         </View>
       ) : undefined,

@@ -26,7 +26,8 @@ export async function ensureCurrentInstallation(): Promise<void> {
   if (checking) return checking;
 
   checking = (async () => {
-    const marker = await FileSystem.getInfoAsync(INSTALL_FILE).catch(() => null);
+    // An unavailable/protected filesystem is not evidence of an uninstall.
+    const marker = await FileSystem.getInfoAsync(INSTALL_FILE);
     if (marker?.exists) return;
 
     const retainedInstallId = await getItem(INSTALL_ID_KEY);

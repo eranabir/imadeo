@@ -38,6 +38,8 @@ function createService(
   const recordDeviceAsset = vi.fn().mockResolvedValue(undefined);
   const service = new AssetService(
     {
+      deviceBackupExclusion: { findUnique: vi.fn().mockResolvedValue(null), deleteMany: vi.fn() },
+      $executeRaw: vi.fn().mockResolvedValue(0),
       asset: {
         findFirst: assetFindFirst,
         findMany: assetFindMany,
@@ -891,6 +893,7 @@ describe('AssetService Live Photo Trash lifecycle', () => {
     const stopProcessingForAssets = vi.fn().mockResolvedValue({ removedJobs: 0 });
     const service = new AssetService(
       {
+        $executeRaw: vi.fn().mockResolvedValue(1),
         asset: {
           findMany: vi.fn().mockResolvedValue([
             { id: 'still-id', livePhotoVideoId: 'video-id' },

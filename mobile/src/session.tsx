@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { restore as restoreAutoBackup } from './lib/autobackup';
-import { signOut, storedToken } from './lib/auth';
+import { onSessionExpired, signOut, storedToken } from './lib/auth';
 import { ensureCurrentInstallation } from './lib/install';
-import { currentSsid, subscribeToSsid } from './lib/network';
+import { currentSsid, subscribeToNetwork, subscribeToSsid } from './lib/network';
 import { restorePreferences } from './lib/preferences';
+import { cancelBackup } from './lib/backup';
 import {
   loadActiveServer,
   removeServer as removeSavedServer,
@@ -20,6 +21,9 @@ interface Session {
   signedIn: boolean;
   /** True until the saved server and token have been read back. */
   restoring: boolean;
+  restoreError: string | null;
+  retryRestore: () => void;
+  networkRevision: number;
   connect: (server: ServerProfile) => Promise<void>;
   signedInNow: () => void;
   activateServerAddress: (address: string) => Promise<void>;
@@ -37,6 +41,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [ssid, setSsid] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [networkRevision, setNetworkRevision] = useState(0);
+
+  useEffect(() => onSessionExpired(() => setSignedIn(false)), []);
+  useEffect(() => subscribeToNetwork(() => setNetworkRevision((n) => n + 1)), []);
 
   useEffect(() => {
     let alive = true;
@@ -48,31 +58,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Neither the server nor the session should be retyped on every launch.
   useEffect(() => {
     let alive = true;
+    setRestoring(true);
+    setRestoreError(null);
     (async () => {
       try {
         await ensureCurrentInstallation();
-        const [saved, token] = await Promise.race([
-          Promise.all([loadActiveServer(ssid), storedToken()]),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('storage timed out')), 4000),
-          ),
-        ]);
+        // Profile migration establishes the identity before legacy tokens are
+        // bound to it. Slow Keychain access must not look like a fresh install.
+        const saved = await loadActiveServer(null);
+        const token = await storedToken();
         if (!alive) return;
         setServer(saved);
         setSignedIn(Boolean(saved && token));
-      } catch {
-        // Nothing restored; start from the first server setup screen.
-      } finally {
-        if (alive) setRestoring(false);
         void restoreAutoBackup();
         void restorePreferences();
+      } catch {
+        if (alive) setRestoreError('Your saved login could not be read. Unlock this device and try again.');
+      } finally {
+        if (alive) setRestoring(false);
       }
     })();
     return () => { alive = false; };
+  }, [restoreAttempt]);
+
+  useEffect(() => {
+    if (!ssid) return;
+    setServer((current) => {
+      if (!current) return current;
+      const preferred = resolveServer(current, ssid);
+      return preferred.url === current.url ? current : preferred;
+    });
   }, [ssid]);
 
   const useProfile = async (profile: ServerProfile, signOutFirst: boolean) => {
     if (signOutFirst) {
+      await cancelBackup();
       await signOut();
       setSignedIn(false);
     }
@@ -88,17 +108,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     server,
     signedIn,
     restoring,
+    restoreError,
+    retryRestore: () => setRestoreAttempt((n) => n + 1),
+    networkRevision,
     connect: async (profile) => {
       await saveServer(profile);
-      await useProfile(profile, false);
+      await useProfile(profile, Boolean(server && server.id !== profile.id));
     },
     signedInNow: () => setSignedIn(true),
     activateServerAddress: async (address) => {
-      if (!server || server.url === address) return;
-      setServer({
-        ...server,
-        url: address,
-        connectedVia: address === server.internalUrl ? 'internal' : 'external',
+      setServer((current) => {
+        if (!current || current.id !== server?.id || current.url === address ||
+          (address !== current.internalUrl && address !== current.externalUrl)) return current;
+        return { ...current, url: address, connectedVia: address === current.internalUrl ? 'internal' : 'external' };
       });
     },
     selectServer: async (profile) => {
@@ -111,6 +133,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     removeServer: async (profile) => {
       await removeSavedServer(profile.id);
       if (profile.id !== server?.id) return;
+      await cancelBackup();
       const currentNetwork = await currentSsid();
       const nextServer = await loadActiveServer(currentNetwork);
       await signOut();
@@ -119,6 +142,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSignedIn(false);
     },
     leave: async () => {
+      await cancelBackup();
       await signOut();
       setSignedIn(false);
     },

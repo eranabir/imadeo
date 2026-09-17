@@ -20,6 +20,8 @@ describe('AssetLifecycleService.moveToTrash', () => {
     };
     const service = new AssetLifecycleService(
       {
+        $executeRaw: vi.fn().mockResolvedValue(1),
+        $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
         asset: {
           findMany: vi.fn().mockResolvedValue([
             { id: 'still-id', livePhotoVideoId: 'motion-id' },

@@ -11,6 +11,20 @@ import { StorageService } from '../../infra/storage/storage.service';
 import { SubjectService } from '../person/subject.service';
 import { AssetProcessingService } from './asset-processing.service';
 
+/** Include both the many-device relation and older origin fields. */
+export function recordBackupExclusions(prisma: PrismaService, userId: string, ids: string[]) {
+  return prisma.$executeRaw`
+    INSERT INTO "device_backup_exclusions" ("ownerId", "clientId", "deviceAssetId")
+    SELECT a."ownerId", d."clientId", da."deviceAssetId"
+    FROM "device_assets" da JOIN "devices" d ON d.id = da."deviceId"
+    JOIN "assets" a ON a.id = da."assetId"
+    WHERE a."ownerId" = ${userId}::uuid AND a.id = ANY(${ids}::uuid[])
+    UNION SELECT "ownerId", "deviceId", "deviceAssetId" FROM "assets"
+    WHERE "ownerId" = ${userId}::uuid AND id = ANY(${ids}::uuid[])
+      AND "deviceId" IS NOT NULL AND "deviceAssetId" IS NOT NULL
+    ON CONFLICT DO NOTHING`;
+}
+
 /** Shared asset cleanup used by photo, album and folder Trash operations. */
 @Injectable()
 export class AssetLifecycleService {
@@ -65,10 +79,14 @@ export class AssetLifecycleService {
     ];
     if (affectedIds.length === 0) return { trashed: 0, assetIds: [] };
 
-    const { count } = await this.prisma.asset.updateMany({
+    const [, { count }] = await this.prisma.$transaction([
+      // Commit the deletion decision and Trash state together.
+      recordBackupExclusions(this.prisma, userId, affectedIds),
+      this.prisma.asset.updateMany({
       where: { id: { in: affectedIds }, ownerId: userId, deletedAt: null },
       data: { deletedAt: new Date(), status: 'TRASHED' },
-    });
+      }),
+    ], BULK_MUTATION_TRANSACTION);
     await this.stopProcessingForAssets(userId, affectedIds);
     this.refreshThumbnailsForAssets(affectedIds);
     return { trashed: count, assetIds: affectedIds };

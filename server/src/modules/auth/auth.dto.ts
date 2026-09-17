@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -51,6 +52,13 @@ export class ChangePasswordDto {
 }
 
 export class RefreshDto {
+  @ApiPropertyOptional({ description: 'Stable identifier reused after an interrupted native refresh' })
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  @MaxLength(128)
+  requestId?: string;
+
   @ApiPropertyOptional({ description: 'Omit when the refresh token is sent as a cookie' })
   @IsOptional()
   @IsString()

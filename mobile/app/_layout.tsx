@@ -6,7 +6,8 @@ import {
   Stack,
   ThemeProvider,
 } from 'expo-router';
-import { StyleSheet, View, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Button } from '../src/components/ui';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Opening } from '../src/components/Loading';
 import { resolvedDark, useAppearance } from '../src/lib/preferences';
@@ -93,6 +94,9 @@ function Gate() {
     server,
     signedIn,
     restoring,
+    restoreError,
+    retryRestore,
+    networkRevision,
     connect,
     signedInNow,
     activateServerAddress,
@@ -106,6 +110,10 @@ function Gate() {
   const [retrying, setRetrying] = useState(false);
   const [serverEditor, setServerEditor] = useState<'list' | 'edit' | 'add' | null>(null);
   const justSignedIn = useRef(false);
+  const checkedNetwork = useRef(-1);
+  const recoveryInFlight = useRef(false);
+  const activeServerId = useRef(server?.id);
+  activeServerId.current = server?.id;
 
   // Check the selected server before mounting any route. Signed-in sessions
   // use an authenticated endpoint so an expired JWT is resolved here, at the
@@ -140,8 +148,20 @@ function Gate() {
     }
 
     beginServerCheck();
+    const networkChanged = checkedNetwork.current !== networkRevision;
+    checkedNetwork.current = networkRevision;
 
     const check = async () => {
+      if (networkChanged) {
+        // Do not spend a full authenticated-request timeout on yesterday's
+        // LAN route before trying the public address after leaving home.
+        const address = await findReachable(server);
+        if (!active) return;
+        if (address && address !== server.url) {
+          await activateServerAddress(address);
+          return;
+        }
+      }
       // The authenticated request proves the session and the common address in
       // one round trip. Only scan alternate routes when that address fails.
       try {
@@ -172,22 +192,39 @@ function Gate() {
     return () => {
       active = false;
     };
-  }, [server, signedIn]);
+  }, [server, signedIn, networkRevision]);
+
+  // An already-open tab can discover a broken route independently of the
+  // initial gate. Try the other saved address automatically, not just on Retry.
+  useEffect(() => {
+    if (reachability !== 'unreachable' || !server) return;
+    const timer = setTimeout(() => void retryConnection(), 500);
+    const retries = setInterval(() => void retryConnection(), 8_000);
+    return () => { clearTimeout(timer); clearInterval(retries); };
+  }, [reachability, server]);
 
   const retryConnection = async () => {
-    if (!server) return;
+    if (!server || recoveryInFlight.current) return;
+    recoveryInFlight.current = true;
     setRetrying(true);
     setVerificationFailed(false);
     const address = await findReachable(server);
+    if (activeServerId.current !== server.id) {
+      recoveryInFlight.current = false;
+      setRetrying(false);
+      return;
+    }
     if (!address) {
       await ping(server.url);
       if (signedIn) setVerificationFailed(true);
       setRetrying(false);
+      recoveryInFlight.current = false;
       return;
     }
     if (address !== server.url) {
       await activateServerAddress(address);
       setRetrying(false);
+      recoveryInFlight.current = false;
       return;
     }
     if (signedIn) {
@@ -203,6 +240,7 @@ function Gate() {
       markServerReachable();
     }
     setRetrying(false);
+    recoveryInFlight.current = false;
   };
 
   if (restoring) {
@@ -212,6 +250,13 @@ function Gate() {
       </View>
     );
   }
+
+  if (restoreError) return (
+    <View style={[styles.fill, styles.centre, { padding: 28, gap: 20 }]}>
+      <Text style={{ color: colors.text, textAlign: 'center' }}>{restoreError}</Text>
+      <Button label="Try again" onPress={retryRestore} />
+    </View>
+  );
 
   if (!server) return <ConnectScreen onConnected={connect} />;
 
@@ -243,7 +288,7 @@ function Gate() {
     );
   }
 
-  if (reachability === 'unreachable' || (signedIn && verificationFailed)) {
+  if (!verifiedServer && (reachability === 'unreachable' || (signedIn && verificationFailed))) {
     return (
       <ConnectionErrorScreen
         server={server}
@@ -285,12 +330,22 @@ function Gate() {
    * UIKit's tab-controller appearance during startup.
    */
   return (
+    <View style={styles.fill}>
     <Stack
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.bg },
       }}
     />
+    {(reachability === 'unreachable' || verificationFailed) && (
+      <View style={StyleSheet.absoluteFill}>
+        <ConnectionErrorScreen server={server} retrying={retrying}
+          onRetry={() => void retryConnection()}
+          onEditServer={() => setServerEditor('edit')}
+          onManageServers={() => setServerEditor('list')} />
+      </View>
+    )}
+    </View>
   );
 }
 

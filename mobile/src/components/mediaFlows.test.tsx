@@ -106,7 +106,10 @@ describe('Viewer layout matrix', () => {
         const v=viewerMediaViewport(height,top,bottom); const media=containedMediaSize(width,v.height,mw,mh);
         expect(media.width).toBeLessThanOrEqual(width+0.001); expect(media.height).toBeLessThanOrEqual(v.height+0.001);
         expect(media.width/media.height).toBeCloseTo(mw/mh,5);
-        expect(v.top).toBeGreaterThanOrEqual(top); expect(v.bottom).toBeLessThanOrEqual(height-bottom);
+        expect(v.top).toBeGreaterThanOrEqual(top + 52);
+        expect(v.bottom).toBeLessThanOrEqual(height-viewerFilmstripBottom(bottom)-VIEWER_FILMSTRIP_HEIGHT);
+        const video = viewerMediaViewport(height,top,bottom,true);
+        expect(video.bottom).toBeLessThanOrEqual(height-viewerVideoControlsBottom(bottom)-48);
         expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
         expect(viewerFilmstripBottom(bottom)-viewerDockHeight(bottom)).toBe(VIEWER_FILMSTRIP_GAP);
         expect(viewerVideoControlsBottom(bottom)-viewerFilmstripBottom(bottom)-VIEWER_FILMSTRIP_HEIGHT).toBe(VIEWER_FILMSTRIP_GAP);
