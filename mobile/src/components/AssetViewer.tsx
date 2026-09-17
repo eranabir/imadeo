@@ -26,6 +26,7 @@ import { ConfirmSheet, VaultSheet } from './sheets';
 import { Touchable } from './ui';
 import { ZoomableMedia } from './ZoomableMedia';
 import { withoutViewerItem } from './viewerItems';
+import { videoSeekPosition } from './videoSeekPosition';
 import {
   clampViewerSafeBottom,
   VIEWER_ACTION_DOCK_HEIGHT,
@@ -969,14 +970,12 @@ function VideoSeekBar({
   onScrubEnd: (value: number) => void;
 }) {
   const [width, setWidth] = useState(0);
+  const trackLeft = useRef(0);
   const lastValue = useRef(0);
   const progress = duration > 0 ? Math.max(0, Math.min(value / duration, 1)) : 0;
-  const positionFor = (locationX: number) => {
-    if (!duration || !width) return null;
-    return Math.max(0, Math.min(duration, (locationX / width) * duration));
-  };
-  const valueAt = (locationX: number) => {
-    const next = positionFor(locationX);
+  const positionFor = (pageX: number) => videoSeekPosition(pageX, trackLeft.current, width, duration);
+  const valueAt = (pageX: number) => {
+    const next = positionFor(pageX);
     if (next === null) return null;
     lastValue.current = next;
     return next;
@@ -1008,22 +1007,25 @@ function VideoSeekBar({
       onMoveShouldSetResponder={() => duration > 0}
       onMoveShouldSetResponderCapture={() => duration > 0}
       onResponderGrant={(event) => {
-        const next = valueAt(event.nativeEvent.locationX);
+        // The decorative track cannot be a touch target. Capture the parent's
+        // origin once; the thumb moves as the video seeks, but this origin must not.
+        trackLeft.current = event.nativeEvent.pageX - event.nativeEvent.locationX;
+        const next = valueAt(event.nativeEvent.pageX);
         if (next !== null) onScrubStart(next);
       }}
       onResponderMove={(event) => {
-        const next = valueAt(event.nativeEvent.locationX);
+        const next = valueAt(event.nativeEvent.pageX);
         if (next !== null) onScrubMove(next);
       }}
       onResponderRelease={(event) => {
-        const next = positionFor(event.nativeEvent.locationX) ?? lastValue.current;
+        const next = positionFor(event.nativeEvent.pageX) ?? lastValue.current;
         onScrubEnd(next);
       }}
       onResponderTerminate={() => onScrubEnd(lastValue.current)}
       onResponderTerminationRequest={() => false}
       style={{ flex: 1, height: 44, justifyContent: 'center' }}
     >
-      <View style={{ height: 3, borderRadius: 2, backgroundColor: colors.border }}>
+      <View pointerEvents="none" style={{ height: 3, borderRadius: 2, backgroundColor: colors.border }}>
         <View
           style={{
             width: `${progress * 100}%`,
