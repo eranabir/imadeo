@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { actions } from '../lib/actions';
 import { request, subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
 import { colors, radius } from '../theme';
@@ -249,6 +249,8 @@ export function ConfirmSheet({
   onConfirm: () => unknown | Promise<unknown>;
   onClose: () => void;
 }) {
+  const { width, fontScale } = useWindowDimensions();
+  const stacked = width < 380 || fontScale > 1.15;
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -277,22 +279,22 @@ export function ConfirmSheet({
       description={description}
       onClose={close}
       footer={
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Button label="Cancel" variant="secondary" disabled={busy} onPress={close} style={{ flex: 1 }} />
+        <View style={{ flexDirection: stacked ? 'column-reverse' : 'row', gap: 10 }}>
+          <Button label="Cancel" variant="secondary" disabled={busy} onPress={close} style={stacked ? undefined : { flex: 1 }} />
           <Button
             label={busy ? 'Saving…' : confirmLabel}
             variant={variant}
             disabled={busy}
             onPress={() => void confirm()}
             style={[
-              { flex: 1 },
+              stacked ? undefined : { flex: 1 },
               variant === 'danger' ? { borderWidth: 1, borderColor: colors.danger } : null,
             ]}
           />
         </View>
       }
     >
-      {error ? <Text style={{ color: colors.danger }}>{error}</Text> : <View />}
+      {error ? <Text style={{ color: colors.danger }}>{error}</Text> : null}
     </Sheet>
   );
 }

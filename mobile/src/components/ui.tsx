@@ -12,6 +12,7 @@ import {
   ScrollView,
   Text,
   View,
+  useWindowDimensions,
   type StyleProp,
   type KeyboardEvent,
   type ViewStyle,
@@ -132,6 +133,7 @@ export function Button({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+        minHeight: 52,
         gap: 8,
         paddingVertical: 15,
         paddingHorizontal: 20,
@@ -142,7 +144,8 @@ export function Button({
       ) : (
         icon && <Icon name={icon} size={18} color={tint} strong />
       )}
-      <Text style={{ color: tint, fontSize: 16, fontWeight: '700', letterSpacing: -0.2 }}>
+      <Text style={{ color: tint, fontSize: 16, fontWeight: '700', letterSpacing: -0.2,
+        textAlign: 'center', flexShrink: 1 }}>
         {label}
       </Text>
     </View>
@@ -207,7 +210,8 @@ export function Sheet({
    */
   tall?: boolean;
 }) {
-
+  const { fontScale, height: windowHeight } = useWindowDimensions();
+  const maxHeight = windowHeight * 0.85;
   /**
    * The panel rises; the backdrop fades. Two things, not one.
    *
@@ -226,6 +230,7 @@ export function Sheet({
   const dismissRef = useRef(onDismiss);
   closeRef.current = onClose;
   dismissRef.current = onDismiss;
+  const hasBody = children !== null && children !== undefined;
 
   useEffect(() => {
     if (!shown) {
@@ -260,7 +265,7 @@ export function Sheet({
    *
    * A sheet that rises from the bottom edge invites being pushed back to it,
    * and on both platforms that is the gesture people try first — the grabber is
-   * a promise the panel was not keeping. Only the head is draggable: the body
+   * a promise the panel was not keeping. Only the grabber is draggable: the body
    * scrolls, and a list that dismissed the sheet every time it was flicked
    * downwards would be unusable.
    */
@@ -298,12 +303,12 @@ export function Sheet({
   const grip = useRef(
     PanResponder.create({
       /*
-       * Claimed the moment a finger lands on the head.
+       * Claimed the moment a finger lands on the grabber.
        *
        * Negotiating on move — the tidier-looking option — never fired: by the
        * time the gesture was worth claiming the touch had already been settled
-       * elsewhere, on both platforms. There is nothing in the head to press
-       * anyway: a grabber, a title and a line of description, no controls. The
+       * elsewhere, on both platforms. There is nothing in the grabber to press:
+       * no text or controls. The
        * list below keeps its own touches, which is what matters.
        */
       onStartShouldSetPanResponder: () => true,
@@ -361,8 +366,10 @@ export function Sheet({
         <Animated.View
           style={{
             width: '100%',
-            maxHeight: '85%',
-            ...(tall ? { height: '85%' } : null),
+            maxWidth: 520,
+            alignSelf: 'center',
+            maxHeight,
+            ...(tall ? { height: maxHeight } : null),
             transform: [{ translateY: lift }],
           }}
         >
@@ -379,15 +386,14 @@ export function Sheet({
                 // background behind it avoids a second exposed edge while the
                 // spacer leaves every field and action above the keyboard.
                 paddingBottom: keyboardHeight > 0 ? keyboardHeight + 12 : Math.max(HOME_INDICATOR, 16),
-                ...(tall ? { flex: 1 } : { maxHeight: '100%' }),
+                maxHeight,
+                ...(tall ? { flex: 1 } : { flexShrink: 1 }),
                 transform: [{ translateY: drag }],
               },
               shadow(3),
             ]}
           >
-            {/* The head is the handle: grabber, title and description together,
-                so there is a comfortable band to pull rather than a 4pt bar. */}
-            <View {...grip.panHandlers}>
+            <View {...grip.panHandlers} style={{ flexShrink: 0, paddingBottom: 14 }}>
               {/* The grabber says the panel is dismissable before anyone tries. */}
               <View
                 style={{
@@ -396,33 +402,32 @@ export function Sheet({
                   height: 4,
                   borderRadius: radius.pill,
                   backgroundColor: colors.border,
-                  marginBottom: 14,
                 }}
               />
 
-              <View style={{ paddingHorizontal: 20, marginBottom: description ? 14 : 12 }}>
-                <Text
-                  style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}
-                >
-                  {title}
-                </Text>
-                {description && (
-                  <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
-                    {description}
-                  </Text>
-                )}
-              </View>
             </View>
 
+            {/* Long copy scrolls independently of the actions, including the
+                title at accessibility text sizes. */}
             <ScrollView
-              style={tall ? { flex: 1 } : { flexGrow: 0 }}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 4 }}
+              style={tall ? { flex: 1 } : { flexGrow: 0, flexShrink: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 20 }}
               keyboardShouldPersistTaps="handled"
             >
+              {/* Dynamic Type can otherwise retain old native line bounds. */}
+              <View key={fontScale} style={{ marginBottom: hasBody ? (description ? 14 : 12) : 0 }}>
+                <Text accessibilityRole="header"
+                  style={{ color: colors.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.4 }}>
+                  {title}
+                </Text>
+                {description && <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 5 }}>
+                  {description}
+                </Text>}
+              </View>
               {children}
             </ScrollView>
 
-            {footer && <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>{footer}</View>}
+            {footer && <View style={{ flexShrink: 0, paddingHorizontal: 20, paddingTop: hasBody ? 14 : 20 }}>{footer}</View>}
           </Animated.View>
         </Animated.View>
       </View>

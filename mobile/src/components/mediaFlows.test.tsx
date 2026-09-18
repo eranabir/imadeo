@@ -1,11 +1,12 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refreshPages } from '../lib/pagedRefresh';
 import { assertActionResults } from '../lib/actionResults';
 import { clampViewerSafeBottom, containedMediaSize, viewerMediaViewport, viewerFilmstripBottom, viewerVideoControlsBottom, viewerDockHeight, viewerBottomPanelHeight, VIEWER_FILMSTRIP_HEIGHT, VIEWER_FILMSTRIP_GAP, VIEWER_ACTION_DOCK_HEIGHT } from './viewerGeometry';
 
-vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView' }));
+const dimensions = vi.hoisted(() => vi.fn(() => ({ width: 402, height: 874, fontScale: 1, scale: 3 })));
+vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', useWindowDimensions: dimensions }));
 vi.mock('expo-image', () => ({ Image: 'Image' }));
 vi.mock('./Icon', () => ({ Icon: 'Icon' }));
 vi.mock('./ui', () => ({
@@ -23,6 +24,7 @@ import { ConfirmSheet, MoveSheet } from './sheets';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: ReactTestRenderer[] = [];
+beforeEach(() => { dimensions.mockReturnValue({ width: 402, height: 874, fontScale: 1, scale: 3 }); });
 async function render(element: React.ReactElement) {
   let result!: ReactTestRenderer;
   await act(async () => { result = create(element); });
@@ -66,6 +68,22 @@ describe('Move and copy flow', () => {
   });
 });
 describe('Destructive confirmation', () => {
+  it('has no empty scroll body or uneven button frames at normal phone sizes', async () => {
+    const tree = await render(<ConfirmSheet open title="Remove?" description="Not backed up" confirmLabel="Remove" onConfirm={vi.fn()} onClose={vi.fn()} />);
+    const sheet = tree.root.findByType('Sheet' as any);
+    expect(sheet.props.children[0]).toBeNull();
+    const buttons = tree.root.findAllByType('Button' as any);
+    expect(sheet.props.children[1].props.style.flexDirection).toBe('row');
+    expect(buttons[0].props.style).toEqual({ flex: 1 });
+    expect(buttons[1].props.style[0]).toEqual({ flex: 1 });
+  });
+  it.each([[320, 1], [375, 1], [402, 1.5], [1024, 2]])('stacks actions at width %s and font scale %s', async (width, fontScale) => {
+    dimensions.mockReturnValue({ width, fontScale, height: 874, scale: 3 });
+    const tree = await render(<ConfirmSheet open title="Remove?" description="Not backed up" confirmLabel="Remove" onConfirm={vi.fn()} onClose={vi.fn()} />);
+    const cancel = tree.root.findAllByType('Button' as any)[0];
+    expect(tree.root.findByType('Sheet' as any).props.children[1].props.style.flexDirection).toBe('column-reverse');
+    expect(cancel.props.style).toBeUndefined();
+  });
   it('waits for save, prevents double submission and cancellation during mutation', async () => {
     let resolve!: (value:boolean)=>void;
     const save=vi.fn(()=>new Promise<boolean>(done=>resolve=done)), close=vi.fn();

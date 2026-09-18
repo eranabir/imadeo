@@ -812,10 +812,10 @@ export function LibraryScreen({ server }: Props) {
         title={`Remove ${picked.length} ${picked.length === 1 ? 'item' : 'items'} from this phone?`}
         description={
           pickedPending > 0
-            ? `${pickedPending} of these have not been backed up yet — those copies would be gone for good. Everything already sent stays on ${server.name}; only the copy in this phone's gallery is removed.`
+            ? `${pickedPending} of these items have no backup on ${server.name}. This removes them from your phone's photo library. Existing server copies are kept.`
             : `They stay on ${server.name}. Only the copy in this phone's gallery is removed, and you can still see them in Browse.`
         }
-        confirmLabel="Remove from phone"
+        confirmLabel="Remove"
         onConfirm={() => removeFromPhone()}
         onClose={() => setConfirmDelete(false)}
       />
@@ -1217,13 +1217,13 @@ function DeviceViewer({
             same deletion — one photo rather than a selection. */}
         <ConfirmSheet
           open={removing}
-          title="Remove this from this phone?"
+          title="Remove from this phone?"
           description={
             backedUp
               ? `It stays on ${host}. Only the copy in this phone's gallery is removed, and you can still see it in Browse.`
-              : 'This has not been backed up yet, so this copy would be gone for good.'
+              : `This item has not been backed up to ${host}. This removes it from your phone's photo library.`
           }
-          confirmLabel="Remove from phone"
+          confirmLabel="Remove"
           onClose={() => setRemoving(false)}
           onConfirm={async () => {
             if (!await onRemove(asset)) return false;
