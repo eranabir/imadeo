@@ -15,6 +15,11 @@ function clear() { epoch++; decoded.clear(); pending.clear(); }
 AppState.addEventListener('memoryWarning', clear);
 onTokenChanged((token) => { if (!token) clear(); });
 
+/** Reuse the exact decoded grid image for the viewer's first frame. */
+export function cachedThumbnail(serverUrl: string, assetId: string, token: string | null) {
+  return decoded.get(`${serverUrl}\n${token ?? ''}\n${assetId}`);
+}
+
 export const AssetThumbnail = memo(function AssetThumbnail({
   serverUrl, assetId, token, ...props
 }: Omit<ImageProps, 'source'> & { serverUrl: string; assetId: string; token: string | null }) {

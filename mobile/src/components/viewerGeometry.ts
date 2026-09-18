@@ -2,13 +2,14 @@
 export const VIEWER_HEADER_HEIGHT = 52;
 export const VIEWER_MEDIA_TOP_GAP = 10;
 export const VIEWER_ACTION_DOCK_HEIGHT = 48;
-export const VIEWER_FILMSTRIP_HEIGHT = 38;
-export const VIEWER_FILMSTRIP_GAP = 14;
+export const VIEWER_FILMSTRIP_HEIGHT = 48;
+export const VIEWER_FILMSTRIP_GAP = 8;
+export const VIEWER_PANEL_TOP_PADDING = 12;
 /** Keep the three bottom rows on one rhythm: controls → filmstrip → actions. */
 export const VIEWER_CONTROLS_GAP = VIEWER_FILMSTRIP_GAP;
 export const VIEWER_VIDEO_CONTROLS_HEIGHT = 48;
-/** Lower the iPhone action row by 8pt without entering the home-indicator area. */
-export const VIEWER_IOS_BOTTOM_CLEARANCE = 26;
+/** Icons remain above the home indicator; don't reserve the tab bar's inset. */
+export const VIEWER_IOS_BOTTOM_CLEARANCE = 12;
 
 export function clampViewerSafeBottom(safeBottom: number, isIOS: boolean) {
   const inset = Math.max(0, safeBottom);
@@ -25,7 +26,7 @@ export const viewerVideoControlsBottom = (safeBottom: number) =>
   viewerFilmstripBottom(safeBottom) + VIEWER_FILMSTRIP_HEIGHT + VIEWER_CONTROLS_GAP;
 
 export const viewerBottomPanelHeight = (safeBottom: number, video = false) =>
-  viewerFilmstripBottom(safeBottom) + VIEWER_FILMSTRIP_HEIGHT + VIEWER_FILMSTRIP_GAP
+  viewerFilmstripBottom(safeBottom) + VIEWER_FILMSTRIP_HEIGHT + VIEWER_PANEL_TOP_PADDING
   + (video ? VIEWER_VIDEO_CONTROLS_HEIGHT + VIEWER_CONTROLS_GAP : 0);
 
 export const viewerMediaBottom = (screenHeight: number, safeBottom: number, video = false) =>

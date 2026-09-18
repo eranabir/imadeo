@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from 'expo-router';
 /*
  * The legacy entry, deliberately.
@@ -967,11 +968,12 @@ function DeviceViewer({
     resuming.current = false;
     setZoomed(false);
     setAt(bounded);
-    pager.current?.scrollToOffset({ offset: bounded * width, animated: true });
+    pager.current?.scrollToOffset({ offset: bounded * width, animated: Math.abs(bounded - at) === 1 });
   };
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={leave} statusBarTranslucent>
+      <StatusBar style="light" />
       <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={StyleSheet.absoluteFill}>
         {/* The dark comes up under the photograph rather than with it, so the
@@ -1010,6 +1012,8 @@ function DeviceViewer({
               setAt(Math.round(event.nativeEvent.contentOffset.x / width));
             }}
             windowSize={3}
+            initialNumToRender={1}
+            maxToRenderPerBatch={2}
             onEndReached={() => {
               if (hasMore) void onLoadMore();
             }}
@@ -1053,7 +1057,9 @@ function DeviceViewer({
                         style={{ width, height: mediaHeight }}
                         contentFit="contain"
                         recyclingKey={item.id}
-                        transition={140}
+                        transition={0}
+                        cachePolicy="memory-disk"
+                        priority={index === at ? 'high' : 'low'}
                       />
                     </ZoomableMedia>
                   </View>
@@ -1145,6 +1151,7 @@ function DeviceViewer({
           }}
         >
           <ViewerFilmstrip
+            width={width}
             items={assets.map((item) => ({ id: item.id, source: item.uri }))}
             current={at}
             onSelect={showAt}
@@ -1160,7 +1167,7 @@ function DeviceViewer({
             bottom: 0,
             height: dockHeight,
             paddingBottom: safeBottom,
-            paddingHorizontal: 28,
+            paddingHorizontal: 16,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1181,7 +1188,7 @@ function DeviceViewer({
             style={{
               paddingHorizontal: 8,
               borderRadius: radius.pill,
-              backgroundColor: colors.surface,
+              backgroundColor: colors.bg,
             }}
           >
             <ViewerAction
@@ -1393,7 +1400,7 @@ function ViewerActionPlate({ children }: { children: ReactNode }) {
         width: 48,
         height: 48,
         borderRadius: radius.pill,
-        backgroundColor: colors.surface,
+        backgroundColor: colors.bg,
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -1425,7 +1432,7 @@ function ViewerAction({
       style={{ width: VIEWER_ACTION_DOCK_HEIGHT, height: VIEWER_ACTION_DOCK_HEIGHT }}
     >
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={21} color={tint} />
+        <Icon name={icon} size={24} color={tint} />
       </View>
     </Touchable>
   );

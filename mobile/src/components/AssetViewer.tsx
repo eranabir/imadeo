@@ -1,5 +1,5 @@
-import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { autoplayVideos } from '../lib/preferences';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -27,6 +27,9 @@ import { Touchable } from './ui';
 import { ZoomableMedia } from './ZoomableMedia';
 import { withoutViewerItem } from './viewerItems';
 import { videoSeekPosition } from './videoSeekPosition';
+import { ViewerFilmstrip } from './ViewerFilmstrip';
+import { ServerPhoto } from './ServerPhoto';
+export { ViewerFilmstrip } from './ViewerFilmstrip';
 import {
   clampViewerSafeBottom,
   VIEWER_ACTION_DOCK_HEIGHT,
@@ -162,7 +165,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
    * After a swipe the one it was opened from is somewhere else entirely, and
    * shrinking into the wrong square is worse than not shrinking at all.
    */
-  const { mounted, enter, grown } = useGrowFrom(
+  const { mounted, enter, grown, settled } = useGrowFrom(
     current === opened.current ? from ?? null : null,
     index !== null,
   );
@@ -229,6 +232,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <StatusBar style="light" />
       <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={StyleSheet.absoluteFill}>
         {/* The dark comes up under the photograph rather than with it, so the
@@ -294,23 +298,19 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                 <View
                   style={{ position: 'absolute', top: mediaTop, left: 0, width, height: mediaHeight }}
                 >
-                  <ZoomableMedia
-                    width={width}
-                    height={mediaHeight}
+                  <ServerPhoto
+                    serverUrl={serverUrl}
+                    token={token}
+                    asset={item}
+                    loadOriginal={i === current && settled}
                     active={i === current}
                     accessibilityLabel={item.originalFileName ?? 'Photo'}
                     onTap={() => setChrome((on) => !on)}
                     onZoomChange={setZoomed}
-                  >
-                    <ServerPhoto
-                      serverUrl={serverUrl}
-                      token={token}
-                      asset={item}
-                      width={width}
-                      height={mediaHeight}
-                      rotation={rotations[item.id] ?? item.rotation ?? 0}
-                    />
-                  </ZoomableMedia>
+                    width={width}
+                    height={mediaHeight}
+                    rotation={rotations[item.id] ?? item.rotation ?? 0}
+                  />
                 </View>
               )}
             </View>
@@ -404,10 +404,11 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
           }}
         >
           <ViewerFilmstrip
+            width={width}
             items={assets.map((item) => ({
               id: item.id,
               source: {
-                uri: `${serverUrl}/api/assets/${item.id}/thumbnail?size=thumb`,
+                uri: `${serverUrl}/api/assets/${item.id}/thumbnail`,
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
               },
             }))}
@@ -425,7 +426,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
             bottom: 0,
             height: dockHeight,
             paddingBottom: safeBottom,
-            paddingHorizontal: 28,
+            paddingHorizontal: 16,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -454,7 +455,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
               alignItems: 'center',
               paddingHorizontal: 8,
               borderRadius: radius.pill,
-              backgroundColor: colors.surface,
+              backgroundColor: colors.bg,
             }}
           >
             <ViewerAction
@@ -546,74 +547,6 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
       </View>
       </GestureHandlerRootView>
     </Modal>
-  );
-}
-
-/**
- * Shows the ready-to-paint preview first, then cross-fades to the untouched
- * upload once iOS has decoded it. Unsupported originals keep the preview, so
- * RAW formats do not turn a working viewer into a broken-image screen.
- */
-function ServerPhoto({
-  serverUrl,
-  token,
-  asset,
-  width,
-  height,
-  rotation,
-}: {
-  serverUrl: string;
-  token: string | null;
-  asset: Asset;
-  width: number;
-  height: number;
-  rotation: 0 | 90 | 180 | 270;
-}) {
-  const [originalLoaded, setOriginalLoaded] = useState(false);
-  const [originalFailed, setOriginalFailed] = useState(false);
-  const quarterTurn = rotation === 90 || rotation === 270;
-  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-  const mediaStyle = {
-    width: quarterTurn ? height : width,
-    height: quarterTurn ? width : height,
-    transform: [{ rotate: `${rotation}deg` }],
-  } as const;
-
-  useEffect(() => {
-    setOriginalLoaded(false);
-    setOriginalFailed(false);
-  }, [asset.id]);
-
-  return (
-    <View style={{ width, height }}>
-      <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Image
-          source={{
-            uri: `${serverUrl}/api/assets/${asset.id}/thumbnail?size=preview`,
-            headers,
-          }}
-          style={[mediaStyle, { opacity: originalLoaded ? 0 : 1 }]}
-          contentFit="contain"
-          transition={140}
-          cachePolicy="memory-disk"
-          recyclingKey={`${asset.id}-preview`}
-        />
-      </View>
-      {!originalFailed && (
-        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-          <Image
-            source={{ uri: `${serverUrl}/api/assets/${asset.id}/original`, headers }}
-            style={[mediaStyle, { opacity: originalLoaded ? 1 : 0 }]}
-            contentFit="contain"
-            transition={180}
-            cachePolicy="memory-disk"
-            recyclingKey={`${asset.id}-original`}
-            onLoad={() => setOriginalLoaded(true)}
-            onError={() => setOriginalFailed(true)}
-          />
-        </View>
-      )}
-    </View>
   );
 }
 
@@ -1062,70 +995,6 @@ function clockTime(value: number) {
     : `${minutes}:${remainder}`;
 }
 
-interface ViewerFilmstripItem {
-  id: string;
-  source: string | { uri: string; headers?: Record<string, string> };
-}
-
-/** The centred strip Photos uses to preserve context while paging media. */
-export function ViewerFilmstrip({
-  items,
-  current,
-  onSelect,
-}: {
-  items: ViewerFilmstripItem[];
-  current: number;
-  onSelect: (index: number) => void;
-}) {
-  const strip = useRef<FlatList<ViewerFilmstripItem>>(null);
-  const previous = useRef(current);
-
-  useEffect(() => {
-    if (!items[current]) return;
-    strip.current?.scrollToIndex({ index: current, animated: Math.abs(previous.current - current) === 1, viewPosition: 0.5 });
-    previous.current = current;
-  }, [current, items.length]);
-
-  return (
-    <FlatList
-      ref={strip}
-      horizontal
-      data={items}
-      keyExtractor={(item) => item.id}
-      showsHorizontalScrollIndicator={false}
-      initialScrollIndex={Math.max(0, Math.min(current, items.length - 1))}
-      getItemLayout={(_data, index) => ({ length: 40, offset: index * 40, index })}
-      onScrollToIndexFailed={({ index }) => {
-        strip.current?.scrollToOffset({ offset: Math.max(0, index * 40), animated: false });
-      }}
-      contentContainerStyle={{ paddingHorizontal: 12, alignItems: 'center' }}
-      renderItem={({ item, index }) => (
-        <Touchable
-          onPress={() => onSelect(index)}
-          radius={radius.sm}
-          label={`Show item ${index + 1}`}
-          style={{ width: 40, height: VIEWER_FILMSTRIP_HEIGHT, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Image
-            source={item.source}
-            style={{
-              width: index === current ? 32 : 28,
-              height: index === current ? 38 : 34,
-              borderRadius: radius.sm,
-              borderWidth: index === current ? 2 : 0,
-              borderColor: colors.primary,
-              backgroundColor: colors.raised,
-            }}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={`viewer-strip-${item.id}`}
-          />
-        </Touchable>
-      )}
-    />
-  );
-}
-
 function ViewerActionPlate({ children }: { children: ReactNode }) {
   return (
     <View
@@ -1133,7 +1002,7 @@ function ViewerActionPlate({ children }: { children: ReactNode }) {
         width: 48,
         height: 48,
         borderRadius: radius.pill,
-        backgroundColor: colors.surface,
+        backgroundColor: colors.bg,
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -1167,7 +1036,7 @@ function ViewerAction({
       style={{ width: VIEWER_ACTION_DOCK_HEIGHT, height: VIEWER_ACTION_DOCK_HEIGHT }}
     >
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={22} color={tint} />
+        <Icon name={icon} size={24} color={tint} />
       </View>
     </Touchable>
   );

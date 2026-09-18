@@ -102,15 +102,20 @@ describe('Refresh and bulk result safety', () => {
 describe('Viewer layout matrix', () => {
   it('lowers the iPhone dock and recovers media height without shrinking touch targets or row gaps', () => {
     const bottom = clampViewerSafeBottom(34, true);
-    expect(bottom).toBe(26);
+    expect(bottom).toBe(12);
     expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
     for (const video of [false, true]) {
-      expect(viewerBottomPanelHeight(34, video) - viewerBottomPanelHeight(bottom, video)).toBe(8);
-      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(8);
+      expect(viewerBottomPanelHeight(34, video) - viewerBottomPanelHeight(bottom, video)).toBe(22);
+      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(22);
     }
-    expect(clampViewerSafeBottom(20, true)).toBe(20);
+    expect(clampViewerSafeBottom(20, true)).toBe(12);
     expect(clampViewerSafeBottom(0, true)).toBe(0);
     expect(clampViewerSafeBottom(48, false)).toBe(48);
+    // With 24pt icons in a 48pt target, their bottom edge is 24pt above
+    // the screen edge: clear of the home indicator without a blank footer.
+    expect(bottom + (VIEWER_ACTION_DOCK_HEIGHT - 24) / 2).toBe(24);
+    expect(viewerBottomPanelHeight(bottom, true)).toBe(184);
+    expect(viewerBottomPanelHeight(bottom, false)).toBe(128);
   });
   for(const [width,height,top,bottom] of [[320,568,20,0],[375,812,44,34],[402,874,62,34],[440,956,62,34],[1024,1366,24,20],[1366,1024,24,20]]) {
     for(const [mw,mh] of [[4032,3024],[3024,4032],[1920,1080],[1080,1920],[640,640],[8000,1500],[1000,5000]]) {

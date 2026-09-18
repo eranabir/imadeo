@@ -38,20 +38,23 @@ export function useGrowFrom(origin: Rect | null, open: boolean) {
   const enter = useRef(new Animated.Value(0)).current;
   /** Lags `open`, so there is something left on screen to animate out. */
   const [mounted, setMounted] = useState(open);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     if (open) {
       setMounted(true);
+      setSettled(false);
       const animation = Animated.timing(enter, {
         toValue: 1,
         duration: motion.enter,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       });
-      animation.start();
+      animation.start(({ finished }) => { if (finished) setSettled(true); });
       return () => animation.stop();
     }
 
+    setSettled(false);
     const animation = Animated.timing(enter, {
       toValue: 0,
       duration: motion.exit,
@@ -70,6 +73,8 @@ export function useGrowFrom(origin: Rect | null, open: boolean) {
   return {
     /** Whether there is still anything to draw, animation included. */
     mounted,
+    /** Defer full originals until the native opening transition has finished. */
+    settled,
     /** Nought on the grid, one full screen. Everything else hangs off it. */
     enter,
     /**
