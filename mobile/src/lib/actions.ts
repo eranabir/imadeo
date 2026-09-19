@@ -120,10 +120,10 @@ const writes = {
 
   // -- folders --------------------------------------------------------------
 
-  createFolder: (server: string, name: string, parentId: string | null) =>
-    request(server, '/folders', {
+  createFolder: (server: string, name: string, parentId: string | null, isLocked = false) =>
+    request<{ id: string; name: string }>(server, '/folders', {
       method: 'POST',
-      body: JSON.stringify({ name, parentId: parentId ?? undefined }),
+      body: JSON.stringify({ name, parentId: parentId ?? undefined, ...(isLocked ? { isLocked } : {}) }),
     }),
 
   renameFolder: (server: string, id: string, name: string) =>
@@ -137,8 +137,8 @@ const writes = {
 
   // -- albums ---------------------------------------------------------------
 
-  createAlbum: (server: string, albumName: string, folderId: string | null) =>
-    request(server, '/albums', { method: 'POST', body: JSON.stringify({ albumName, folderId }) }),
+  createAlbum: (server: string, albumName: string, folderId: string | null, isLocked = false) =>
+    request<{ id: string; name: string }>(server, '/albums', { method: 'POST', body: JSON.stringify({ albumName, folderId, ...(isLocked ? { isLocked } : {}) }) }),
 
   renameAlbum: (server: string, id: string, albumName: string) =>
     request(server, `/albums/${id}`, { method: 'PUT', body: JSON.stringify({ albumName }) }),

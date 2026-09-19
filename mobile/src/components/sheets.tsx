@@ -1,11 +1,11 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Keyboard, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { actions } from '../lib/actions';
 import { request, subjectThumbnail, useResource, type Album, type Subject } from '../lib/api';
 import { colors, radius } from '../theme';
 import { Icon } from './Icon';
-import { Button, Chip, Sheet, Touchable } from './ui';
+import { Button, Chip, Sheet, SheetRow, Touchable } from './ui';
 
 /** The shared field style, so every sheet's input looks like the same control. */
 function Field({
@@ -433,13 +433,7 @@ export type MoveDestination =
   | { kind: 'folder'; id: string | null; name: string }
   | { kind: 'album'; id: string; name: string };
 
-/**
- * Picks where something goes.
- *
- * The whole tree arrives in one request and is flattened here rather than
- * expanded a level at a time. A move dialog that needs three taps to reach a
- * folder you already know the name of is worse than a long list.
- */
+/** Picks or creates a destination without dismissing the media selection. */
 export function MoveSheet({
   open,
   serverUrl,
@@ -464,6 +458,10 @@ export function MoveSheet({
   const [needle, setNeedle] = useState('');
   const [copy, setCopy] = useState(false);
   const [destination, setDestination] = useState<MoveDestination | null>(null);
+  const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
+  const [name, setName] = useState('');
+  const [parent, setParent] = useState<{ id: string | null; name: string }>({ id: null, name: 'Top level' });
+  const [choosingParent, setChoosingParent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef(false);
@@ -484,15 +482,8 @@ export function MoveSheet({
       setBusy(false);
     }
   };
-  /**
-   * Folders the pointer has closed.
-   *
-   * Closed rather than open, so the tree arrives expanded — a move sheet that
-   * needs three taps to reach a folder you already know the name of is worse
-   * than a long list, and this is the escape hatch for when the list is the
-   * long one.
-   */
-  const [closed, setClosed] = useState<Set<string>>(new Set());
+  // Only explicitly opened folders expand; late-arriving data stays collapsed.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const privateQuery = includeLocked ? '?includeLocked=true' : '';
   const tree = useResource<FolderRow[]>(serverUrl, open ? `/folders/tree${privateQuery}` : null);
   const albums = useResource<Album[]>(serverUrl, open && allowAlbums ? `/albums${privateQuery}` : null);
@@ -502,19 +493,68 @@ export function MoveSheet({
   useEffect(() => {
     if (!open) {
       setNeedle('');
-      setClosed(new Set());
+      setExpanded(new Set());
       setDestination(null);
       setError(null);
       setCopy(false);
+      setCreating(null);
+      setName('');
+      setParent({ id: null, name: 'Top level' });
+      setChoosingParent(false);
     }
   }, [open]);
 
   const toggleFolder = (id: string) =>
-    setClosed((current) => {
+    setExpanded((current) => {
       const next = new Set(current);
       if (!next.delete(id)) next.add(id);
       return next;
     });
+
+  const startCreating = (kind: 'folder' | 'album') => {
+    setCreating(kind);
+    setName('');
+    setParent({ id: null, name: 'Top level' });
+    setError(null);
+  };
+  const createDestination = async () => {
+    const trimmed = name.trim();
+    if (!creating || !trimmed || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError(null);
+    Keyboard.dismiss();
+    try {
+      const created = creating === 'album'
+        ? await actions.createAlbum(serverUrl, trimmed, parent.id, includeLocked)
+        : await actions.createFolder(serverUrl, trimmed, parent.id, includeLocked);
+      // Creation and moving are separate: a failed move retries the same
+      // destination instead of creating another album/folder.
+      setDestination({ kind: creating, id: created.id, name: created.name });
+      setCreating(null);
+      setNeedle('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : `The ${creating} could not be created.`);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  };
+  const selectDestination = (next: MoveDestination) => {
+    if (choosingParent && next.kind === 'folder') {
+      setParent(next);
+      setChoosingParent(false);
+      setNeedle('');
+    } else setDestination(next);
+  };
+  const back = () => {
+    if (pending.current) return;
+    setError(null);
+    if (choosingParent) { setChoosingParent(false); setNeedle(''); }
+    else if (creating) { Keyboard.dismiss(); setCreating(null); }
+    else if (destination) setDestination(null);
+    else close();
+  };
 
   const query = needle.trim().toLowerCase();
   const hit = (name: string) => !query || name.toLowerCase().includes(query);
@@ -547,14 +587,14 @@ export function MoveSheet({
     nodes.flatMap((node) => {
       if (node.id === excludeFolderId) return [];
 
-      const albumsHere = inFolder(node.id);
+      const albumsHere = choosingParent ? [] : inFolder(node.id);
       const children = node.children ?? [];
       const holds = albumsHere.length > 0 || children.length > 0;
       const under = [...trail, node.name];
 
       return [
         { kind: 'folder' as const, depth, folder: node, holds, trail: trail.join(' / ') },
-        ...(closed.has(node.id)
+        ...(!query && (!copy || choosingParent) && !expanded.has(node.id)
           ? []
           : [
               ...albumsHere.map((album) => ({
@@ -579,15 +619,15 @@ export function MoveSheet({
   const all: Row[] = [
     ...walk(tree.data ?? []),
     // Albums filed nowhere sit at the root, beside the top-level folders.
-    ...inFolder(null).map((album) => ({ kind: 'album' as const, depth: 0, album, trail: '' })),
+    ...(choosingParent ? [] : inFolder(null)).map((album) => ({ kind: 'album' as const, depth: 0, album, trail: '' })),
   ];
 
-  const available = copy ? all.filter((row) => row.kind === 'album') : all;
+  const available = copy && !choosingParent ? all.filter((row) => row.kind === 'album') : all;
   const rows = query
     ? available
         .filter((row) => hit(row.kind === 'folder' ? row.folder.name : row.album.name))
         .map((row) => ({ ...row, depth: 0 }))
-    : available;
+    : copy && !choosingParent ? available.map((row) => ({ ...row, depth: 0 })) : available;
 
   const subject = count === 1 ? 'this item' : `these ${count} items`;
   const loading = tree.loading || albums.loading;
@@ -595,24 +635,34 @@ export function MoveSheet({
   return (
     <Sheet
       open={open}
-      title={destination ? `${copy ? 'Add' : 'Move'} to “${destination.name}”?` : copy ? 'Copy to album' : 'Move to…'}
-      description={copy ? 'Add to an album without removing the items from their current folder or albums.' : destination ? `Move ${subject} to this ${destination.kind}.` : `Where ${subject} should go.`}
-      tall={!destination}
+      title={choosingParent ? 'Create inside…' : creating ? `New ${creating}` : destination ? `${copy ? 'Add' : 'Move'} to “${destination.name}”?` : copy ? 'Copy to album' : 'Move to…'}
+      description={creating ? choosingParent ? 'Choose a folder for the new destination.' : `Create a ${creating}, then confirm ${copy ? 'copying' : 'moving'} your selected items into it.` : copy ? 'Add to an album without removing the items from their current folder or albums.' : destination ? `Move ${subject} to this ${destination.kind}.` : `Where ${subject} should go.`}
+      tall={!destination && (!creating || choosingParent)}
       onClose={close}
       footer={
         <View style={{ gap: 12 }}>
           {(error || tree.error || albums.error) && <Text style={{ color: colors.danger }}>{error || tree.error || albums.error}</Text>}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Button label={destination ? 'Back' : 'Cancel'} variant="secondary" disabled={busy}
-              onPress={destination ? () => { setDestination(null); setError(null); } : close} style={{ flex: 1 }} />
+            <Button label={destination || creating ? 'Back' : 'Cancel'} variant="secondary" disabled={busy}
+              onPress={back} style={{ flex: 1 }} />
+            {creating && !choosingParent && <Button label={busy ? 'Creating…' : 'Create'} disabled={busy || !name.trim()}
+              onPress={() => void createDestination()} style={{ flex: 1 }} />}
             {destination && <Button label={busy ? 'Saving…' : copy ? 'Add to album' : 'Move'} disabled={busy}
               onPress={() => void confirm()} style={{ flex: 1 }} />}
           </View>
         </View>
       }
     >
-      {destination ? <Text style={{ color: colors.muted }}>Your selection will stay here until the server confirms the move.</Text> : <>
-      {allowAlbums && <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+      {creating && !choosingParent ? <View style={{ gap: 12 }}>
+        <Field value={name} onChange={setName} placeholder={creating === 'album' ? 'Album name' : 'Folder name'} onSubmit={() => void createDestination()} />
+        <SheetRow icon="folder" label={`Create in: ${parent.name}`} hint="Tap to choose a different folder" disabled={busy}
+          onPress={() => { Keyboard.dismiss(); setNeedle(''); setExpanded(new Set()); setChoosingParent(true); }} />
+      </View> : destination ? <Text style={{ color: colors.muted }}>Your selection will stay here until the server confirms the move.</Text> : <>
+      {!choosingParent && <View style={{ marginBottom: 12 }}>
+        {allowAlbums && <SheetRow icon="album" label="New album" onPress={() => startCreating('album')} />}
+        {!copy && <SheetRow icon="folder" label="New folder" onPress={() => startCreating('folder')} />}
+      </View>}
+      {allowAlbums && !choosingParent && <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
         <Chip label="Move" active={!copy} onPress={() => setCopy(false)} />
         <Chip label="Copy to album" active={copy} onPress={() => setCopy(true)} />
       </View>}
@@ -624,18 +674,18 @@ export function MoveSheet({
         value={needle}
         onChange={setNeedle}
         autoFocus={false}
-        placeholder={allowAlbums ? 'Find a folder or album' : 'Find a folder'}
+        placeholder={allowAlbums && !choosingParent ? 'Find a folder or album' : 'Find a folder'}
       />
 
       <View style={{ height: 12 }} />
 
-      {!query && !copy && (
+      {!query && (!copy || choosingParent) && (
         <Destination
           icon="library"
           label="Top level"
           hint="Not filed in any folder"
           onPress={() => {
-            setDestination({ kind: 'folder', id: null, name: 'Top level' });
+            selectDestination({ kind: 'folder', id: null, name: 'Top level' });
           }}
         />
       )}
@@ -650,10 +700,10 @@ export function MoveSheet({
               hint={query ? row.trail || undefined : undefined}
               indent={row.depth}
               // Searching flattens the tree, so there is nothing left to fold.
-              folded={query || !row.holds ? undefined : closed.has(row.folder.id)}
+              folded={query || !row.holds ? undefined : !expanded.has(row.folder.id)}
               onToggle={() => toggleFolder(row.folder.id)}
               onPress={() => {
-                setDestination({ kind: 'folder', id: row.folder.id, name: row.folder.name });
+                selectDestination({ kind: 'folder', id: row.folder.id, name: row.folder.name });
               }}
             />
           ) : (
@@ -662,7 +712,7 @@ export function MoveSheet({
               icon="album"
               label={row.album.name}
               hint={
-                query && row.trail
+                (query || copy) && row.trail
                   ? `${row.trail} · ${row.album.assetCount.toLocaleString()} photos`
                   : `${row.album.assetCount.toLocaleString()} photos`
               }
