@@ -152,27 +152,25 @@ export function Button({
   );
 
   return (
-    <Touchable
-      onPress={onPress}
-      disabled={disabled || busy}
-      radius={radius.pill}
-      label={label}
-      style={[
-        variant === 'primary' ? shadow(2) : null,
-        variant === 'secondary'
+    <View style={[{ borderRadius: radius.pill }, variant === 'primary' ? shadow(2) : null, style]}>
+      <Touchable
+        onPress={onPress}
+        disabled={disabled || busy}
+        radius={radius.pill}
+        label={label}
+        style={variant === 'secondary'
           ? { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }
-          : null,
-        style,
-      ]}
-    >
-      {variant === 'primary' ? (
-        <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-          {body}
-        </LinearGradient>
-      ) : (
-        body
-      )}
-    </Touchable>
+          : null}
+      >
+        {variant === 'primary' ? (
+          <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            {body}
+          </LinearGradient>
+        ) : (
+          body
+        )}
+      </Touchable>
+    </View>
   );
 }
 

@@ -482,10 +482,8 @@ export function MoveSheet({
       setBusy(false);
     }
   };
-  // The move picker is a destination map: show the complete hierarchy on open.
-  // Store only branches the user explicitly folds so late-arriving descendants
-  // remain visible too.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Start compact and reveal only the branches the user opens.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const privateQuery = includeLocked ? '?includeLocked=true' : '';
   const tree = useResource<FolderRow[]>(serverUrl, open ? `/folders/tree${privateQuery}` : null);
   const albums = useResource<Album[]>(serverUrl, open && allowAlbums ? `/albums${privateQuery}` : null);
@@ -495,7 +493,7 @@ export function MoveSheet({
   useEffect(() => {
     if (!open) {
       setNeedle('');
-      setCollapsed(new Set());
+      setExpanded(new Set());
       setDestination(null);
       setError(null);
       setCopy(false);
@@ -507,7 +505,7 @@ export function MoveSheet({
   }, [open]);
 
   const toggleFolder = (id: string) =>
-    setCollapsed((current) => {
+    setExpanded((current) => {
       const next = new Set(current);
       if (!next.delete(id)) next.add(id);
       return next;
@@ -596,7 +594,7 @@ export function MoveSheet({
 
       return [
         { kind: 'folder' as const, depth, folder: node, holds, trail: trail.join(' / ') },
-        ...(!query && (!copy || choosingParent) && collapsed.has(node.id)
+        ...(!query && (!copy || choosingParent) && !expanded.has(node.id)
           ? []
           : [
               ...walk(children, depth + 1, under),
@@ -658,7 +656,7 @@ export function MoveSheet({
       {creating && !choosingParent ? <View style={{ gap: 12 }}>
         <Field value={name} onChange={setName} placeholder={creating === 'album' ? 'Album name' : 'Folder name'} onSubmit={() => void createDestination()} />
         <SheetRow icon="folder" label={`Create in: ${parent.name}`} hint="Tap to choose a different folder" disabled={busy}
-          onPress={() => { Keyboard.dismiss(); setNeedle(''); setCollapsed(new Set()); setChoosingParent(true); }} />
+          onPress={() => { Keyboard.dismiss(); setNeedle(''); setExpanded(new Set()); setChoosingParent(true); }} />
       </View> : destination ? <Text style={{ color: colors.muted }}>Your selection will stay here until the server confirms the move.</Text> : <>
       {!choosingParent && <View style={{ marginBottom: 12 }}>
         {allowAlbums && <SheetRow icon="album" label="New album" onPress={() => startCreating('album')} />}
@@ -702,7 +700,7 @@ export function MoveSheet({
               hint={query ? row.trail || undefined : undefined}
               indent={row.depth}
               // Searching flattens the tree, so there is nothing left to fold.
-              folded={query || !row.holds ? undefined : collapsed.has(row.folder.id)}
+              folded={query || !row.holds ? undefined : !expanded.has(row.folder.id)}
               onToggle={() => toggleFolder(row.folder.id)}
               onPress={() => {
                 selectDestination({ kind: 'folder', id: row.folder.id, name: row.folder.name });
