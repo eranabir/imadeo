@@ -1034,7 +1034,6 @@ function DeviceViewer({
                     controlsVisible={chrome && index === at}
                     width={width}
                     height={height}
-                    contentTop={mediaTop}
                     safeBottom={safeBottom}
                     onScrubbingChange={setScrubbing}
                     onZoomChange={setZoomed}
@@ -1253,7 +1252,6 @@ function DeviceVideoPage({
   controlsVisible,
   width,
   height,
-  contentTop,
   safeBottom,
   onScrubbingChange,
   onZoomChange,
@@ -1264,7 +1262,6 @@ function DeviceVideoPage({
   controlsVisible: boolean;
   width: number;
   height: number;
-  contentTop: number;
   safeBottom: number;
   onScrubbingChange: (scrubbing: boolean) => void;
   onZoomChange: (zoomed: boolean) => void;
@@ -1279,7 +1276,6 @@ function DeviceVideoPage({
       width={width}
       height={height}
       rotation={0}
-      contentTop={contentTop}
       safeBottom={safeBottom}
       onScrubbingChange={onScrubbingChange}
       onZoomChange={onZoomChange}

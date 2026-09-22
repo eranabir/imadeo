@@ -37,7 +37,6 @@ import {
   VIEWER_HEADER_HEIGHT,
   viewerDockHeight,
   viewerFilmstripBottom,
-  viewerMediaBottom,
   viewerMediaViewport,
   viewerVideoControlsBottom,
   viewerBottomPanelHeight,
@@ -288,7 +287,6 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                   width={width}
                   height={height}
                   rotation={rotations[item.id] ?? item.rotation ?? 0}
-                  contentTop={mediaTop}
                   safeBottom={safeBottom}
                   onScrubbingChange={setScrubbing}
                   onZoomChange={setZoomed}
@@ -567,7 +565,6 @@ export function VideoPage({
   width,
   height,
   rotation,
-  contentTop = 0,
   safeBottom = 0,
   onScrubbingChange,
   onZoomChange,
@@ -581,8 +578,6 @@ export function VideoPage({
   width: number;
   height: number;
   rotation: 0 | 90 | 180 | 270;
-  /** Keeps the media below the viewer toolbar without overlaying it. */
-  contentTop?: number;
   /** Keeps interactive controls above the home indicator without shrinking media. */
   safeBottom?: number;
   onScrubbingChange?: (scrubbing: boolean) => void;
@@ -685,8 +680,10 @@ export function VideoPage({
   }, [active, player, status]);
 
   const displayedTime = scrubbingTime ?? currentTime;
-  const videoTop = Math.max(0, Math.min(contentTop, height));
-  const availableHeight = Math.max(1, viewerMediaBottom(height, safeBottom, true) - videoTop);
+  // The chrome floats over the video. Reserving its rows made a portrait video
+  // much smaller in both dimensions, even when the controls were hidden.
+  const videoTop = 0;
+  const availableHeight = height;
   const rotated = rotation === 90 || rotation === 270;
 
   const seekPreview = (next: number) => {
