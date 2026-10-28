@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Alert,
   AppState,
   FlatList,
   Modal,
@@ -17,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
+import { exportAsset } from '../lib/exportAsset';
 import { ApiError, duration as formatDuration, type Asset } from '../lib/api';
 import { ensureFreshToken } from '../lib/auth';
 import { colors, motion, radius } from '../theme';
@@ -477,6 +479,18 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
             />
           </View>
 
+          <ViewerActionPlate>
+            <ViewerAction icon="shared" label="Share original" tint={colors.text} disabled={busy}
+              onPress={() => void run(() => exportAsset(serverUrl, asset, 'share'))} />
+          </ViewerActionPlate>
+          <ViewerActionPlate>
+            <ViewerAction icon="download" label="Download to Photos" tint={colors.text} disabled={busy}
+              onPress={async () => {
+                if (await run(() => exportAsset(serverUrl, asset, 'download'))) {
+                  Alert.alert('Saved to Photos', 'The original is now in your photo library.');
+                }
+              }} />
+          </ViewerActionPlate>
           <ViewerActionPlate>
             <ViewerAction
               icon="trash"

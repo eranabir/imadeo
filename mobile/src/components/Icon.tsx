@@ -21,6 +21,7 @@ export type IconName =
   | 'fullscreen'
   | 'sparkle'
   | 'photo'
+  | 'download'
   | 'shared'
   | 'heart'
   | 'heart-filled'
@@ -257,6 +258,9 @@ function shapes(name: IconName, color: string) {
           <Path d="M6 15.5l.85 2.15L9 18.5l-2.15.85L6 21.5l-.85-2.15L3 18.5l2.15-.85Z" />
         </>
       );
+
+    case 'download':
+      return <><Path d="M12 3v12m-5-5 5 5 5-5" /><Path d="M4 16v4h16v-4" /></>;
 
     case 'shared':
       return (

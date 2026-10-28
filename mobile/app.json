@@ -90,7 +90,8 @@
           "locationWhenInUsePermission": "Imadeo uses your location while the app is open to show photo places and choose the right server address for your Wi-Fi network. Your location is never sent anywhere."
         }
       ],
-      "expo-router"
+      "expo-router",
+      "expo-sharing"
     ]
   }
 }
