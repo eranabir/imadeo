@@ -1,3 +1,4 @@
+import { MediaSortControl, type MediaSort } from '../components/MediaSort';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
@@ -65,6 +66,8 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   const [shelf, setShelf] = useState<Shelf>('photos');
   const selection = useSelection();
   const [viewMode, setViewMode] = useMediaViewMode();
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
   const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
   const [menuFor, setMenuFor] = useState<Target | null>(null);
@@ -122,7 +125,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   );
   const folderAssets = usePagedResource<Asset>(
     serverUrl,
-    showing === 'folders' && !atRoot ? `/folders/${folderId}/contents` : null,
+    showing === 'folders' && !atRoot ? `/folders/${folderId}/contents?sortBy=${sort}&order=${order}` : null,
     { itemsKey: 'assets' },
   );
   const devices = useResource<Device[]>(
@@ -274,6 +277,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
 
   const header = (
     <View style={{ paddingTop: 16 }}>
+      {showing === 'folders' && !atRoot && <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />}
       {(error || failure) && (
         <Text
           style={{
@@ -392,7 +396,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         // failed request showed the normal “Nothing on your server yet” state,
         // while another tab displayed the authentication error from the same
         // session.
-        header={nothing && !error && !failure ? null : header}
+        header={header}
         showEmptyState={nothing}
         selected={selection.ids}
         onToggle={selection.toggle}

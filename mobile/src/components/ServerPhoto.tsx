@@ -60,10 +60,10 @@ function PhotoRequest({ serverUrl, token, asset, width, height, rotation, loadOr
     return () => { alive.current = false; operation.current++; };
   }, []);
   useEffect(() => {
-    if (visible || !loadOriginal) return;
+    if (displayed.preview || displayed.original || !loadOriginal) return;
     const timer = setTimeout(() => setTimedOut(true), LOAD_TIMEOUT);
     return () => clearTimeout(timer);
-  }, [visible, loadOriginal, attempt]);
+  }, [displayed.preview, displayed.original, loadOriginal, attempt]);
 
   const retry = async () => {
     if (retrying) return;
@@ -86,10 +86,10 @@ function PhotoRequest({ serverUrl, token, asset, width, height, rotation, loadOr
   // Images do not go through the JSON client's token-refresh interceptor.
   // Recover once, only on the active page, then offer an explicit Retry.
   useEffect(() => {
-    if (!loadOriginal || !failed.preview || !failed.original || visible || recovered.current) return;
+    if (!loadOriginal || !failed.preview || !failed.original || displayed.preview || displayed.original || recovered.current) return;
     recovered.current = true;
     void retry();
-  }, [failed.preview, failed.original, visible, loadOriginal]);
+  }, [failed.preview, failed.original, displayed.preview, displayed.original, loadOriginal]);
 
   const show = (layer: Layer) => setDisplayed(value => value[layer] ? value : ({ ...value, [layer]: true }));
   const fail = (layer: Layer) => {
@@ -127,7 +127,7 @@ function PhotoRequest({ serverUrl, token, asset, width, height, rotation, loadOr
       </ZoomableMedia>
       {/* Recovery is outside the zoom/tap surface: Retry must never also hide
           the controls, and VoiceOver must be able to reach the button. */}
-      {!visible && loadOriginal && <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+      {loadOriginal && (!visible || (error && !displayed.preview && !displayed.original)) && <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
         <View style={{ alignItems: 'center', gap: 12, padding: 18, maxWidth: width - 32,
           backgroundColor: colors.surface, borderRadius: radius.lg }}>
           {error ? <Icon name="photo" size={26} color={colors.muted} /> : <ActivityIndicator color={colors.primary} />}

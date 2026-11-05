@@ -1,3 +1,4 @@
+import { MediaSortControl, type MediaSort } from '../components/MediaSort';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
@@ -31,9 +32,11 @@ interface Props {
 
 /** Everything inside one album. */
 export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false }: Props) {
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
-    `/albums/${albumId}?sortBy=date&order=desc`,
+    `/albums/${albumId}?sortBy=${sort}&order=${order}`,
     { itemsKey: 'assets' },
   );
   // Album metadata is small but the photos are paged independently. Keeping
@@ -89,8 +92,9 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
         onRefresh={reload}
         topInset={clearance}
         viewMode={viewMode}
-        header={
-          error || shareError || data?.description ? (
+        header={<>
+          <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />
+          {error || shareError || data?.description ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
               {error && <Text style={{ color: colors.danger, fontSize: 14 }}>{error}</Text>}
               {shareError && <Text style={{ color: colors.danger, fontSize: 14 }}>{shareError}</Text>}
@@ -100,7 +104,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
                 </Text>
               )}
             </View>
-          ) : null
+          ) : null}</>
         }
         selected={selection.ids}
         onToggle={selection.toggle}

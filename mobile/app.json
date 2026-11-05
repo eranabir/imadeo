@@ -10,7 +10,7 @@
         "projectId": "ee399e99-7709-4421-bfc7-f773da4e2b2a"
       }
     },
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {

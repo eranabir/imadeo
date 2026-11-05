@@ -1,3 +1,4 @@
+import { photoColumns } from '../lib/layout';
 import {
   useCallback,
   useEffect,
@@ -9,6 +10,7 @@ import {
 } from 'react';
 import {
   Animated,
+  useWindowDimensions,
   FlatList,
   Pressable,
   RefreshControl,
@@ -92,7 +94,7 @@ export function AssetGrid({
   onRefresh,
   header,
   topInset = 0,
-  columns = 3,
+  columns: requestedColumns,
   emptyIcon = 'photo',
   emptyTitle = 'Nothing here yet',
   emptyBody = 'Back up some photos and they will appear.',
@@ -109,6 +111,8 @@ export function AssetGrid({
   groupByDay = false,
   viewMode = 'grid',
 }: Props) {
+  const { width } = useWindowDimensions();
+  const columns = requestedColumns ?? photoColumns(width);
   const selecting = (selected?.length ?? 0) > 0;
   const [viewing, setViewing] = useState<{ at: number; from: Rect | null } | null>(null);
 

@@ -97,8 +97,8 @@ export function Header({
           minHeight: HEADER_HEIGHT,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingLeft: onBack ? 6 : 16,
-          paddingRight: 14,
+          paddingLeft: Math.max(insets.left, onBack ? 6 : 16),
+          paddingRight: Math.max(insets.right, 14),
           gap: 10,
         }}
       >

@@ -75,6 +75,22 @@ describe('Server photo lifecycle', () => {
     await act(async () => tree.root.findByType('Touchable' as any).props.onPress());
     expect(JSON.stringify(tree.toJSON())).toContain('Could not reconnect');
   });
+  it('refreshes failed sharp layers even when a cached thumbnail remains visible', async () => {
+    mocks.cached.mockReturnValue({ nativeRef: 'blurry-tile' });
+    const tree = await render();
+    await act(async () => {
+      layer(tree, 'preview').props.onError();
+      layer(tree, 'original').props.onError();
+    });
+    expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith('https://nas.test', 0);
+    await act(async () => {
+      layer(tree, 'preview').props.onError();
+      layer(tree, 'original').props.onError();
+      vi.advanceTimersByTime(20_001);
+    });
+    expect(tree.root.findByType('Touchable' as any).props.label).toBe('Retry photo');
+    expect(layer(tree, 'thumb')).toBeTruthy();
+  });
   it('ignores a late retry after the user switches photos', async () => {
     let done!: (value: string) => void;
     mocks.refresh.mockImplementation(() => new Promise(resolve => { done = resolve; }));

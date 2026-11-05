@@ -1,3 +1,4 @@
+import { photoColumns } from '../lib/layout';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from 'expo-router';
@@ -18,7 +19,6 @@ import {
   ActivityIndicator,
   AppState,
   FlatList,
-  Dimensions,
   useWindowDimensions,
   Linking,
   Modal,
@@ -75,7 +75,7 @@ import { colors, motion, radius, TAB_BAR_CLEARANCE } from '../theme';
 interface Props { server: ServerInfo }
 
 const PAGE = 120;
-const COLUMNS = 3;
+
 
 /**
  * The day a photo was taken, written the way someone would say it.
@@ -84,9 +84,9 @@ const COLUMNS = 3;
  * not this one, because "12 March" reads faster than "12 March 2026" and the
  * year is only news when it is a different one.
  */
-/** Cut into days, with each day already split into rows of `COLUMNS`. */
-const byDay = (assets: MediaLibrary.Asset[]) =>
-  intoDays(assets, (asset) => asset.creationTime, COLUMNS);
+/** Cut into days, with each day already split into rows of `columns`. */
+const byDay = (assets: MediaLibrary.Asset[], columns: number) =>
+  intoDays(assets, (asset) => asset.creationTime, columns);
 
 /**
  * What is on this phone.
@@ -99,6 +99,7 @@ const byDay = (assets: MediaLibrary.Asset[]) =>
  * this screen is open and resumes from where it stopped next time.
  */
 export function LibraryScreen({ server }: Props) {
+  const columns = photoColumns(useWindowDimensions().width);
   const serverUrl = server.url;
   /**
    * Photos and videos only.
@@ -459,7 +460,7 @@ export function LibraryScreen({ server }: Props) {
   /** Of what is picked, how much is not already on the server. */
   const pickedPending = picked.filter((id) => !uploaded.has(id)).length;
 
-  const sections = byDay(assets);
+  const sections = byDay(assets, columns);
 
   const bar: HeaderConfig = {
     title: picked.length > 0 ? `${picked.length} selected` : 'Library',
@@ -680,6 +681,7 @@ export function LibraryScreen({ server }: Props) {
             {row.map((item) => (
               <Tile
                 key={item.id}
+                columns={columns}
                 asset={item}
                 on={picked.includes(item.id)}
                 sent={uploaded.has(item.id)}
@@ -690,9 +692,9 @@ export function LibraryScreen({ server }: Props) {
             ))}
             {/* Keeps a day's last row aligned with the ones above it rather
                 than stretching two photos across the full width. */}
-            {row.length < COLUMNS &&
-              Array.from({ length: COLUMNS - row.length }).map((_, index) => (
-                <View key={`gap-${index}`} style={{ flex: 1 / COLUMNS }} />
+            {row.length < columns &&
+              Array.from({ length: columns - row.length }).map((_, index) => (
+                <View key={`gap-${index}`} style={{ flex: 1 / columns }} />
               ))}
           </View>
         )}
@@ -1436,6 +1438,7 @@ function ViewerAction({
 
 /** One photo in the device grid. */
 function Tile({
+  columns,
   asset: item,
   on,
   sent,
@@ -1443,6 +1446,7 @@ function Tile({
   onToggle,
   onOpen,
 }: {
+  columns: number;
   asset: MediaLibrary.Asset;
   on: boolean;
   sent: boolean;
@@ -1480,7 +1484,7 @@ function Tile({
             accessibilityRole={selecting ? 'checkbox' : 'image'}
             accessibilityLabel={`${item.filename}${sent ? ', backed up' : ''}`}
             accessibilityState={selecting ? { checked: on } : undefined}
-            style={{ flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 }}
+            style={{ flex: 1 / columns, aspectRatio: 1, padding: 1 }}
           >
             {/* Inset while selected, matching the server grid so the two read as
                 the same gesture. */}
