@@ -66,6 +66,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      ["expo-build-properties", { "ios": { "enableSceneSupport": true } }],
       "expo-secure-store",
       [
         "expo-media-library",
