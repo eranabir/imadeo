@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { photoColumns } from '../lib/layout';
 import {
   useCallback,
@@ -112,7 +113,8 @@ export function AssetGrid({
   viewMode = 'grid',
 }: Props) {
   const { width } = useWindowDimensions();
-  const columns = requestedColumns ?? photoColumns(width);
+  const insets = useSafeAreaInsets();
+  const columns = requestedColumns ?? photoColumns(width - insets.left - insets.right);
   const selecting = (selected?.length ?? 0) > 0;
   const [viewing, setViewing] = useState<{ at: number; from: Rect | null } | null>(null);
 
@@ -446,6 +448,8 @@ export function AssetGrid({
      */
     contentContainerStyle: {
       paddingTop: topInset,
+      paddingLeft: insets.left,
+      paddingRight: insets.right,
       paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - topInset - rowHeight),
     },
     ListHeaderComponent: header,
@@ -572,7 +576,7 @@ export function AssetGrid({
           // Remounts the rows rather than reflowing them: FlatList cannot change
           // numColumns on a live list.
           key={`${viewMode}-${columns}`}
-          contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
+          contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE, paddingLeft: insets.left, paddingRight: insets.right }}
           ListHeaderComponent={header}
           refreshControl={
             onRefresh ? (

@@ -99,7 +99,8 @@ const byDay = (assets: MediaLibrary.Asset[], columns: number) =>
  * this screen is open and resumes from where it stopped next time.
  */
 export function LibraryScreen({ server }: Props) {
-  const columns = photoColumns(useWindowDimensions().width);
+  const insets = useSafeAreaInsets();
+  const columns = photoColumns(useWindowDimensions().width - insets.left - insets.right);
   const serverUrl = server.url;
   /**
    * Photos and videos only.
@@ -618,6 +619,8 @@ export function LibraryScreen({ server }: Props) {
         // name the final day the way it names every other one — a screen less
         // the bar and one row, which lands the last row exactly at the bar.
         contentContainerStyle={{
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
           paddingTop: clearance,
           paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - clearance - rowHeight),
         }}
