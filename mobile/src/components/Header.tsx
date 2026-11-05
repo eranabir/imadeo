@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
@@ -41,22 +41,7 @@ interface Props extends HeaderConfig {
   children?: ReactNode;
 }
 
-/**
- * The bar every screen wears, solid and identical on all of them.
- *
- * It used to be glass, and what showed through it was whatever each screen
- * happened to be scrolling — so the same bar was a different colour on Library
- * than on Search, and over a pale photograph the title lost its background
- * entirely. One opaque surface means one bar, and a title that is legible over
- * anything because nothing gets behind it.
- *
- * The plate behind the section glyph is always the primary. An earlier version
- * gave each section its own hue; the palette is closed and nothing here picks
- * up a new colour.
- *
- * It still floats above the content, so every list below it has to open with
- * `headerClearance` worth of padding, or its first row starts life hidden.
- */
+/** A floating toolbar contained entirely within the current safe content area. */
 export function Header({
   title,
   subtitle,
@@ -70,26 +55,16 @@ export function Header({
   const insets = useSafeAreaInsets();
 
   return (
-    /**
-     * A surface of its own, rounded where it meets the page.
-     *
-     * Square across the top — the bar runs under the status bar, and rounding
-     * those corners would cut two notches out of the display edge — and rounded
-     * along the bottom, which is the only edge it actually has. No shadow and
-     * no border: the change of colour is the edge.
-     */
     <View
       style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
+        top: insets.top + HEADER_TOP_GAP,
+        left: insets.left + HEADER_SIDE_GAP,
+        right: insets.right + HEADER_SIDE_GAP,
         zIndex: 10,
         backgroundColor: colors.surface,
-        borderBottomLeftRadius: radius.xl,
-        borderBottomRightRadius: radius.xl,
+        borderRadius: radius.lg,
         overflow: 'hidden',
-        paddingTop: insets.top,
       }}
     >
       <View
@@ -97,8 +72,8 @@ export function Header({
           minHeight: HEADER_HEIGHT,
           flexDirection: 'row',
           alignItems: 'center',
-          paddingLeft: Math.max(insets.left, onBack ? 6 : 16),
-          paddingRight: Math.max(insets.right, 14),
+          paddingLeft: onBack ? 6 : 12,
+          paddingRight: 12,
           gap: 10,
         }}
       >
@@ -130,7 +105,7 @@ export function Header({
           </View>
         )}
 
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
           <Text
             numberOfLines={1}
             style={{
@@ -179,11 +154,13 @@ export function useHeaderClearance(extra = 0) {
   // `HEADER_GAP` covers both the row added inside the bar and the space between
   // the bar and the content, which used to be 8pt — close enough that a title
   // and the first row of thumbnails read as one block.
-  return insets.top + HEADER_HEIGHT + extra + HEADER_GAP;
+  return insets.top + HEADER_TOP_GAP + HEADER_HEIGHT + extra + HEADER_GAP;
 }
 
 /** The bar's own bottom row, and the same distance again below it. */
 const HEADER_GAP = 26;
+const HEADER_TOP_GAP = 8;
+const HEADER_SIDE_GAP = 12;
 
 /**
  * The pill-shaped control that sits at the right of a header.
@@ -195,7 +172,7 @@ export function HeaderAction({
   label,
   icon,
   onPress,
-  compact = false,
+  compact: requestedCompact = false,
 }: {
   label: string;
   icon?: IconName;
@@ -209,6 +186,9 @@ export function HeaderAction({
    */
   compact?: boolean;
 }) {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const compact = requestedCompact || Boolean(icon && width - insets.left - insets.right < 430);
   return (
     <Touchable onPress={onPress} radius={radius.pill} label={label}>
       <View
