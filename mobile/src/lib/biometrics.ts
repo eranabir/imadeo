@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { getItem, setItem } from './storage';
@@ -15,6 +15,18 @@ export function useBiometricLock(signedIn: boolean, restoring: boolean, serverId
   const epoch = useRef(0);
   const inFlight = useRef(false);
 
+  const refreshCapabilities = useCallback(async () => {
+    if (Platform.OS === 'web') return;
+    const [hardware, enrolled, types] = await Promise.all([
+      LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync(),
+      LocalAuthentication.supportedAuthenticationTypesAsync(),
+    ]);
+    setAvailable(hardware && enrolled);
+    setLabel(Platform.OS === 'ios'
+      ? types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION) ? 'Face ID' : 'Touch ID'
+      : types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT) ? 'fingerprint' : 'biometrics');
+  }, []);
+
   useEffect(() => {
     if (restoring) return;
     let alive = true;
@@ -26,32 +38,24 @@ export function useBiometricLock(signedIn: boolean, restoring: boolean, serverId
         const saved = await getItem(STORAGE_KEYS.biometricLogin);
         if (!alive) return;
         setEnabledState(saved === 'true');
-        if (Platform.OS === 'web') return;
-        const [hardware, enrolled, types] = await Promise.all([
-          LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync(),
-          LocalAuthentication.supportedAuthenticationTypesAsync(),
-        ]);
-        if (!alive) return;
-        setAvailable(hardware && enrolled);
-        setLabel(Platform.OS === 'ios'
-          ? types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION) ? 'Face ID' : 'Touch ID'
-          : types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT) ? 'fingerprint' : 'biometrics');
+        await refreshCapabilities().catch(() => { if (alive) setAvailable(false); });
       } catch {
         // Fail closed if secure storage cannot be read.
         if (alive) { setEnabledState(true); setError('Biometric settings could not be read. Sign in with your password.'); }
       } finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; epoch.current++; };
-  }, [restoring, serverId]);
+  }, [restoring, serverId, refreshCapabilities]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') void refreshCapabilities().catch(() => setAvailable(false));
       if (state !== 'background') return;
       epoch.current++;
       if (enabled && signedIn) setLocked(true);
     });
     return () => subscription.remove();
-  }, [enabled, signedIn]);
+  }, [enabled, signedIn, refreshCapabilities]);
   useEffect(() => { epoch.current++; }, [signedIn]);
   useEffect(() => () => { epoch.current++; }, []);
 
@@ -74,7 +78,7 @@ export function useBiometricLock(signedIn: boolean, restoring: boolean, serverId
       const operation = epoch.current;
       try {
         await authenticate();
-        if (operation === epoch.current && AppState.currentState === 'active') setLocked(false);
+        if (operation === epoch.current && AppState.currentState !== 'background') setLocked(false);
       } catch (cause) {
         if (operation === epoch.current) setError(cause instanceof Error ? cause.message : 'Could not unlock Imadeo.');
       } finally { inFlight.current = false; setBusy(false); }

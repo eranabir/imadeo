@@ -40,6 +40,10 @@ describe('optional biometric login lock', () => {
     await act(async () => lock.unlock()); expect(lock.locked).toBe(false);
     expect(mocks.authenticate).toHaveBeenCalledWith(expect.objectContaining({ disableDeviceFallback: true, biometricsSecurityLevel: 'strong' }));
   });
+  it('accepts success while the native authentication dialog is still dismissing', async () => {
+    await render(); await state('inactive');
+    await act(async () => lock.unlock()); expect(lock.locked).toBe(false);
+  });
   it('does not unlock when authentication is cancelled', async () => {
     mocks.authenticate.mockResolvedValue({ success: false, error: 'user_cancel' });
     await render(); await act(async () => lock.unlock()); expect(lock.locked).toBe(true);

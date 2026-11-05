@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '../session';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
@@ -95,6 +96,7 @@ interface Me {
 export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) {
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
   const me = useResource<Me>(serverUrl, '/users/me');
+  const insets = useSafeAreaInsets();
   const auto = useAutoBackup();
   const { biometrics } = useSession();
   const autoplay = useAutoplayVideos();
@@ -122,7 +124,8 @@ export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) 
         contentContainerStyle={{
           paddingTop: clearance + 16,
           paddingBottom: TAB_BAR_CLEARANCE,
-          paddingHorizontal: 16,
+          paddingLeft: insets.left + 16,
+          paddingRight: insets.right + 16,
         }}
       >
         <Group>
