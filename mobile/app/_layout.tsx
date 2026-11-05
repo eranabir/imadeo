@@ -93,6 +93,8 @@ function Gate() {
   const {
     server,
     signedIn,
+    biometrics,
+    leave,
     restoring,
     restoreError,
     retryRestore,
@@ -243,7 +245,7 @@ function Gate() {
     recoveryInFlight.current = false;
   };
 
-  if (restoring) {
+  if (restoring || biometrics.loading) {
     return (
       <View style={[styles.fill, styles.centre]}>
         <Opening />
@@ -259,6 +261,18 @@ function Gate() {
   );
 
   if (!server) return <ConnectScreen onConnected={connect} />;
+
+  if (biometrics.locked) return (
+    <View style={[styles.fill, styles.centre, { padding: 28, gap: 20 }]}>
+      <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700' }}>Welcome back</Text>
+      <Text style={{ color: colors.muted, textAlign: 'center' }}>Unlock your saved Imadeo login.</Text>
+      {biometrics.error && <Text style={{ color: colors.danger, textAlign: 'center' }}>{biometrics.error}</Text>}
+      {biometrics.available && <Button label={`Unlock with ${biometrics.label}`} busy={biometrics.busy}
+        onPress={() => void biometrics.unlock()} />}
+      <Button label="Sign in with password" variant="secondary" disabled={biometrics.busy}
+        onPress={() => void leave()} />
+    </View>
+  );
 
   if (serverEditor) {
     return (

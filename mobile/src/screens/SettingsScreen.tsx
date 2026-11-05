@@ -1,3 +1,4 @@
+import { useSession } from '../session';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Header, useHeaderClearance } from '../components/Header';
@@ -95,6 +96,7 @@ export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) 
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
   const me = useResource<Me>(serverUrl, '/users/me');
   const auto = useAutoBackup();
+  const { biometrics } = useSession();
   const autoplay = useAutoplayVideos();
   const cellular = useCellularAllowed();
   const appearance = useAppearance();
@@ -218,6 +220,11 @@ export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) 
         </Group>
 
         <Group title="Privacy">
+          <SwitchRow icon="lock" label={`Sign in with ${biometrics.label}`}
+            hint={biometrics.available ? 'Unlock your saved login when opening Imadeo.' : 'Set up Face ID or fingerprint recognition in device settings.'}
+            on={biometrics.enabled} disabled={biometrics.busy || (!biometrics.available && !biometrics.enabled)}
+            onChange={next => void biometrics.setEnabled(next)} />
+          {biometrics.error && <Text style={{ color: colors.danger, paddingVertical: 12 }}>{biometrics.error}</Text>}
           <Row icon="lock" label="Locked" value="Open" last onPress={onLocked} />
         </Group>
 

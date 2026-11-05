@@ -66,6 +66,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      ["expo-local-authentication", { "faceIDPermission": "Use Face ID to unlock your saved Imadeo login." }],
       ["expo-build-properties", { "ios": { "enableSceneSupport": true } }],
       "expo-secure-store",
       [

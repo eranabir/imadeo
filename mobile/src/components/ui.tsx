@@ -1,4 +1,3 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -18,7 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
-import { BRAND, colors, motion, radius, ripple, shadow, wash } from '../theme';
+import { colors, motion, radius, ripple, shadow, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 
 /**
@@ -101,12 +100,7 @@ export function Card({
   );
 }
 
-/**
- * The primary action, in the brand ramp from the app icon.
- *
- * A flat primary fill was the same sky as the selected tab and the folder
- * icons, so nothing on a screen looked more important than anything else.
- */
+/** Primary actions use the active palette, including its contrast colour. */
 export function Button({
   label,
   onPress,
@@ -160,15 +154,9 @@ export function Button({
         label={label}
         style={variant === 'secondary'
           ? { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }
-          : null}
+          : variant === 'primary' ? { backgroundColor: colors.primary } : null}
       >
-        {variant === 'primary' ? (
-          <LinearGradient colors={BRAND} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            {body}
-          </LinearGradient>
-        ) : (
-          body
-        )}
+        {body}
       </Touchable>
     </View>
   );

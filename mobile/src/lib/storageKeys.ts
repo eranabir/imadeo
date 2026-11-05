@@ -5,6 +5,7 @@
  * retained by iOS after the previous installation was deleted.
  */
 export const STORAGE_KEYS = {
+  biometricLogin: 'imadeo.biometricLogin',
   session: 'imadeo.session.v3',
   access: 'imadeo.access',
   refresh: 'imadeo.refresh',

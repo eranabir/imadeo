@@ -26,6 +26,7 @@ import {
   RefreshControl,
   Animated,
   SectionList,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -1586,6 +1587,7 @@ function AskForAccess({
   onRequest: () => Promise<MediaLibrary.PermissionResponse>;
   onRecheck: () => Promise<MediaLibrary.PermissionResponse>;
 }) {
+  const insets = useSafeAreaInsets();
   const [asking, setAsking] = useState(false);
   const [refused, setRefused] = useState(false);
 
@@ -1636,7 +1638,10 @@ function AskForAccess({
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', padding: 28 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center',
+        paddingTop: insets.top + 28, paddingBottom: insets.bottom + 28,
+        paddingLeft: insets.left + 28, paddingRight: insets.right + 28 }}>
       <View style={{ width: '100%', maxWidth: 520, alignSelf: 'center' }}>
         <View
           style={{
@@ -1670,6 +1675,6 @@ function AskForAccess({
           onPress={() => (settled ? void Linking.openSettings() : void ask())}
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }

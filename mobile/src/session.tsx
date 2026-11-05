@@ -1,3 +1,4 @@
+import { useBiometricLock } from './lib/biometrics';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { restore as restoreAutoBackup } from './lib/autobackup';
 import { onSessionExpired, signOut, storedToken } from './lib/auth';
@@ -16,6 +17,7 @@ import {
 } from './lib/server';
 
 interface Session {
+  biometrics: ReturnType<typeof useBiometricLock>;
   /** The selected server at the best address for the phone's current Wi-Fi. */
   server: ServerInfo | null;
   signedIn: boolean;
@@ -44,6 +46,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [networkRevision, setNetworkRevision] = useState(0);
+  const biometrics = useBiometricLock(signedIn, restoring, server?.id);
 
   useEffect(() => onSessionExpired(() => setSignedIn(false)), []);
   useEffect(() => subscribeToNetwork(() => setNetworkRevision((n) => n + 1)), []);
@@ -105,6 +108,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   };
 
   const value: Session = {
+    biometrics,
     server,
     signedIn,
     restoring,
@@ -115,7 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await saveServer(profile);
       await useProfile(profile, Boolean(server && server.id !== profile.id));
     },
-    signedInNow: () => setSignedIn(true),
+    signedInNow: () => { biometrics.passwordSignedIn(); setSignedIn(true); },
     activateServerAddress: async (address) => {
       setServer((current) => {
         if (!current || current.id !== server?.id || current.url === address ||
