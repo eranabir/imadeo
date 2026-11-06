@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, wash } from '../theme';
 import { Icon, type IconName } from './Icon';
 import { Touchable } from './ui';
+import { isRegularIPhone } from '../lib/deviceLayout';
+import { regularIPhoneHeaderHeight } from '../lib/layout';
 
 /** The bar's own height, above whatever the status bar takes. */
 export const HEADER_HEIGHT = 60;
@@ -159,7 +161,8 @@ export function useHeaderClearance(extra = 0) {
   const insets = useSafeAreaInsets();
   const native = useContext(NativeHeaderContext);
   const nativeHeight = useContext(HeaderHeightContext) ?? 0;
-  if (native) return nativeHeight + NATIVE_HEADING_HEIGHT + extra + 4;
+  if (native) return (isRegularIPhone ? regularIPhoneHeaderHeight(nativeHeight, insets.top)
+    : nativeHeight + NATIVE_HEADING_HEIGHT) + extra + 4;
   // `HEADER_GAP` covers both the row added inside the bar and the space between
   // the bar and the content, which used to be 8pt — close enough that a title
   // and the first row of thumbnails read as one block.

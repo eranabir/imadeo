@@ -11,6 +11,7 @@ import {
   VIEWER_FILMSTRIP_HEIGHT,
   VIEWER_HEADER_HEIGHT,
   viewerChromeFrame,
+  viewerHeaderTop,
 } from './viewerGeometry';
 
 interface ChromeProps {
@@ -27,7 +28,7 @@ export function ViewerHeader({ visible, width, insets, title, subtitle, onClose 
 }) {
   const frame = viewerChromeFrame(width, insets.left, insets.right);
   return (
-    <View style={{ position: 'absolute', top: Math.max(8, insets.top - 1), ...frame,
+    <View style={{ position: 'absolute', top: viewerHeaderTop(insets.top), ...frame,
       height: VIEWER_HEADER_HEIGHT, display: visible ? 'flex' : 'none' }}>
       <Glass colorScheme="dark" tint="transparent" interactive radius={radius.lg}
         style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 }}>

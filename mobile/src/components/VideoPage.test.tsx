@@ -138,6 +138,12 @@ describe('Viewer chrome', () => {
     const videoContainer = tree.root.findByType('ZoomableMedia' as any).parent!.parent!;
     expect(playback.props.style.left + videoContainer.props.style.left).toBe(header.parent!.props.style.left);
     expect(dock.parent!.props.style.left).toBe(header.parent!.props.style.left);
+    const headerBottom = header.parent!.props.style.top + header.parent!.props.style.height;
+    const mediaTop = videoContainer.props.style.top;
+    const mediaHeight = tree.root.findByType('ZoomableMedia' as any).props.height;
+    const playbackTop = 402 - playback.props.style.bottom - playback.props.style.minHeight;
+    expect(mediaTop - headerBottom).toBe(playbackTop - (mediaTop + mediaHeight));
+    expect(header.parent!.props.style.top).toBe(dock.parent!.props.style.bottom);
     const text = header.findAllByType('Text' as any);
     expect(text[0].props.style.color).toBe(DARK.text);
     expect(text[1].props.style.color).toBe(DARK.muted);

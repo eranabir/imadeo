@@ -1,15 +1,19 @@
 /** Stable full-screen media geometry shared by both mobile viewers. */
 export const VIEWER_HEADER_HEIGHT = 52;
-export const VIEWER_MEDIA_TOP_GAP = 10;
+export const VIEWER_MEDIA_TOP_GAP = 12;
 export const VIEWER_ACTION_DOCK_HEIGHT = 48;
 export const VIEWER_FILMSTRIP_HEIGHT = 48;
 export const VIEWER_FILMSTRIP_GAP = 8;
-export const VIEWER_PANEL_TOP_PADDING = 12;
+export const VIEWER_PANEL_TOP_PADDING = VIEWER_MEDIA_TOP_GAP;
 /** Keep the three bottom rows on one rhythm: controls → filmstrip → actions. */
 export const VIEWER_CONTROLS_GAP = VIEWER_FILMSTRIP_GAP;
 export const VIEWER_VIDEO_CONTROLS_HEIGHT = 48;
 /** Icons remain above the home indicator; don't reserve the tab bar's inset. */
 export const VIEWER_IOS_BOTTOM_CLEARANCE = 12;
+
+/** Match the lower chrome edge on inset-free displays, while clearing status UI. */
+export const viewerHeaderTop = (safeTop: number) =>
+  Math.max(VIEWER_IOS_BOTTOM_CLEARANCE, safeTop);
 
 export function clampViewerSafeBottom(safeBottom: number, isIOS: boolean) {
   const inset = Math.max(0, safeBottom);
@@ -43,7 +47,7 @@ export function viewerMediaViewport(
   safeBottom: number,
   video = false,
 ) {
-  const top = Math.max(0, safeTop + VIEWER_HEADER_HEIGHT + VIEWER_MEDIA_TOP_GAP);
+  const top = viewerHeaderTop(safeTop) + VIEWER_HEADER_HEIGHT + VIEWER_MEDIA_TOP_GAP;
   const height = Math.max(1, viewerMediaBottom(screenHeight, safeBottom, video) - top);
   return { top, height, bottom: top + height };
 }

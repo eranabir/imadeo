@@ -3,7 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refreshPages } from '../lib/pagedRefresh';
 import { assertActionResults } from '../lib/actionResults';
-import { clampViewerSafeBottom, containedMediaSize, viewerMediaViewport, viewerFilmstripBottom, viewerVideoControlsBottom, viewerDockHeight, viewerBottomPanelHeight, VIEWER_FILMSTRIP_HEIGHT, VIEWER_FILMSTRIP_GAP, VIEWER_ACTION_DOCK_HEIGHT } from './viewerGeometry';
+import { clampViewerSafeBottom, containedMediaSize, viewerHeaderTop, VIEWER_HEADER_HEIGHT, VIEWER_MEDIA_TOP_GAP, viewerMediaViewport, viewerFilmstripBottom, viewerVideoControlsBottom, viewerDockHeight, viewerBottomPanelHeight, VIEWER_FILMSTRIP_HEIGHT, VIEWER_FILMSTRIP_GAP, VIEWER_ACTION_DOCK_HEIGHT } from './viewerGeometry';
 
 const dimensions = vi.hoisted(() => vi.fn(() => ({ width: 402, height: 874, fontScale: 1, scale: 3 })));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, Keyboard: { dismiss: vi.fn() }, View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', useWindowDimensions: dimensions }));
@@ -219,6 +219,26 @@ describe('Refresh and bulk result safety', () => {
   });
 });
 describe('Viewer layout matrix', () => {
+  for (const [width, height, safeTop] of [[932, 656, 0], [440, 956, 0], [440, 956, 62], [874, 402, 0]]) {
+    for (const [photoWidth, photoHeight] of [[1080, 1920], [4032, 3024], [3024, 4032], [8000, 1500]]) {
+      it(`balances visible media gaps at ${width}×${height} for ${photoWidth}×${photoHeight}`, () => {
+        const safeBottom = clampViewerSafeBottom(34, true);
+        const headerBottom = viewerHeaderTop(safeTop) + VIEWER_HEADER_HEIGHT;
+        for (const video of [false, true]) {
+          const viewport = viewerMediaViewport(height, safeTop, safeBottom, video);
+          const image = containedMediaSize(width, viewport.height, photoWidth, photoHeight);
+          const imageTop = viewport.top + (viewport.height - image.height) / 2;
+          const imageBottom = imageTop + image.height;
+          const controlsTop = video
+            ? height - viewerVideoControlsBottom(safeBottom) - 48
+            : height - viewerFilmstripBottom(safeBottom) - VIEWER_FILMSTRIP_HEIGHT;
+          expect(imageTop - headerBottom).toBeCloseTo(controlsTop - imageBottom, 8);
+          expect(imageTop - headerBottom).toBeGreaterThanOrEqual(VIEWER_MEDIA_TOP_GAP - 0.001);
+        }
+        if (safeTop === 0) expect(viewerHeaderTop(safeTop)).toBe(safeBottom);
+      });
+    }
+  }
   it('lowers the iPhone dock and recovers media height without shrinking touch targets or row gaps', () => {
     const bottom = clampViewerSafeBottom(34, true);
     expect(bottom).toBe(12);

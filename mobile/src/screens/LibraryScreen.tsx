@@ -1,4 +1,5 @@
 import { photoColumns } from '../lib/layout';
+import { isRegularIPhone } from '../lib/deviceLayout';
 import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useMediaViewMode } from '../lib/viewMode';
 import { readLocalDevicePage } from '../lib/localDeviceMedia';
@@ -512,10 +513,9 @@ export function LibraryScreen({ server }: Props) {
               ? `${total.toLocaleString()} on this phone · backup up to date`
               : `${total.toLocaleString()} on this phone · ${pending === null ? 'checking' : `${pending.toLocaleString()} to back up`}`,
     /*
-     * Nothing to send means no button. Re-reading the phone is what pulling
-     * the grid down already does, so a control that only did that was
-     * offering a second way to do nothing in particular. A selection has its
-     * verbs in the bar at the bottom instead, near the thumb.
+     * Regular iPhones retain the manual backup control after catching up.
+     * The Duo keeps its existing rail behaviour. Selection actions remain in
+     * the dock beside the selected items.
      */
     action: <>
       <HeaderAction label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
@@ -527,7 +527,7 @@ export function LibraryScreen({ server }: Props) {
         icon="close"
         onPress={() => void backUp()}
       />
-    ) : picked.length > 0 || backedUp ? undefined : (
+    ) : picked.length > 0 || (backedUp && !isRegularIPhone) ? undefined : (
       <HeaderAction label="Back up" icon="backup" onPress={() => void backUp()} />
     )}
     </>,

@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import type { HeaderConfig } from './Header';
 import type { IconName } from './Icon';
+import { isRegularIPhone } from '../lib/deviceLayout';
+import { regularIPhoneHeaderHeight } from '../lib/layout';
 
 export const NATIVE_HEADING_HEIGHT = 56;
 
@@ -36,6 +38,9 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
   const insets = useSafeAreaInsets();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const actions = items(action, actionType);
+  const headingHeight = isRegularIPhone
+    ? regularIPhoneHeaderHeight(headerHeight, insets.top) - insets.top : NATIVE_HEADING_HEIGHT;
+  const actionWidth = (actions.length + (account ? 1 : 0)) * 44 + 24;
   return <>
     <Stack.Screen options={{ title: '', headerShown: true, headerBackVisible: false,
       headerTransparent: true, headerStyle: { backgroundColor: 'transparent' }, headerBlurEffect: 'none', headerTintColor: colors.primary, headerTitleStyle: { color: theme.colors.text }, headerShadowVisible: false }} />
@@ -46,13 +51,15 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
       {actions}
       {account && <Stack.Toolbar.Button tintColor={colors.primary} icon="person.crop.circle" onPress={() => router.push('/account')}>Account</Stack.Toolbar.Button>}
     </Stack.Toolbar>
-    <View style={{ position: 'absolute', top: 0, paddingTop: headerHeight, left: insets.left,
+    <View style={{ position: 'absolute', top: 0, paddingTop: isRegularIPhone ? insets.top : headerHeight, left: insets.left,
       right: insets.right, zIndex: 10, backgroundColor: theme.colors.background }}>
-      <View style={{ height: NATIVE_HEADING_HEIGHT, paddingHorizontal: 16, justifyContent: 'center' }}>
+      <View style={{ height: headingHeight, paddingHorizontal: 16, justifyContent: 'center',
+        ...(isRegularIPhone ? { paddingLeft: onBack ? 64 : 16, paddingRight: Math.max(16, actionWidth) } : {}) }}>
         <Text accessibilityRole="header" numberOfLines={1}
-          style={{ color: theme.colors.text, fontSize: 24, lineHeight: 30, fontWeight: '700' }}>{title}</Text>
+          style={{ color: theme.colors.text, fontSize: isRegularIPhone ? 22 : 24,
+            lineHeight: isRegularIPhone ? 26 : 30, fontWeight: '700' }}>{title}</Text>
         {subtitle && <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13,
-          lineHeight: 18, marginTop: 2 }}>{subtitle}</Text>}
+          lineHeight: isRegularIPhone ? 16 : 18, marginTop: 2 }}>{subtitle}</Text>}
       </View>
       {children}
     </View>

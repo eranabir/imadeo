@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import UIKit
+import Darwin
 
 struct BrowseTabOption: Record {
   @Field var id: String = ""
@@ -10,6 +11,19 @@ struct BrowseTabOption: Record {
 public final class ImadeoBrowseTabsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ImadeoBrowseTabs")
+
+    Constant("deviceModelIdentifier") {
+      // The simulator's uname is the Mac architecture, not the simulated phone.
+      if let identifier = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+        return identifier
+      }
+      var info = utsname()
+      uname(&info)
+      return Mirror(reflecting: info.machine).children.reduce("") { identifier, element in
+        guard let value = element.value as? Int8, value != 0 else { return identifier }
+        return identifier + String(UnicodeScalar(UInt8(value)))
+      }
+    }
 
     View(ImadeoBrowseTabsView.self) {
       Events("onSelectionChange", "onMetrics")
