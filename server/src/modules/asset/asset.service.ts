@@ -993,9 +993,9 @@ export class AssetService implements OnModuleInit {
             isDeviceOnly: true,
             deviceAssets: { some: { deviceId: query.deviceId } },
           }
-        : query.visibility === AssetVisibility.LOCKED || ownership === 'shared'
-          // Vault visibility is independent of filing location. A locked
-          // device backup must remain discoverable without promoting it.
+        : query.isFavorite === true || query.visibility === AssetVisibility.LOCKED || ownership === 'shared'
+          // Explicit Favorites, Vault and recipient sharing span filing
+          // locations without promoting device backups into the library.
           ? {}
           : ownership === 'all'
             ? { OR: [{ isDeviceOnly: false }, { ownerId: { not: userId }, sharedWith: { some: { userId } } }] }
@@ -1079,7 +1079,9 @@ export class AssetService implements OnModuleInit {
       case 'added':
         return [{ createdAt: order }];
       case 'name':
-        return [{ originalFileName: order }];
+        return [{ originalFileName: order }, { id: 'asc' }];
+      case 'type':
+        return [{ type: order }, { originalFileName: 'asc' }, { id: 'asc' }];
       case 'size':
         return [{ fileSizeInByte: order }];
       case 'rating':

@@ -245,6 +245,112 @@ describe('AssetService library filters', () => {
     expect((shared.AND as any[])[0]).toEqual({ ownerId: { not: 'recipient-id' }, sharedWith: { some: { userId: 'recipient-id' } } });
     expect((shared.AND as any[])[1].isDeviceOnly).toBeUndefined();
   });
+
+  it.each([
+    ['owned', { ownerId: 'owner-id' }],
+    ['shared', { ownerId: { not: 'owner-id' }, sharedWith: { some: { userId: 'owner-id' } } }],
+    ['all', { OR: [{ ownerId: 'owner-id' }, { sharedWith: { some: { userId: 'owner-id' } } }] }],
+  ] as const)('includes device favorites without weakening %s ownership or visibility', async (ownership, scope) => {
+    const test = createService({ id: 'asset-id' });
+
+    await test.service.query('owner-id', { isFavorite: true, ownership });
+
+    const where = test.assetFindMany.mock.calls[0][0].where;
+    expect(where.AND[0]).toEqual(scope);
+    expect(where.AND[1]).toMatchObject({
+      isFavorite: true,
+      deletedAt: null,
+      visibility: 'TIMELINE',
+    });
+    expect(where.AND[1].isDeviceOnly).toBeUndefined();
+    expect(where.AND[1].OR).toBeUndefined();
+    expect(test.assetCount).toHaveBeenCalledWith({ where });
+  });
+
+  it('keeps an explicit device filter when querying favorites', async () => {
+    const test = createService({ id: 'asset-id' });
+
+    await test.service.query('owner-id', { isFavorite: true, deviceId: 'device-id' });
+
+    expect(test.assetFindMany.mock.calls[0][0].where).toEqual({
+      AND: [
+        { ownerId: 'owner-id' },
+        expect.objectContaining({
+          isFavorite: true,
+          deletedAt: null,
+          visibility: 'TIMELINE',
+          isDeviceOnly: true,
+          deviceAssets: { some: { deviceId: 'device-id' } },
+        }),
+      ],
+    });
+  });
+
+  it('does not broaden the normal library when excluding favorites', () => {
+    const { service } = createService({ id: 'asset-id' });
+
+    expect(service.buildWhere('owner-id', { isFavorite: false })).toEqual({
+      AND: [
+        { ownerId: 'owner-id' },
+        expect.objectContaining({ isFavorite: false, isDeviceOnly: false, deletedAt: null, visibility: 'TIMELINE' }),
+      ],
+    });
+  });
+
+  it('does not let Favorites open Locked through the ordinary query', async () => {
+    const test = createService({ id: 'asset-id' });
+
+    await expect(test.service.query('owner-id', {
+      isFavorite: true,
+      visibility: 'LOCKED' as never,
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(test.assetFindMany).not.toHaveBeenCalled();
+    expect(test.assetCount).not.toHaveBeenCalled();
+  });
+
+  it.each(['asc', 'desc'] as const)('sorts favorite types globally and deterministically before paging %s', async (order) => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([{ id: 'device-favorite', isDeviceOnly: true }]);
+    test.assetCount.mockResolvedValue(7);
+
+    const result = await test.service.query('owner-id', {
+      isFavorite: true,
+      sortBy: 'type',
+      order,
+      page: 2,
+      size: 2,
+    });
+
+    expect(test.assetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ type: order }, { originalFileName: 'asc' }, { id: 'asc' }],
+      skip: 2,
+      take: 2,
+    }));
+    const where = test.assetFindMany.mock.calls[0][0].where;
+    expect(test.assetCount).toHaveBeenCalledWith({ where });
+    expect(result).toEqual({
+      items: [{ id: 'device-favorite', isDeviceOnly: true }],
+      pagination: { page: 2, size: 2, total: 7, pages: 4 },
+    });
+  });
+
+  it.each(['asc', 'desc'] as const)('requires a unique tie-breaker before paging duplicate favorite names %s', async (order) => {
+    const test = createService({ id: 'asset-id' });
+    test.assetFindMany.mockResolvedValue([
+      { id: 'asset-c', originalFileName: 'FullSizeRender.jpg' },
+      { id: 'asset-d', originalFileName: 'FullSizeRender.jpg' },
+    ]);
+
+    await test.service.query('owner-id', {
+      isFavorite: true, sortBy: 'name', order, page: 2, size: 2,
+    });
+
+    expect(test.assetFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ originalFileName: order }, { id: 'asc' }],
+      skip: 2,
+      take: 2,
+    }));
+  });
 });
 
 describe('AssetService individual media locking', () => {

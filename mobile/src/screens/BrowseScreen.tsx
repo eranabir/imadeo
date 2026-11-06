@@ -266,7 +266,8 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   };
 
   const deviceShelf = atRoot && showing === 'folders';
-  const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0 && !deviceShelf;
+  const collectionsShelf = atRoot && showing === 'albums';
+  const nothing = folders.length === 0 && albums.length === 0 && assets.length === 0 && !deviceShelf && !collectionsShelf;
 
   /** Runs a write, then refetches whichever shelf is showing. */
   const run = async (work: () => Promise<unknown>) => {
@@ -295,6 +296,18 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         >
           {error ?? failure}
         </Text>
+      )}
+
+      {collectionsShelf && (
+        <Section title="Collections">
+          <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <FolderCard
+              folder={{ name: 'Favorites', cardIcon: 'heart-filled' }}
+              detail="Photos and videos marked with a heart"
+              onPress={() => router.push('/favorites')}
+            />
+          </View>
+        </Section>
       )}
 
       {deviceShelf && (

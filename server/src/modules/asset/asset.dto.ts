@@ -374,10 +374,10 @@ export class AssetQueryDto {
   @IsBoolean()
   withGeo?: boolean;
 
-  @ApiPropertyOptional({ enum: ['date', 'added', 'name', 'size', 'rating'] })
+  @ApiPropertyOptional({ enum: ['date', 'added', 'name', 'type', 'size', 'rating'] })
   @IsOptional()
-  @IsIn(['date', 'added', 'name', 'size', 'rating'])
-  sortBy?: 'date' | 'added' | 'name' | 'size' | 'rating';
+  @IsIn(['date', 'added', 'name', 'type', 'size', 'rating'])
+  sortBy?: 'date' | 'added' | 'name' | 'type' | 'size' | 'rating';
 
   @IsOptional()
   @IsIn(['asc', 'desc'])
