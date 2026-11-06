@@ -8,7 +8,7 @@ import { Loading } from '../components/Loading';
 import { SubjectCard } from '../components/Cards';
 import { Header, useHeaderClearance, type HeaderConfig } from '../components/Header';
 import { BrowseTabs as GlassTabs } from '../components/BrowseTabs';
-import { BROWSE_TAB_HEIGHT, BROWSE_TAB_GAP, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
+import { BROWSE_TAB_HEIGHT, BROWSE_TAB_GAP, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET, browseTabMaxWidth } from '../components/browseTabGeometry';
 import { useResource, type Subject } from '../lib/api';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
@@ -88,7 +88,7 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
     title: 'People & Pets',
     icon: 'people-and-pets',
     below: (
-      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? 230 : undefined,
+      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? browseTabMaxWidth(230, Platform.isPad) : undefined,
         alignSelf: 'flex-start', marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0,
         height: tabRowHeight, paddingHorizontal: Platform.OS === 'ios' ? BROWSE_TAB_INSET : 16,
         paddingVertical: BROWSE_TAB_GAP }}>

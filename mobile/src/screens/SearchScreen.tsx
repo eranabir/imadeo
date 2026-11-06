@@ -9,7 +9,7 @@ import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
 import { BrowseTabs as GlassTabs } from '../components/BrowseTabs';
-import { BROWSE_TAB_GAP, BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
+import { BROWSE_TAB_GAP, BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET, browseTabMaxWidth } from '../components/browseTabGeometry';
 import { useResource, type Asset, type Paged, type Subject } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors, radius } from '../theme';
@@ -133,7 +133,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
     title: 'Search',
     icon: 'search',
     below: (
-      <View style={{ width: '100%', maxWidth: 440, alignSelf: 'flex-start',
+      <View style={{ width: '100%', maxWidth: browseTabMaxWidth(440, Platform.OS === 'ios' && Platform.isPad), alignSelf: 'flex-start',
         marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0,
         paddingBottom: BROWSE_TAB_GAP, gap: BROWSE_TAB_GAP }}>
         <View style={{ paddingHorizontal: 20 }}>

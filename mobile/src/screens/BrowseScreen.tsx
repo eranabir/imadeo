@@ -9,7 +9,7 @@ import type { IconName } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
 import { BrowseTabs } from '../components/BrowseTabs';
-import { BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_GAP, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
+import { BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_GAP, BROWSE_TAB_LEADING_OFFSET, browseTabMaxWidth } from '../components/browseTabGeometry';
 import { PlacesBody } from './PlacesScreen';
 import { SharingShelf } from './SharingScreen';
 import {
@@ -242,7 +242,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         </View>
       ) : undefined,
     below: atRoot ? (
-      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? 440 : undefined,
+      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? browseTabMaxWidth(440, Platform.isPad) : undefined,
         alignSelf: 'flex-start', marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0, height: browseTabsHeight,
         paddingHorizontal: Platform.OS === 'ios' ? BROWSE_TAB_INSET : 16, paddingVertical: BROWSE_TAB_GAP }}>
         <BrowseTabs
