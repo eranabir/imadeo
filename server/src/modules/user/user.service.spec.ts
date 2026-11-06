@@ -11,6 +11,7 @@ describe('UserService statistics', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     await expect(service.statistics('owner-id')).resolves.toEqual({

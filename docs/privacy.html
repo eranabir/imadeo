@@ -108,7 +108,7 @@
 
 <main>
   <h1>Privacy policy</h1>
-  <p class="updated">Last updated 14 August 2026</p>
+  <p class="updated">Last updated 6 November 2026</p>
 
   <p class="summary">
     Imadeo is self-hosted. Your photos, videos, account details and generated
@@ -155,9 +155,10 @@
     <p>
       The mobile app requests library access so it can show your local media,
       compare it with your server, upload the items you choose and save media
-      back to your device. Nothing is uploaded until you start a backup or
-      upload action. Limited-library access is supported where the operating
-      system offers it.
+      back to your device. Uploads start when you request a backup or enable
+      automatic backup. Automatic backup may run when the app opens and when
+      the operating system schedules background activity. Limited-library
+      access is supported where the operating system offers it.
     </p>
     <h3>Location</h3>
     <p>
@@ -165,6 +166,9 @@
       information associated with your media. It does not use this permission
       for advertising or continuous background tracking. Location metadata in
       an uploaded file may be stored on your chosen server with that file.
+      Location permission may also be needed to read your current Wi-Fi
+      network name so the app can choose your server's local address. Saved
+      Wi-Fi names and server-address preferences are stored on your device.
     </p>
   </section>
 
@@ -187,6 +191,26 @@
 
   <section>
     <h2>Optional external services</h2>
+    <h3>Maps</h3>
+    <p>
+      Opening Places in the mobile app loads map styles and map tiles directly
+      from <a href="https://openfreemap.org/">OpenFreeMap</a> by default. The web
+      app uses <a href="https://carto.com/privacy/">CARTO</a> map tiles by default.
+      Your device connects to the map provider, which receives its IP address,
+      standard request information and the map areas and zoom levels requested.
+      Those requests can reveal the areas shown on the map, including areas
+      near your photo locations. Your photos, Imadeo password and Imadeo
+      authentication tokens are not included in these map requests.
+    </p>
+    <p>
+      OpenFreeMap says its normal access logs omit IP addresses. Error logs may
+      include an IP address and requested URL for up to 7 days; security-incident
+      IP logs may be kept for up to 30 days. Its CDN providers may also process
+      requests. See the <a href="https://openfreemap.org/privacy/">OpenFreeMap
+      privacy policy</a> for details. A custom build or deployment can use a
+      different map provider; that provider's policy then applies.
+    </p>
+    <h3>Server integrations</h3>
     <p>A server operator can choose to configure services that receive limited data:</p>
     <ul>
       <li><strong>Reverse geocoding</strong> can send media coordinates to the configured geocoding provider to obtain place names. It can be disabled or pointed at a self-hosted provider.</li>
@@ -210,13 +234,25 @@
     </p>
   </section>
 
-  <section>
+  <section id="retention">
     <h2>Retention and deletion</h2>
     <p>
       Data remains on the chosen server until a user or server operator deletes
       it. Items in Trash can remain recoverable for the server's retention
       period. Copies may remain in operator-managed backups until those backups
       expire or are replaced.
+    </p>
+    <p>
+      To delete your account, choose <strong>Delete account</strong> on the
+      mobile app's Account screen. This immediately removes sign-in access,
+      API keys, public share links and the account's outgoing sharing
+      permissions. The account and its associated server media are scheduled
+      for permanent removal after 30 days. The server must be running to
+      complete removal; an offline server can finish the deletion later.
+      Original files in external libraries remain under the server operator's
+      control and are not removed by this request.
+      Copies in operator-managed backups may remain until those backups expire
+      or are replaced.
     </p>
     <p>
       Deleting the mobile app removes its local app data but does not delete
@@ -261,9 +297,8 @@
       This policy may change as Imadeo changes. The latest version and its date
       will remain on this page. For questions about a particular server or its
       data, contact its operator. For questions about the open-source project or
-      this policy, open an issue in the
-      <a href="https://github.com/eranabir/imadeo/issues">Imadeo repository</a>
-      without posting private information.
+      this policy, use the <a href="support.html">support page</a>. Public
+      support requests must not include private information.
     </p>
   </section>
 </main>
@@ -271,7 +306,7 @@
 <footer>
   <div class="foot">
     <span>Imadeo — self-hosted media management.</span>
-    <span><a href="privacy.html">Privacy</a> · <a href="https://github.com/eranabir/imadeo">GitHub</a> · <a href="https://github.com/eranabir/imadeo/issues">Issues</a></span>
+    <span><a href="privacy.html">Privacy</a> · <a href="support.html">Support</a> · <a href="https://github.com/eranabir/imadeo">GitHub</a></span>
   </div>
 </footer>
 

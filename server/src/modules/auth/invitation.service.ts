@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
-import { AlbumUserRole } from '../../db';
+import { AlbumUserRole, UserStatus } from '../../db';
 import type { AppConfig } from '../../config/configuration';
 import { MailService } from '../../infra/mail/mail.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
@@ -39,27 +39,27 @@ export class InvitationService {
   }) {
     const email = input.email.toLowerCase().trim();
 
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      throw new BadRequestException('That address already has an account');
-    }
-
     const token = randomBytes(32).toString('base64url');
-
-    // One live invitation per address per album; re-inviting refreshes the link.
-    await this.prisma.invitation.deleteMany({
-      where: { email, albumId: input.albumId ?? null, acceptedAt: null },
-    });
-
-    await this.prisma.invitation.create({
-      data: {
-        email,
-        tokenHash: InvitationService.hash(token),
-        invitedById: input.invitedById,
-        albumId: input.albumId ?? null,
-        role: input.role ?? AlbumUserRole.VIEWER,
+    await this.prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
+      const inviter = await tx.user.findUnique({ where: { id: input.invitedById } });
+      if (!inviter || inviter.status !== UserStatus.ACTIVE || inviter.deletedAt) {
+        throw new ForbiddenException('This account cannot create invitations.');
+      }
+      if (await tx.user.findUnique({ where: { email } })) {
+        throw new BadRequestException('That address already has an account');
+      }
+      if (input.albumId && !(await tx.album.findFirst({ where: { id: input.albumId, deletedAt: null,
+        owner: { status: UserStatus.ACTIVE, deletedAt: null } }, select: { id: true } }))) {
+        throw new BadRequestException('This album no longer accepts invitations.');
+      }
+      // One live invitation per address per album; re-inviting refreshes it.
+      await tx.invitation.deleteMany({ where: { email, albumId: input.albumId ?? null, acceptedAt: null } });
+      await tx.invitation.create({ data: {
+        email, tokenHash: InvitationService.hash(token), invitedById: input.invitedById,
+        albumId: input.albumId ?? null, role: input.role ?? AlbumUserRole.VIEWER,
         expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000),
-      },
+      } });
     });
 
     const url = `${this.mail.settingsFor().publicUrl}/register?invite=${token}`;
@@ -149,20 +149,32 @@ export class InvitationService {
   }) {
     const tokenHash = InvitationService.hash(input.token);
 
-    const invitation = this.ensureUsable(
-      await this.prisma.invitation.findUnique({ where: { tokenHash } }),
-    );
-
-    if (await this.prisma.user.findUnique({ where: { email: invitation.email } })) {
-      throw new BadRequestException('That address already has an account');
-    }
-
-    const user = await this.prisma.$transaction(async (tx) => {
+    // Check cheaply before password hashing, then re-read under the account
+    // mutation lock: deletion or revocation may win while hashing is running.
+    this.ensureUsable(await this.prisma.invitation.findUnique({ where: { tokenHash } }));
+    const password = input.password ? await bcrypt.hash(input.password, 12) : '';
+    const user = await this.prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
+      const invitation = this.ensureUsable(await tx.invitation.findUnique({ where: { tokenHash },
+        include: { invitedBy: { select: { status: true, deletedAt: true } } } }));
+      if (invitation.invitedBy.status !== UserStatus.ACTIVE || invitation.invitedBy.deletedAt) {
+        throw new BadRequestException({ code: 'INVITE_INVALID', message: 'That invitation is no longer available.' });
+      }
+      if ((await tx.user.count({ where: { isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null } })) === 0) {
+        throw new BadRequestException('New accounts are unavailable while this server has no active administrator.');
+      }
+      if (await tx.user.findUnique({ where: { email: invitation.email } })) {
+        throw new BadRequestException('That address already has an account');
+      }
+      if (invitation.albumId && !(await tx.album.findFirst({ where: { id: invitation.albumId, deletedAt: null,
+        owner: { status: UserStatus.ACTIVE, deletedAt: null } }, select: { id: true } }))) {
+        throw new BadRequestException({ code: 'INVITE_INVALID', message: 'That album invitation is no longer available.' });
+      }
       const user = await tx.user.create({
         data: {
           email: invitation.email,
           name: input.name.trim() || invitation.email.split('@')[0],
-          password: input.password ? await bcrypt.hash(input.password, 12) : '',
+          password,
           oauthProvider: input.oauth?.provider ?? null,
           oauthId: input.oauth?.subject ?? null,
           // Invited accounts are never administrators.

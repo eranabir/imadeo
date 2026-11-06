@@ -53,3 +53,46 @@ describe('refresh rotation recovery', () => {
     await expect(s.service.refresh('original')).rejects.toThrow('expired');
   });
 });
+
+describe('registration while administrators are being removed', () => {
+  function registration(rows: { id: string; isAdmin: boolean; status: string; deletedAt: Date | null }[], publicRegistration = true,
+    onLock?: () => void) {
+    const user = {
+      findUnique: vi.fn(async () => null),
+      count: vi.fn(async (options?: { where?: Record<string, unknown> }) => rows.filter(row =>
+        !options?.where || Object.entries(options.where).every(([key, value]) => row[key as keyof typeof row] === value)).length),
+      create: vi.fn(async ({ data }: any) => ({ id: 'new-account', ...data })),
+    };
+    const lock = vi.fn(async () => { onLock?.(); return 1; });
+    const tx = { user, $executeRawUnsafe: lock };
+    const storage = { ensureUserRoot: vi.fn() };
+    const service = new AuthService({ $transaction: async (operation: any) => operation(tx) } as never, {} as never,
+      { get: () => publicRegistration } as never, storage as never);
+    return { service, user, lock, storage };
+  }
+  it('preserves first-admin bootstrap with public registration disabled', async () => {
+    const test = registration([], false);
+    expect(await test.service.register(' Owner@Example.com ', 'password', 'Owner')).toMatchObject({
+      isAdmin: true, email: 'owner@example.com',
+    });
+    expect(test.lock).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(79218461)');
+    expect(test.storage.ensureUserRoot).toHaveBeenCalledWith('new-account');
+  });
+  it('creates ordinary users only while an active administrator remains', async () => {
+    const test = registration([{ id: 'admin', isAdmin: true, status: 'ACTIVE', deletedAt: null }]);
+    expect(await test.service.register('member@example.com', 'password', 'Member')).toMatchObject({ isAdmin: false });
+    expect(test.user.count).toHaveBeenCalledWith({ where: { isAdmin: true, status: 'ACTIVE', deletedAt: null } });
+  });
+  it('does not create an unmanaged account after the last admin enters removal', async () => {
+    const rows = [{ id: 'admin', isAdmin: true, status: 'ACTIVE', deletedAt: null as Date | null }];
+    const test = registration(rows, true, () => { rows[0].status = 'REMOVING'; rows[0].deletedAt = new Date(); });
+    await expect(test.service.register('member@example.com', 'password', 'Member')).rejects.toThrow('no active administrator');
+    expect(test.user.create).not.toHaveBeenCalled();
+    expect(test.storage.ensureUserRoot).not.toHaveBeenCalled();
+  });
+  it('does not let inactive historical accounts claim another first-admin bootstrap', async () => {
+    const test = registration([{ id: 'removed', isAdmin: true, status: 'DELETED', deletedAt: new Date() }]);
+    await expect(test.service.register('member@example.com', 'password', 'Member')).rejects.toThrow('no active administrator');
+    expect(test.user.create).not.toHaveBeenCalled();
+  });
+});

@@ -14,6 +14,7 @@ import { login, registrationStatus, type Session } from '../lib/auth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/Icon';
 import { LogoLockup } from '../components/Logo';
+import { PublicLinks } from '../components/PublicLinks';
 import type { ServerInfo } from '../lib/server';
 import { colors, radius } from '../theme';
 
@@ -178,6 +179,7 @@ export function SignInScreen({ server, onSignedIn, onBackToServers }: Props) {
           <Text style={{ color: colors.faint, fontSize: 13, textAlign: 'center', marginTop: 22 }}>
             Your photos stay on your own server.
           </Text>
+          <PublicLinks />
         </View>
       </ScrollView>
       <Pressable accessibilityRole="button" accessibilityLabel="Back to servers"

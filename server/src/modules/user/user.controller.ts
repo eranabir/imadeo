@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthDto } from '../../common/auth.types';
@@ -7,6 +7,7 @@ import type { AppConfig } from '../../config/configuration';
 import {
   ConfirmEmailChangeDto,
   CreateUserDto,
+  DeleteOwnAccountDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
   UpdateUserDto,
@@ -25,6 +26,22 @@ export class UserController {
   @Get('me')
   me(@AuthedUserId() userId: string) {
     return this.userService.me(userId);
+  }
+
+  @Auth()
+  @Get('me/deletion')
+  @ApiOperation({ summary: 'How to delete your own account and retain an administrator' })
+  deletionOptions(@Authed() auth: AuthDto) {
+    if (!auth.session) throw new ForbiddenException('Sign in with your account to delete it. API keys cannot delete accounts.');
+    return this.userService.deletionOptions(auth.user.id);
+  }
+
+  @Auth()
+  @Delete('me')
+  @ApiOperation({ summary: 'Request permanent deletion of your own account after 30 days' })
+  deleteOwnAccount(@Authed() auth: AuthDto, @Body() dto: DeleteOwnAccountDto) {
+    if (!auth.session) throw new ForbiddenException('Sign in with your account to delete it. API keys cannot delete accounts.');
+    return this.userService.deleteOwnAccount(auth.user.id, dto);
   }
 
   @Auth()
@@ -99,8 +116,8 @@ export class UserAdminController {
   }
 
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.userService.create(dto);
+  create(@Body() dto: CreateUserDto, @AuthedUserId() callerId: string) {
+    return this.userService.create(dto, callerId);
   }
 
   @Put(':id')

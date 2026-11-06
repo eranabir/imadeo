@@ -15,6 +15,7 @@ import {
   useCellularAllowed,
 } from '../lib/preferences';
 import { isAvailable, isEnabled, setEnabled } from '../lib/autobackup';
+import { openPublicPage } from '../lib/publicLinks';
 import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
 
 /**
@@ -228,7 +229,14 @@ export function SettingsScreen({ serverUrl, onManageServers, onLocked }: Props) 
             on={biometrics.enabled} disabled={biometrics.busy || (!biometrics.available && !biometrics.enabled)}
             onChange={next => void biometrics.setEnabled(next)} />
           {biometrics.error && <Text style={{ color: colors.danger, paddingVertical: 12 }}>{biometrics.error}</Text>}
-          <Row icon="lock" label="Locked" value="Open" last onPress={onLocked} />
+          <Row icon="lock" label="Locked" value="Open" onPress={onLocked} />
+          <Row icon="info" label="Privacy policy" value="Read" last
+            onPress={() => void openPublicPage('privacy')} />
+        </Group>
+
+        <Group title="Help">
+          <Row icon="info" label="Support" value="Open" last
+            onPress={() => void openPublicPage('support')} />
         </Group>
 
         <Action label="Manage servers" onPress={onManageServers} />

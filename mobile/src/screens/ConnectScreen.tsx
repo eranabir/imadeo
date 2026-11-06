@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Icon } from '../components/Icon';
 import { LogoLockup } from '../components/Logo';
+import { PublicLinks } from '../components/PublicLinks';
 import { WifiNetworks } from '../components/WifiNetworks';
 import { discoverServers, type DiscoveredServer } from '../lib/discovery';
 import { createProfile, probeServerAddresses, type ServerProfile } from '../lib/server';
@@ -347,6 +348,7 @@ export function ConnectScreen({ onConnected }: Props) {
             </Pressable>
           </View>
         ) : null}
+        <PublicLinks />
       </ScrollView>
     </KeyboardAvoidingView>
   );

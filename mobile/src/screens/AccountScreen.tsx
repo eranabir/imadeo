@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, Text, View } from 'react-native';
+import { DeleteAccountSheet } from '../components/DeleteAccountSheet';
 import { Header, useHeaderClearance } from '../components/Header';
 import { Action, Group, Row, StorageRow } from '../components/settings';
 import { useResource } from '../lib/api';
@@ -55,6 +57,7 @@ export function AccountScreen({
   onSignOut: () => void;
   onBack: () => void;
 }) {
+  const [deleting, setDeleting] = useState(false);
   const me = useResource<Me>(serverUrl, '/users/me');
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
 
@@ -141,9 +144,12 @@ export function AccountScreen({
           <StorageRow used={data ? Number(data.usageInBytes) : null} capacity={capacity} />
         </Group>
 
-        <Action label="Sign out" onPress={onSignOut} danger />
+        <Action label="Sign out" onPress={onSignOut} />
+        {me.data?.email && <Action label="Delete account" onPress={() => setDeleting(true)} danger />}
       </ScrollView>
       <Header title="Account" icon="person" onBack={onBack} />
+      <DeleteAccountSheet open={deleting} serverUrl={serverUrl} email={me.data?.email ?? ''}
+        onClose={() => setDeleting(false)} onDeleted={onSignOut} />
     </View>
   );
 }

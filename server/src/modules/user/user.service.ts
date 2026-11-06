@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { mainLibraryAssetWhere } from '../../common/asset-scope';
-import { UserStatus } from '../../db';
+import { UserStatus, type Prisma } from '../../db';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'node:crypto';
 import { statfs } from 'node:fs/promises';
@@ -11,10 +11,12 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
 import type {
   CreateUserDto,
+  DeleteOwnAccountDto,
   UpdatePreferencesDto,
   UpdateProfileDto,
   UpdateUserDto,
 } from './user.dto';
+import { UserDeletionService, USER_DELETION_GRACE_DAYS } from './user-deletion.service';
 
 export const DEFAULT_PREFERENCES = {
   theme: 'system',
@@ -56,6 +58,7 @@ export class UserService {
     private readonly mail: MailService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly storage: StorageService,
+    private readonly deletions: UserDeletionService,
   ) {}
 
   async me(userId: string) {
@@ -93,44 +96,53 @@ export class UserService {
     return user;
   }
 
-  async create(dto: CreateUserDto) {
+  async create(dto: CreateUserDto, callerId: string) {
     const email = dto.email.toLowerCase().trim();
-    if (await this.prisma.user.findUnique({ where: { email } })) {
-      throw new BadRequestException('An account with that email already exists');
-    }
-
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        name: dto.name.trim(),
-        password: await bcrypt.hash(dto.password, 12),
-        isAdmin: dto.isAdmin ?? false,
-        quotaSizeInBytes: dto.quotaSizeInBytes ?? null,
-        storageLabel: dto.storageLabel?.trim() || null,
-        shouldChangePassword: dto.shouldChangePassword ?? true,
-        preferences: DEFAULT_PREFERENCES,
-      },
-      select: PUBLIC_FIELDS,
+    const password = await bcrypt.hash(dto.password, 12);
+    const user = await this.accountMutation(async tx => {
+      // Authentication can precede a concurrent self-deletion. Recheck the
+      // creating administrator under the same lock as account removal.
+      const caller = await tx.user.findFirst({ where: {
+        id: callerId, isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null,
+      } });
+      if (!caller) throw new ForbiddenException('An active administrator is required to create an account.');
+      if (await tx.user.findUnique({ where: { email } })) {
+        throw new BadRequestException('An account with that email already exists');
+      }
+      return tx.user.create({
+        data: {
+          email, name: dto.name.trim(), password, isAdmin: dto.isAdmin ?? false,
+          quotaSizeInBytes: dto.quotaSizeInBytes ?? null,
+          storageLabel: dto.storageLabel?.trim() || null,
+          shouldChangePassword: dto.shouldChangePassword ?? true,
+          preferences: DEFAULT_PREFERENCES,
+        },
+        select: PUBLIC_FIELDS,
+      });
     });
     await this.storage.ensureUserRoot(user.id);
     return user;
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    await this.get(id);
-
-    return this.prisma.user.update({
-      where: { id },
-      data: {
-        email: dto.email?.toLowerCase().trim(),
-        name: dto.name?.trim(),
-        password: dto.password ? await bcrypt.hash(dto.password, 12) : undefined,
-        isAdmin: dto.isAdmin,
-        quotaSizeInBytes: dto.quotaSizeInBytes,
-        storageLabel: dto.storageLabel?.trim() || undefined,
-        shouldChangePassword: dto.shouldChangePassword,
-      },
-      select: PUBLIC_FIELDS,
+    const password = dto.password ? await bcrypt.hash(dto.password, 12) : undefined;
+    return this.accountMutation(async tx => {
+      const current = await tx.user.findUniqueOrThrow({ where: { id } });
+      if (current.status === UserStatus.DELETED) throw new BadRequestException('Permanent account deletion has already started.');
+      if (current.isAdmin && dto.isAdmin === false && current.status === UserStatus.ACTIVE && !current.deletedAt) {
+        const admins = await tx.user.count({ where: { isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null } });
+        if (admins <= 1) throw new ForbiddenException('The last administrator cannot be demoted. Make another account an administrator first.');
+      }
+      return tx.user.update({
+        where: { id },
+        data: {
+          email: dto.email?.toLowerCase().trim(), name: dto.name?.trim(), password,
+          isAdmin: dto.isAdmin, quotaSizeInBytes: dto.quotaSizeInBytes,
+          storageLabel: dto.storageLabel?.trim() || undefined,
+          shouldChangePassword: dto.shouldChangePassword,
+        },
+        select: PUBLIC_FIELDS,
+      });
     });
   }
 
@@ -268,32 +280,113 @@ export class UserService {
     return preferences;
   }
 
-  /**
-   * Soft delete. The account is queued for removal and its content is purged by
-   * the `user-deletion` job once the grace period elapses.
-   */
-  async softDelete(id: string, callerId: string) {
-    if (id === callerId) {
-      throw new BadRequestException('You cannot delete your own account');
-    }
-    const target = await this.prisma.user.findUniqueOrThrow({ where: { id } });
-    if (target.isAdmin) {
-      const admins = await this.prisma.user.count({ where: { isAdmin: true, deletedAt: null } });
-      if (admins <= 1) throw new ForbiddenException('The last administrator cannot be removed');
-    }
+  /** Serialize role changes and removal with first-admin setup and purge claims. */
+  private accountMutation<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async tx => {
+      await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
+      return work(tx);
+    }, { timeout: 15_000 });
+  }
 
-    return this.prisma.user.update({
-      where: { id },
-      data: { status: UserStatus.REMOVING, deletedAt: new Date() },
-      select: PUBLIC_FIELDS,
+  async deletionOptions(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const admins = user.isAdmin ? await this.prisma.user.count({
+      where: { isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null },
+    }) : 0;
+    const others = await this.prisma.user.findMany({
+      where: { id: { not: userId }, status: UserStatus.ACTIVE, deletedAt: null },
+      select: { id: true, name: true, email: true }, orderBy: { name: 'asc' },
+    });
+    const requiresSuccessor = user.isAdmin && admins <= 1 && others.length > 0;
+    const otherAccounts = await this.prisma.user.count({ where: { id: { not: userId } } });
+    return {
+      gracePeriodDays: USER_DELETION_GRACE_DAYS,
+      hasPassword: user.password.length > 0,
+      requiresSuccessor,
+      willEmptyServer: otherAccounts === 0,
+      leavesServerWithoutAdmin: user.isAdmin && admins <= 1 && others.length === 0 && otherAccounts > 0,
+      successors: requiresSuccessor ? others : [],
+    };
+  }
+
+  async deleteOwnAccount(userId: string, dto: DeleteOwnAccountDto) {
+    const verified = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (verified.password && (!dto.currentPassword || !(await bcrypt.compare(dto.currentPassword, verified.password)))) {
+      throw new BadRequestException('Current password is incorrect.');
+    }
+    return this.accountMutation(async tx => {
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+      if (user.status !== UserStatus.ACTIVE || user.deletedAt) throw new BadRequestException('This account is already being removed.');
+      if (user.password !== verified.password) throw new BadRequestException('Your password changed. Enter the current password and try again.');
+      if (dto.confirmationEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+        throw new BadRequestException('Type your account email address to confirm deletion.');
+      }
+      if (dto.successorId && !user.isAdmin) throw new ForbiddenException('Only an administrator can transfer administration.');
+      const admins = user.isAdmin ? await tx.user.count({
+        where: { isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null },
+      }) : 0;
+      const otherUsers = await tx.user.count({ where: {
+        id: { not: userId }, status: UserStatus.ACTIVE, deletedAt: null,
+      } });
+      if (user.isAdmin && admins <= 1 && otherUsers > 0 && !dto.successorId) {
+        throw new BadRequestException({ code: 'ADMIN_SUCCESSOR_REQUIRED',
+          message: 'Choose another account to become administrator before deleting yours.' });
+      }
+      if (user.isAdmin && admins <= 1 && otherUsers === 0 && !dto.successorId) {
+        const otherAccounts = await tx.user.count({ where: { id: { not: userId } } });
+        if (otherAccounts > 0 && dto.acknowledgeServerLockout !== true) {
+          throw new BadRequestException({ code: 'SERVER_LOCKOUT_ACKNOWLEDGEMENT_REQUIRED',
+            message: 'Disabled accounts remain on this server. Confirm that deleting your account leaves the server without an administrator and does not reopen setup.' });
+        }
+      }
+      if (dto.successorId) {
+        const successor = await tx.user.findFirst({ where: {
+          id: dto.successorId, NOT: { id: userId }, status: UserStatus.ACTIVE, deletedAt: null,
+        } });
+        if (!successor) throw new BadRequestException('Choose an active account other than your own as administrator.');
+      }
+      const deletedAt = new Date();
+      // Queue first: a Redis failure rolls back this request. If a later DB
+      // commit fails, the timestamp-guarded job safely ignores the orphan.
+      await this.deletions.schedule(userId, deletedAt);
+      if (dto.successorId) await tx.user.update({ where: { id: dto.successorId }, data: { isAdmin: true } });
+      await tx.user.update({ where: { id: userId }, data: { status: UserStatus.REMOVING, deletedAt } });
+      await tx.session.deleteMany({ where: { userId } });
+      await tx.apiKey.deleteMany({ where: { userId } });
+      await tx.sharedLink.deleteMany({ where: { userId } });
+      await tx.invitation.deleteMany({ where: { OR: [{ invitedById: userId }, { album: { ownerId: userId } }] } });
+      await tx.assetUser.deleteMany({ where: { asset: { ownerId: userId } } });
+      await tx.albumUser.deleteMany({ where: { album: { ownerId: userId } } });
+      await tx.folderUser.deleteMany({ where: { folder: { ownerId: userId } } });
+      await tx.partner.deleteMany({ where: { OR: [{ sharedById: userId }, { sharedWithId: userId }] } });
+      return {
+        deletedAt: deletedAt.toISOString(),
+        deleteAfter: new Date(deletedAt.getTime() + USER_DELETION_GRACE_DAYS * 86_400_000).toISOString(),
+        gracePeriodDays: USER_DELETION_GRACE_DAYS,
+      };
+    });
+  }
+
+  /** Administrator-managed removal remains separate from self-service requests. */
+  async softDelete(id: string, callerId: string) {
+    if (id === callerId) throw new BadRequestException('Use the account deletion option to delete your own account.');
+    return this.accountMutation(async tx => {
+      const target = await tx.user.findUniqueOrThrow({ where: { id } });
+      if (target.status === UserStatus.DELETED) throw new BadRequestException('Permanent account deletion has already started.');
+      if (target.status === UserStatus.REMOVING) return tx.user.findUniqueOrThrow({ where: { id }, select: PUBLIC_FIELDS });
+      if (target.isAdmin && target.status === UserStatus.ACTIVE && !target.deletedAt) {
+        const admins = await tx.user.count({ where: { isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null } });
+        if (admins <= 1) throw new ForbiddenException('The last administrator cannot be removed');
+      }
+      return tx.user.update({ where: { id }, data: { status: UserStatus.REMOVING, deletedAt: new Date() }, select: PUBLIC_FIELDS });
     });
   }
 
   restore(id: string) {
-    return this.prisma.user.update({
-      where: { id },
-      data: { status: UserStatus.ACTIVE, deletedAt: null },
-      select: PUBLIC_FIELDS,
+    return this.accountMutation(async tx => {
+      const target = await tx.user.findUniqueOrThrow({ where: { id } });
+      if (target.status === UserStatus.DELETED) throw new BadRequestException('Permanent account deletion has already started.');
+      return tx.user.update({ where: { id }, data: { status: UserStatus.ACTIVE, deletedAt: null }, select: PUBLIC_FIELDS });
     });
   }
 

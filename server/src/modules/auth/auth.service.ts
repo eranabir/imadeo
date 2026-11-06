@@ -114,6 +114,11 @@ export class AuthService {
       if (!isFirstUser && !this.config.get('auth.publicRegistration', { infer: true })) {
         throw new BadRequestException('This server is invitation only. Ask an administrator to invite you.');
       }
+      if (!isFirstUser && (await tx.user.count({ where: {
+        isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null,
+      } })) === 0) {
+        throw new BadRequestException('New accounts are unavailable while this server has no active administrator.');
+      }
 
       return tx.user.create({
         data: {

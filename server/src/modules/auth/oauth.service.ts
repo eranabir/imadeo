@@ -424,6 +424,11 @@ export class OAuthService {
       // the initial administrator role.
       await tx.$executeRawUnsafe('SELECT pg_advisory_xact_lock(79218461)');
       const isFirstUser = (await tx.user.count()) === 0;
+      if (!isFirstUser && (await tx.user.count({ where: {
+        isAdmin: true, status: UserStatus.ACTIVE, deletedAt: null,
+      } })) === 0) {
+        throw new UnauthorizedException('New accounts are unavailable while this server has no active administrator.');
+      }
 
       return tx.user.create({
         data: {

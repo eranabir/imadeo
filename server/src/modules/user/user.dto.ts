@@ -7,6 +7,8 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -136,4 +138,23 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsString()
   locale?: string;
+}
+
+/** Explicit self-service removal; never accepts another account's id or role. */
+export class DeleteOwnAccountDto {
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeServerLockout?: boolean;
+
+  @IsEmail()
+  confirmationEmail!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  currentPassword?: string;
+
+  @IsOptional()
+  @IsUUID()
+  successorId?: string;
 }
