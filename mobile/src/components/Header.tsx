@@ -1,4 +1,7 @@
-import type { ReactNode } from 'react';
+import { HeaderHeightContext } from 'expo-router/react-navigation';
+import { useContext, type ReactNode } from 'react';
+import { NativeHeaderContext } from './NativeTabStack';
+import { NativeHeader } from './NativeHeader';
 import { Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, wash } from '../theme';
@@ -53,6 +56,9 @@ export function Header({
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const native = useContext(NativeHeaderContext);
+  if (native) return <NativeHeader title={title} subtitle={subtitle} onBack={onBack} action={action}
+    account={account} actionType={HeaderAction}>{children}</NativeHeader>;
 
   return (
     <View
@@ -151,6 +157,9 @@ export function Header({
  */
 export function useHeaderClearance(extra = 0) {
   const insets = useSafeAreaInsets();
+  const native = useContext(NativeHeaderContext);
+  const nativeHeight = useContext(HeaderHeightContext) ?? 0;
+  if (native) return nativeHeight + extra + 40;
   // `HEADER_GAP` covers both the row added inside the bar and the space between
   // the bar and the content, which used to be 8pt — close enough that a title
   // and the first row of thumbnails read as one block.

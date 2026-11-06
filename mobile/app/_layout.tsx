@@ -1,3 +1,4 @@
+import { NativeHeaderContext } from '../src/components/NativeTabStack';
 import { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -6,7 +7,7 @@ import {
   Stack,
   ThemeProvider,
 } from 'expo-router';
-import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Button } from '../src/components/ui';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Opening } from '../src/components/Loading';
@@ -345,12 +346,14 @@ function Gate() {
    */
   return (
     <View style={styles.fill}>
+    <NativeHeaderContext.Provider value={Platform.OS === 'ios'}>
     <Stack
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.bg },
       }}
     />
+    </NativeHeaderContext.Provider>
     {(reachability === 'unreachable' || verificationFailed) && (
       <View style={StyleSheet.absoluteFill}>
         <ConnectionErrorScreen server={server} retrying={retrying}

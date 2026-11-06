@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { SettingsScreen } from '../../src/screens/SettingsScreen';
-import { useSession } from '../../src/session';
+import { SettingsScreen } from '../../../src/screens/SettingsScreen';
+import { useSession } from '../../../src/session';
 
 export default function Route() {
   const router = useRouter();

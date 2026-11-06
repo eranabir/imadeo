@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollView, Text, View } from 'react-native';
 import { Header, useHeaderClearance } from '../components/Header';
 import { Action, Group, Row, StorageRow } from '../components/settings';
@@ -58,6 +59,7 @@ export function AccountScreen({
   const { data } = useResource<Statistics>(serverUrl, '/users/me/statistics');
 
   const clearance = useHeaderClearance();
+  const insets = useSafeAreaInsets();
 
   /*
    * The same measure Settings uses: a quota if the account has one, otherwise
@@ -75,7 +77,8 @@ export function AccountScreen({
         contentContainerStyle={{
           paddingTop: clearance + 16,
           paddingBottom: TAB_BAR_CLEARANCE,
-          paddingHorizontal: 16,
+          paddingLeft: insets.left + 16,
+          paddingRight: insets.right + 16,
         }}
       >
         {/* The person, at the size of a person rather than a row. Their name is

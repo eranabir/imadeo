@@ -24,7 +24,7 @@ export default function TabsLayout() {
       disableTransparentOnScrollEdge={Platform.OS === 'ios'}
     >
       <NativeTabs.Trigger
-        name="index"
+        name="(library)"
         disableAutomaticContentInsets
         contentStyle={{ backgroundColor: colors.bg }}
         testID="library-tab"

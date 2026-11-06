@@ -1,6 +1,6 @@
-import { SearchScreen } from '../../src/screens/SearchScreen';
-import { ActiveTab } from '../../src/components/ActiveTab';
-import { useServerUrl } from '../../src/session';
+import { SearchScreen } from '../../../src/screens/SearchScreen';
+import { ActiveTab } from '../../../src/components/ActiveTab';
+import { useServerUrl } from '../../../src/session';
 
 export default function Route() {
   const serverUrl = useServerUrl();
