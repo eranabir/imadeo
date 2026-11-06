@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-11-06T16:14:28.752Z",
+  "appId": "6799252901",
+  "buildId": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+  "buildNumber": "109",
+  "processingState": "VALID",
+  "internalBuildState": "IN_BETA_TESTING",
+  "groups": [
+    {
+      "id": "507b7e59-80ad-4f30-8f99-31a6e90de480",
+      "name": "Team (Expo)",
+      "internal": true,
+      "hasAccessToAllBuilds": true,
+      "appId": "6799252901"
+    }
+  ],
+  "paginationComplete": true,
+  "publicReviewSubmittedAtSnapshot": false
+}

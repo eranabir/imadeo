@@ -1,0 +1,55 @@
+{
+  "checkedAt": "2026-11-06T15:21:26.707Z",
+  "build": {
+    "id": "5fb510bb-bcc3-48be-a963-dca9e2d8d05a",
+    "number": "108",
+    "status": "FINISHED",
+    "source": "40c6e71e1de88a380977ea44682a46a837bf9f5d",
+    "completedAt": "2026-11-06T15:08:14.010Z"
+  },
+  "submission": {
+    "id": "5a2dd29a-c91a-47d3-8ac8-6b7a69f3adc8",
+    "status": "IN_QUEUE",
+    "createdAt": "2026-11-06T15:02:11.951Z",
+    "canRetry": false,
+    "maxRetryTimeMinutes": 1440,
+    "logFileCount": 0,
+    "error": null
+  },
+  "apple": {
+    "checkedAt": "2026-11-06T15:19:03.191Z",
+    "appId": "6799252901",
+    "buildNumber": "108",
+    "appleReceived": false,
+    "uploads": [],
+    "builds": [],
+    "includedBuilds": []
+  },
+  "activeProjectSubmissions": [
+    {
+      "id": "5a2dd29a-c91a-47d3-8ac8-6b7a69f3adc8",
+      "status": "IN_QUEUE",
+      "buildNumber": "108"
+    }
+  ],
+  "expoStatus": {
+    "indicator": "none",
+    "submit": [
+      {
+        "name": "EAS Submit",
+        "status": "operational"
+      }
+    ],
+    "activeIncidentCount": 0
+  },
+  "diagnosis": "The existing submission is waiting in the EAS submitter queue; no upload execution, log, or error is evidenced. CLI Submitting is a generic waiting label.",
+  "retryDecision": "No retry: existing job is active and canRetry is false.",
+  "readOnly": true,
+  "publicReviewSubmitted": false,
+  "references": [
+    "https://docs.expo.dev/eas/cli/",
+    "https://docs.expo.dev/deploy/submit-to-app-stores/",
+    "https://expo.dev/eas-build-status",
+    "https://status.expo.dev/"
+  ]
+}

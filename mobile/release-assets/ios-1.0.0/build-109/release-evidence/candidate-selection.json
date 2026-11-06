@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2026-11-06T16:16:06.645Z",
+  "appId": "6799252901",
+  "versionId": "29d4dcce-b271-463f-b00b-f8638d901e21",
+  "reviewDraftId": "f7a41b8e-6bb7-4f70-94f9-437bb7cd78ed",
+  "reviewItemId": "ZjdhNDFiOGUtNmJiNy00ZjcwLTk0ZjktNDM3YmI3Y2Q3OGVkfDZ8ODg5NDY1MTEx",
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "selectedBuildId": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+  "selectedBuildNumber": "109",
+  "selectionComplete": true,
+  "sameUnsubmittedDraftPreserved": true,
+  "sameReviewItemRestored": true,
+  "reviewState": "READY_FOR_REVIEW",
+  "submittedDate": null,
+  "publicReviewSubmitted": false,
+  "remainingReleaseGate": "Final Duo Favorites interaction after host unlock."
+}

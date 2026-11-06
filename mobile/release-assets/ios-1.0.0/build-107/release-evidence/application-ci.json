@@ -1,0 +1,23 @@
+{
+  "source": "a16fa96e33f775a9d24b417ccf91ce908b6d6781",
+  "checkedAt": "2026-11-06T13:21:47.676Z",
+  "runs": [
+    {
+      "id": 42224167338,
+      "name": "Publish images",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42224167338",
+      "updatedAt": "2026-11-06T13:17:00Z"
+    },
+    {
+      "id": 42224166988,
+      "name": "pages build and deployment",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42224166988",
+      "updatedAt": "2026-11-06T13:21:00Z"
+    }
+  ],
+  "allPassed": true
+}

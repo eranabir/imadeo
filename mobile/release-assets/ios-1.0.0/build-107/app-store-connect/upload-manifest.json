@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "appId": "6799252901",
+  "appStoreVersionId": "29d4dcce-b271-463f-b00b-f8638d901e21",
+  "verified": true,
+  "sets": [
+    {
+      "localizationId": "11d8fb31-53b0-4b5d-9c0b-b1c146b4737c",
+      "displayType": "APP_IPHONE_61",
+      "files": [
+        "/Users/eranabir/projects/imadeo/mobile/release-assets/ios-1.0.0/build-107/app-store-connect/iphone-61/01-browse-photos.jpg",
+        "/Users/eranabir/projects/imadeo/mobile/release-assets/ios-1.0.0/build-107/app-store-connect/iphone-61/03-media-viewer.jpg"
+      ]
+    },
+    {
+      "localizationId": "11d8fb31-53b0-4b5d-9c0b-b1c146b4737c",
+      "displayType": "APP_IPAD_PRO_3GEN_129",
+      "files": [
+        "/Users/eranabir/projects/imadeo/mobile/release-assets/ios-1.0.0/build-107/app-store-connect/ipad-13/02-media-viewer.jpg",
+        "/Users/eranabir/projects/imadeo/mobile/release-assets/ios-1.0.0/build-107/app-store-connect/ipad-13/01-browse-photos.jpg"
+      ]
+    }
+  ],
+  "cleanup": [
+    {
+      "localizationId": "11d8fb31-53b0-4b5d-9c0b-b1c146b4737c",
+      "setId": "3a2ccd39-debe-4cda-ae88-050b25af3792",
+      "displayType": "APP_IPAD_PRO_3GEN_129",
+      "screenshotIds": [
+        "251cd826-88e8-45f6-a4d7-e48087c389bd",
+        "b0a93ad5-dbb6-4a3e-b9c6-232bc3749420"
+      ]
+    },
+    {
+      "localizationId": "11d8fb31-53b0-4b5d-9c0b-b1c146b4737c",
+      "setId": "42690e6d-a5b7-43ea-9439-f7b4642bd2bd",
+      "displayType": "APP_IPHONE_65",
+      "screenshotIds": [
+        "0a86d5a6-4b62-421f-918f-b498c97b8f69",
+        "23127336-338e-4a7e-8a38-054ce76d3c23",
+        "aeb4ee8d-afa8-4db1-ae6e-0ed3e7d11482",
+        "c42b1d58-b7a1-47f5-95b4-040b67d8afa5"
+      ]
+    }
+  ]
+}

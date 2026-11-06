@@ -1,0 +1,81 @@
+{
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "checkedAt": "2026-11-06T16:02:10.094Z",
+  "allPassed": true,
+  "runs": [
+    {
+      "id": 42244737562,
+      "name": "Publish images",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42244737562",
+      "updatedAt": "2026-11-06T15:43:59Z",
+      "jobs": [
+        {
+          "id": 127983867633,
+          "name": "publish (machine-learning, ./machine-learning, ./machine-learning/Dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244737562/job/127983867633",
+          "startedAt": "2026-11-06T15:37:16Z",
+          "completedAt": "2026-11-06T15:37:43Z"
+        },
+        {
+          "id": 127983867980,
+          "name": "publish (web, ., app/Dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244737562/job/127983867980",
+          "startedAt": "2026-11-06T15:37:16Z",
+          "completedAt": "2026-11-06T15:42:18Z"
+        },
+        {
+          "id": 127983868007,
+          "name": "publish (server, ., server/Dockerfile)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244737562/job/127983868007",
+          "startedAt": "2026-11-06T15:37:16Z",
+          "completedAt": "2026-11-06T15:43:58Z"
+        }
+      ]
+    },
+    {
+      "id": 42244736308,
+      "name": "pages build and deployment",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42244736308",
+      "updatedAt": "2026-11-06T15:43:05Z",
+      "jobs": [
+        {
+          "id": 127983881074,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244736308/job/127983881074",
+          "startedAt": "2026-11-06T15:37:17Z",
+          "completedAt": "2026-11-06T15:37:25Z"
+        },
+        {
+          "id": 127983972109,
+          "name": "deploy",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244736308/job/127983972109",
+          "startedAt": "2026-11-06T15:37:28Z",
+          "completedAt": "2026-11-06T15:43:04Z"
+        },
+        {
+          "id": 127983972194,
+          "name": "report-build-status",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/eranabir/imadeo/actions/runs/42244736308/job/127983972194",
+          "startedAt": "2026-11-06T15:37:27Z",
+          "completedAt": "2026-11-06T15:37:31Z"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "completedAt": "2026-11-06T16:11:28.948Z",
+  "phase": "complete",
+  "ciPassed": true,
+  "images": {
+    "server": {
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "digest": "ghcr.io/eranabir/imadeo/server@sha256:37ee720d748824e8fd9f17a0ebac221df117948300f3cff4739ca1231d73860a"
+    },
+    "web": {
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "digest": "ghcr.io/eranabir/imadeo/web@sha256:3da7e979ad9bd0af609e7f195f6bd2ac023cf5a8f422b8b77b7a066ae9f35964"
+    },
+    "machineLearning": {
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "digest": "ghcr.io/eranabir/imadeo/machine-learning@sha256:72bd933ba903f329de378b3dbf7a6d4f6d550e9f59866d6d1411585b9f092a0f"
+    }
+  },
+  "services": [
+    {
+      "name": "server",
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "state": "running",
+      "health": "healthy",
+      "restarts": 0,
+      "oom": false
+    },
+    {
+      "name": "worker",
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "state": "running",
+      "health": "none",
+      "restarts": 0,
+      "oom": false
+    },
+    {
+      "name": "discovery",
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "state": "running",
+      "health": "none",
+      "restarts": 0,
+      "oom": false
+    },
+    {
+      "name": "web",
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "state": "running",
+      "health": "none",
+      "restarts": 0,
+      "oom": false
+    },
+    {
+      "name": "ml",
+      "revision": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+      "state": "running",
+      "health": "healthy",
+      "restarts": 0,
+      "oom": false
+    }
+  ],
+  "runningImmutableImageIdsVerified": true,
+  "containerChecksPassed": true,
+  "databaseUnchanged": true,
+  "redisUnchanged": true,
+  "workerReadyLogVerified": true,
+  "noPendingMigrationsLogVerified": true,
+  "apiChecks": {
+    "health": {
+      "status": 200,
+      "elapsedMs": 314
+    },
+    "login": {
+      "status": 200,
+      "elapsedMs": 539,
+      "expectedAccount": true
+    },
+    "publicFixture": {
+      "expectedOwnedAsset": true,
+      "isFavorite": true,
+      "mutated": false
+    },
+    "type_asc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "type_desc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "name_asc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "name_desc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "date_asc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "date_desc": {
+      "status": 200,
+      "total": 1,
+      "queriedPages": 2,
+      "stableRepeatedPages": true,
+      "uniqueCompletePagination": true,
+      "deviceFavorites": 0,
+      "observedMultiplePages": false
+    },
+    "existingFixtureIncluded": true,
+    "fixtureCurrentlyEligible": true,
+    "filterBoundaries": {
+      "locked": 403,
+      "unknownSort": 400,
+      "unknownDeviceTotal": 0
+    },
+    "web": {
+      "status": 200,
+      "appShell": true
+    }
+  },
+  "apiChecksPassed": true,
+  "verificationLimit": "1 existing favorite(s): empty-page/stability checked; multi-item sorting and device inclusion rely on regression tests.",
+  "productionDeletionRequests": 0,
+  "contentMutations": []
+}

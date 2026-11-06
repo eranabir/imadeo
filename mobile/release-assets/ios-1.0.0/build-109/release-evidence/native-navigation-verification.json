@@ -1,0 +1,38 @@
+{
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "patchVerificationAt": "2026-11-06T15:27:19.814166+00:00",
+  "upstream": "https://github.com/software-mansion/react-native-screens/pull/4990",
+  "package": "react-native-screens",
+  "nativeVersion": "4.26.2",
+  "patch": ".yarn/patches/react-native-screens-npm-4.26.2-175183263a.patch",
+  "patchSha256": "121c6e68db39d6ee036d6c4ad3c27a8eef0a7e11724b3c8c1934aee7c7379ff0",
+  "nativeChangedFile": "ios/tabs/host/RNSTabsHostComponentView.mm",
+  "nativeChanges": 1,
+  "nativeAssignment": "_controller.view.frame = self.bounds;",
+  "freshIsolatedImmutableInstallPassed": true,
+  "fullRepositoryImmutableInstallPassed": true,
+  "installedNativeSourceMatchesFreshPatch": true,
+  "unrelatedDependencyVersionsUnchanged": true,
+  "indirectScreensVersionPreserved": "4.27.0",
+  "ineffectiveSidebarPropReverted": true,
+  "coordinatorObservedNativeChecks": {
+    "localNativeBuild": "passed",
+    "normalAdHocSignatureVerification": "passed",
+    "duoAlreadyOpenColdLaunches": {
+      "passed": 3,
+      "attempted": 3,
+      "nativeFiveIconRailVisible": true
+    },
+    "regularIPhoneColdLaunch": {
+      "passed": true,
+      "nativeBottomTabsVisible": true
+    },
+    "iPadColdLaunch": {
+      "passed": true,
+      "nativeTopTabsVisible": true
+    },
+    "finalDuoFavoritesInteraction": "pending host unlock at snapshot"
+  },
+  "capturePolicy": "Native navigation QA captures contain Apple simulator stock photographs and are excluded from release assets and store screenshots.",
+  "diagnosticNote": "The first unsigned local QA build failed SecureStore restoration. Rebuilding with normal ad-hoc signing resolved it; no app authentication change was retained."
+}

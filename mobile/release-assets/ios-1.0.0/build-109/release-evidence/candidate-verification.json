@@ -1,0 +1,49 @@
+{
+  "checkedAt": "2026-11-06T16:05:38.605Z",
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "version": "1.0.0",
+  "buildNumber": "109",
+  "easBuildId": "eefec0ff-d0d5-42cf-982f-1ab03e084a91",
+  "easBuildStatus": "FINISHED",
+  "easDistribution": "STORE",
+  "bundleId": "app.imadeo.mobile",
+  "artifact": {
+    "sha256": "61715cae0d18c2a237babb50300673abe8bdeda47c9b162acb1fb68f4fa7cd9d",
+    "size": 26023307
+  },
+  "localSignatureVerified": true,
+  "localAppStoreDistributionVerified": true,
+  "releaseCoordinatorChecks": {
+    "mobileTestsPassed": 216,
+    "serverTestsPassed": 244,
+    "mobileTypecheckPassed": true,
+    "serverTypecheckPassed": true
+  },
+  "deliveryHelper": {
+    "verifiedAt": "2026-11-06T16:05:58.877Z",
+    "testsPassed": 20,
+    "testCount": 20,
+    "syntheticCredentialsOnly": true,
+    "independentReview": "No remaining concrete blocker after journal ownership/log-close barrier fixes",
+    "guardedReconciliation": {
+      "unownedExistingApple109": "rejected in default and upload modes",
+      "reconciliation": "owned matching started attempt only",
+      "blindRetry": false
+    },
+    "officialReferences": [
+      "https://help.apple.com/asc/appsaltool/en.lproj/static.html",
+      "https://help.apple.com/itc/transporteruserguide/en.lproj/static.html"
+    ]
+  },
+  "appStorePublicReviewSubmittedAtSnapshot": false,
+  "note": "The exact EAS artifact passed signature and App Store distribution checks, uploaded successfully, and reached Apple VALID processing state. Internal TestFlight availability and public App Review submission remain separate checks.",
+  "appleDelivery": {
+    "checkedAt": "2026-11-06T16:13:19.621Z",
+    "mode": "DELIVERED_VALID",
+    "buildId": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+    "processingState": "VALID",
+    "evidence": "apple-delivery.json",
+    "easArtifactSha256Matched": true,
+    "altoolExitCode": 0
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "verifiedAt": "2026-11-06T14:57:41.352Z",
+  "status": "COMPLETE",
+  "appId": "6799252901",
+  "versionId": "29d4dcce-b271-463f-b00b-f8638d901e21",
+  "localizationId": "11d8fb31-53b0-4b5d-9c0b-b1c146b4737c",
+  "screenshotSourceBuild": "107",
+  "manifestFingerprint": "32d52cb90c03ca8aadbf76c8f91d52322f5b5fa07ac65d418d11bc991853996f",
+  "allFourCompleteBeforeAnyOldDeletion": true,
+  "orderedSets": [
+    {
+      "setId": "e2160f37-f153-4aa2-a1a0-c0baf9fcd2a4",
+      "displayType": "APP_IPHONE_61",
+      "screenshots": [
+        {
+          "id": "44800019-5445-8da5-800f-ca14c5f2ecf1",
+          "fileName": "01-browse-photos.jpg",
+          "state": "COMPLETE",
+          "checksum": "c54ffb9cf6284beb2a06aeea77820094",
+          "width": 1206,
+          "height": 2622
+        },
+        {
+          "id": "aec00019-5445-8da5-8010-59941d2d0018",
+          "fileName": "03-media-viewer.jpg",
+          "state": "COMPLETE",
+          "checksum": "b4adc5d3e532872768ce0f64ee63e581",
+          "width": 1206,
+          "height": 2622
+        }
+      ]
+    },
+    {
+      "setId": "3a2ccd39-debe-4cda-ae88-050b25af3792",
+      "displayType": "APP_IPAD_PRO_3GEN_129",
+      "screenshots": [
+        {
+          "id": "ea000019-5445-8da5-8036-2c97fff71f6e",
+          "fileName": "02-media-viewer.jpg",
+          "state": "COMPLETE",
+          "checksum": "b476fb1aab45c8b7a065a9f596872383",
+          "width": 2064,
+          "height": 2752
+        },
+        {
+          "id": "6e800019-5445-8da5-803e-1e4c552c9535",
+          "fileName": "01-browse-photos.jpg",
+          "state": "COMPLETE",
+          "checksum": "3b7e3ddb5251708f9360e1c107f6aa54",
+          "width": 2064,
+          "height": 2752
+        }
+      ]
+    }
+  ],
+  "deletedOldScreenshotIds": [
+    "251cd826-88e8-45f6-a4d7-e48087c389bd",
+    "b0a93ad5-dbb6-4a3e-b9c6-232bc3749420",
+    "0a86d5a6-4b62-421f-918f-b498c97b8f69",
+    "23127336-338e-4a7e-8a38-054ce76d3c23",
+    "aeb4ee8d-afa8-4db1-ae6e-0ed3e7d11482",
+    "c42b1d58-b7a1-47f5-95b4-040b67d8afa5"
+  ],
+  "retainedEmptySets": [
+    {
+      "id": "42690e6d-a5b7-43ea-9439-f7b4642bd2bd",
+      "displayType": "APP_IPHONE_65"
+    }
+  ],
+  "reviewDraft": "f7a41b8e-6bb7-4f70-94f9-437bb7cd78ed",
+  "restoredReviewItem": "ZjdhNDFiOGUtNmJiNy00ZjcwLTk0ZjktNDM3YmI3Y2Q3OGVkfDZ8ODg5NDY1MTEx",
+  "publicReviewSubmitted": false,
+  "eventsFile": "upload-events.jsonl",
+  "journalFile": "upload-manifest.json.upload-state.json",
+  "reviewDraftState": "READY_FOR_REVIEW",
+  "submittedDate": null,
+  "selectedBuildId": "71c82dba-6bd3-4ab8-936f-f99f1e451f18",
+  "selectedBuildNumber": "107",
+  "releaseType": "AFTER_APPROVAL",
+  "restoredDraftVerifiedAt": "2026-11-06T14:57:52.829Z"
+}

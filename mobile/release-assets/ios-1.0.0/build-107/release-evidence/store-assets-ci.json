@@ -1,0 +1,28 @@
+{
+  "checkedAt": "2026-11-06T14:44:30.980Z",
+  "commit": "179d5c6edd43cdea22adc6d01d3fd8c3367e6399",
+  "scope": "App Store screenshot and release-evidence assets only",
+  "applicationSource": "a16fa96e33f775a9d24b417ccf91ce908b6d6781",
+  "buildNumber": "107",
+  "allPassed": true,
+  "runs": [
+    {
+      "id": 42235393495,
+      "name": "Publish images",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42235393495",
+      "createdAt": "2026-11-06T14:36:12Z",
+      "updatedAt": "2026-11-06T14:36:48Z"
+    },
+    {
+      "id": 42235392859,
+      "name": "pages build and deployment",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/eranabir/imadeo/actions/runs/42235392859",
+      "createdAt": "2026-11-06T14:36:11Z",
+      "updatedAt": "2026-11-06T14:43:44Z"
+    }
+  ]
+}

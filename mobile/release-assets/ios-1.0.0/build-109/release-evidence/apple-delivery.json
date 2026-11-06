@@ -1,0 +1,39 @@
+{
+  "appId": "6799252901",
+  "easBuildId": "eefec0ff-d0d5-42cf-982f-1ab03e084a91",
+  "sourceSha": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "buildNumber": "109",
+  "checkedAt": "2026-11-06T16:13:19.621Z",
+  "mode": "DELIVERED_VALID",
+  "uploadAttempted": true,
+  "ipa": {
+    "sha256": "61715cae0d18c2a237babb50300673abe8bdeda47c9b162acb1fb68f4fa7cd9d",
+    "size": 26023307
+  },
+  "altool": {
+    "exitCode": 0,
+    "errorCodes": []
+  },
+  "apple": {
+    "received": true,
+    "uploads": [
+      {
+        "id": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+        "state": "PROCESSING",
+        "errors": [],
+        "warnings": [],
+        "uploadedDate": "2026-11-06T08:09:32-08:00"
+      }
+    ],
+    "builds": [
+      {
+        "id": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+        "number": "109",
+        "processingState": "VALID",
+        "uploadedDate": "2026-11-06T08:10:38-08:00"
+      }
+    ]
+  },
+  "publicReviewSubmittedAtSnapshot": false,
+  "verificationLimit": "Apple build processing is VALID. Internal TestFlight group availability and public App Review submission are separate checks."
+}
