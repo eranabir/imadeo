@@ -17,6 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { colors, motion, radius, shadow } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** The handle's size, and the rail it runs in. */
 const HANDLE = 44;
@@ -54,6 +55,7 @@ export function Scrubber({
   onSeek: (offset: number) => void;
   onDrag: (dragging: boolean) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const travel = Math.max(0, contentHeight - viewportHeight);
   const railTop = topInset + 8;
   const railHeight = Math.max(0, viewportHeight - railTop - 120);
@@ -117,7 +119,7 @@ export function Scrubber({
   return (
     <View
       pointerEvents={visible ? 'box-none' : 'none'}
-      style={{ position: 'absolute', top: railTop, right: 0, width: RAIL, height: railHeight }}
+      style={{ position: 'absolute', top: railTop, right: insets.right + 4, width: RAIL, height: railHeight }}
     >
       <Animated.View
         {...responder.panHandlers}

@@ -113,8 +113,8 @@ export function BackupProgressScreen({ progress, onBack }: Props) {
         ListEmptyComponent={
           <Empty
             icon="done"
-            title="Nothing to back up"
-            body="Everything on this phone is already on your server."
+            title={progress?.held ? 'Waiting for a connection' : 'No items waiting for backup'}
+            body={progress?.held ? 'Backup will continue when a permitted connection is available.' : 'Backup is up to date.'}
           />
         }
         renderItem={({ item }) => {

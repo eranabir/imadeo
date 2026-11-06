@@ -69,21 +69,24 @@ export async function setAppearance(next: Appearance) {
  * which the root does by keying on what this returns.
  */
 export function useAppearance(): Appearance {
-  const [value, setValue] = useState(appearance);
+  // The resolved system palette can change while the preference stays
+  // "system". A fresh snapshot also repaints the navigation ThemeProvider.
+  const [value, setValue] = useState({ appearance });
 
   useEffect(() => {
-    appearanceListeners.add(setValue);
+    const repaint = (next: Appearance) => setValue({ appearance: next });
+    appearanceListeners.add(repaint);
     // Following the system means reacting when the system changes underneath.
     const subscription = SystemAppearance.addChangeListener(() => {
       if (appearance === 'system') paint();
     });
     return () => {
-      appearanceListeners.delete(setValue);
+      appearanceListeners.delete(repaint);
       subscription.remove();
     };
   }, []);
 
-  return value;
+  return value.appearance;
 }
 
 /**

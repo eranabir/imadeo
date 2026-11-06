@@ -25,6 +25,9 @@ venv/
 .expo/
 android/
 ios/
+# Local Expo modules contain native source, not generated app projects.
+!/mobile/modules/imadeo-browse-tabs/ios/
+!/mobile/modules/imadeo-browse-tabs/ios/**
 *.keystore
 .turbo/
 tmp/

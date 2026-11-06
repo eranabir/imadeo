@@ -2,12 +2,11 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { autoplayVideos } from '../lib/preferences';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Alert,
-  AppState,
   FlatList,
   Modal,
   Platform,
@@ -21,7 +20,7 @@ import { actions } from '../lib/actions';
 import { exportAsset } from '../lib/exportAsset';
 import { ApiError, duration as formatDuration, type Asset } from '../lib/api';
 import { ensureFreshToken } from '../lib/auth';
-import { colors, motion, radius } from '../theme';
+import { colors, DARK, radius } from '../theme';
 import { useGrowFrom, type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { ConfirmSheet, VaultSheet } from './sheets';
@@ -29,8 +28,10 @@ import { Touchable } from './ui';
 import { ZoomableMedia } from './ZoomableMedia';
 import { withoutViewerItem } from './viewerItems';
 import { videoSeekPosition } from './videoSeekPosition';
-import { ViewerFilmstrip } from './ViewerFilmstrip';
+import { ViewerHeader, ViewerDock } from './ViewerChrome';
+import { useViewerPagerAnchor } from './useViewerPagerAnchor';
 import { ServerPhoto } from './ServerPhoto';
+import { Glass } from './Glass';
 export { ViewerFilmstrip } from './ViewerFilmstrip';
 import {
   clampViewerSafeBottom,
@@ -41,13 +42,13 @@ import {
   viewerFilmstripBottom,
   viewerMediaViewport,
   viewerVideoControlsBottom,
-  viewerBottomPanelHeight,
+  viewerChromeFrame,
 } from './viewerGeometry';
 
 /**
  * Apple Photos keeps the media frame stable underneath its floating chrome.
  * These measurements are shared by both Imadeo viewers so server and device
- * media occupy the same space and never jump when the controls fade.
+ * media occupy the same space and never jump when the controls are toggled.
  */
 /** A modal can inherit the native tab bar's inset; Photos only reserves the
  * physical home-indicator inset inside its own full-screen viewer. */
@@ -107,9 +108,8 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   /** Overrides the server's answer for anything favourited in this session. */
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [rotations, setRotations] = useState<Record<string, 0 | 90 | 180 | 270>>({});
-  const chromeOpacity = useRef(new Animated.Value(1)).current;
   const currentRef = useRef(current);
-  const resuming = useRef(false);
+  const resuming = useViewerPagerAnchor(list, width, currentRef);
 
   /** Which page it opened on, kept for the way back out. */
   const opened = useRef(index ?? 0);
@@ -133,33 +133,6 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   useEffect(() => {
     currentRef.current = current;
   }, [current]);
-
-  useEffect(() => {
-    let settle: ReturnType<typeof setTimeout> | undefined;
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
-      resuming.current = true;
-      requestAnimationFrame(() => {
-        list.current?.scrollToOffset({ offset: currentRef.current * width, animated: false });
-      });
-      settle = setTimeout(() => {
-        list.current?.scrollToOffset({ offset: currentRef.current * width, animated: false });
-        resuming.current = false;
-      }, 250);
-    });
-    return () => {
-      if (settle) clearTimeout(settle);
-      subscription.remove();
-    };
-  }, [width]);
-
-  useEffect(() => {
-    Animated.timing(chromeOpacity, {
-      toValue: chrome ? 1 : 0,
-      duration: chrome ? motion.enter : motion.quick,
-      useNativeDriver: true,
-    }).start();
-  }, [chrome, chromeOpacity]);
 
   /*
    * Back into the tile only while that tile is still the photograph on screen.
@@ -185,9 +158,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   const mediaViewport = viewerMediaViewport(height, insets.top, safeBottom);
   const mediaTop = mediaViewport.top;
   const mediaHeight = mediaViewport.height;
-  const dockHeight = viewerDockHeight(safeBottom);
-  const filmstripBottom = viewerFilmstripBottom(safeBottom);
-  const chromeEnter = Animated.multiply(chromeOpacity, enter);
+  const mediaWidth = Math.max(1, width - insets.left - insets.right);
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -242,10 +213,6 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.viewer, opacity: enter }]}
         />
 
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0,
-          bottom: 0, height: viewerBottomPanelHeight(safeBottom, asset.type === 'VIDEO'),
-          backgroundColor: colors.surface, borderTopLeftRadius: radius.lg,
-          borderTopRightRadius: radius.lg, opacity: chromeEnter }} />
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
         <FlatList
@@ -296,7 +263,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                 />
               ) : (
                 <View
-                  style={{ position: 'absolute', top: mediaTop, left: 0, width, height: mediaHeight }}
+                  style={{ position: 'absolute', top: mediaTop, left: insets.left, width: mediaWidth, height: mediaHeight, overflow: 'hidden' }}
                 >
                   <ServerPhoto
                     serverUrl={serverUrl}
@@ -307,7 +274,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                     accessibilityLabel={item.originalFileName ?? 'Photo'}
                     onTap={() => setChrome((on) => !on)}
                     onZoomChange={setZoomed}
-                    width={width}
+                    width={mediaWidth}
                     height={mediaHeight}
                     rotation={rotations[item.id] ?? item.rotation ?? 0}
                   />
@@ -318,126 +285,26 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
         />
         </Animated.View>
 
-        {/* Photos-style chrome is always mounted and only fades. Mounting and
-            unmounting it on every tap made the whole screen feel like it was
-            being laid out again even after the media bounds were stabilised. */}
-        <Animated.View
-          pointerEvents={chrome ? 'box-none' : 'none'}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: insets.top + VIEWER_HEADER_HEIGHT,
-            opacity: chromeEnter,
-          }}
-        >
-          <View
-            style={{
-              position: 'absolute',
-              top: Math.max(8, insets.top - 1),
-              left: 16,
-              right: 16,
-              height: 44,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                width: 44,
-                height: 44,
-                borderRadius: radius.pill,
-                backgroundColor: colors.surface,
-              }}
-            >
-              <Touchable onPress={onClose} radius={radius.pill} label="Close" style={{ flex: 1 }}>
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon name="back" size={24} color={colors.text} />
-                </View>
-              </Touchable>
-            </View>
+        <ViewerHeader visible={chrome} width={width} insets={insets}
+          onClose={onClose} title={asset.originalFileName ?? 'Photo'}
+          subtitle={[
+            asset.localDateTime ? new Date(asset.localDateTime).toLocaleDateString() : null,
+            formatDuration(asset.duration),
+          ].filter(Boolean).join(' · ')} />
 
-            <View
-              pointerEvents="none"
-              style={{
-                maxWidth: Math.max(160, width - 156),
-                minWidth: Math.min(160, width - 156),
-                minHeight: 44,
-                paddingHorizontal: 16,
-                paddingVertical: 5,
-                borderRadius: radius.pill,
-                backgroundColor: colors.surface,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text numberOfLines={1} style={{ color: colors.text, fontSize: 14, fontWeight: '700' }}>
-                {asset.originalFileName ?? 'Photo'}
-              </Text>
-              <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 11.5, marginTop: 1 }}>
-                {[
-                  asset.localDateTime
-                    ? new Date(asset.localDateTime).toLocaleDateString()
-                    : null,
-                  formatDuration(asset.duration),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          pointerEvents={chrome ? 'box-none' : 'none'}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: filmstripBottom,
-            height: VIEWER_FILMSTRIP_HEIGHT,
-            opacity: chromeEnter,
-          }}
-        >
-          <ViewerFilmstrip
-            width={width}
-            items={assets.map((item) => ({
-              id: item.id,
-              source: {
-                uri: `${serverUrl}/api/assets/${item.id}/thumbnail`,
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-              },
-            }))}
-            current={current}
-            onSelect={showAt}
-          />
-        </Animated.View>
-
-        <Animated.View
-          pointerEvents={chrome ? 'box-none' : 'none'}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: dockHeight,
-            paddingBottom: safeBottom,
-            paddingHorizontal: 16,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            opacity: chromeEnter,
-          }}
-        >
-          <ViewerActionPlate>
+        <ViewerDock visible={chrome} width={width} insets={insets} safeBottom={safeBottom}
+          items={assets.map(item => ({
+            id: item.id,
+            source: {
+              uri: `${serverUrl}/api/assets/${item.id}/thumbnail`,
+              headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            },
+          }))}
+          current={current} onSelect={showAt}>
             <ViewerAction
               icon="rotate"
               label="Rotate clockwise"
-              tint={colors.text}
+              tint={DARK.text}
               disabled={busy}
               onPress={async () => {
                 const next = ((rotation + 90) % 360) as 0 | 90 | 180 | 270;
@@ -447,21 +314,11 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                 }
               }}
             />
-          </ViewerActionPlate>
 
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 8,
-              borderRadius: radius.pill,
-              backgroundColor: colors.bg,
-            }}
-          >
             <ViewerAction
               icon={favorite ? 'heart-filled' : 'heart'}
               label={favorite ? 'Remove from favourites' : 'Favourite'}
-              tint={favorite ? colors.danger : colors.text}
+              tint={favorite ? DARK.danger : DARK.text}
               disabled={busy}
               onPress={async () => {
                 setFavorites((f) => ({ ...f, [asset.id]: !favorite }));
@@ -473,34 +330,27 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
             <ViewerAction
               icon={locked ? 'unlock' : 'lock'}
               label={locked ? 'Remove from Locked' : 'Move to Locked'}
-              tint={colors.text}
+              tint={DARK.text}
               disabled={busy}
               onPress={() => void setLock(!locked)}
             />
-          </View>
 
-          <ViewerActionPlate>
-            <ViewerAction icon="shared" label="Share original" tint={colors.text} disabled={busy}
+            <ViewerAction icon="shared" label="Share original" tint={DARK.text} disabled={busy}
               onPress={() => void run(() => exportAsset(serverUrl, asset, 'share'))} />
-          </ViewerActionPlate>
-          <ViewerActionPlate>
-            <ViewerAction icon="download" label="Download to Photos" tint={colors.text} disabled={busy}
+            <ViewerAction icon="download" label="Download to Photos" tint={DARK.text} disabled={busy}
               onPress={async () => {
                 if (await run(() => exportAsset(serverUrl, asset, 'download'))) {
                   Alert.alert('Saved to Photos', 'The original is now in your photo library.');
                 }
               }} />
-          </ViewerActionPlate>
-          <ViewerActionPlate>
             <ViewerAction
               icon="trash"
               label="Move to trash"
-              tint={colors.text}
+              tint={DARK.text}
               disabled={busy}
               onPress={() => setTrashing(true)}
             />
-          </ViewerActionPlate>
-        </Animated.View>
+        </ViewerDock>
 
         {chrome && actionError && (
           <Animated.View
@@ -694,10 +544,12 @@ export function VideoPage({
   }, [active, player, status]);
 
   const displayedTime = scrubbingTime ?? currentTime;
-  // The chrome floats over the video. Reserving its rows made a portrait video
-  // much smaller in both dimensions, even when the controls were hidden.
-  const videoTop = 0;
-  const availableHeight = height;
+  const insets = useSafeAreaInsets();
+  const viewport = viewerMediaViewport(height, insets.top, safeBottom, true);
+  const videoTop = viewport.top;
+  const availableHeight = viewport.height;
+  const mediaWidth = Math.max(1, width - insets.left - insets.right);
+  const chromeFrame = viewerChromeFrame(width, insets.left, insets.right);
   const rotated = rotation === 90 || rotation === 270;
 
   const seekPreview = (next: number) => {
@@ -761,8 +613,8 @@ export function VideoPage({
           position: 'absolute',
           top: videoTop,
           bottom: 0,
-          left: 0,
-          width,
+          left: insets.left,
+          width: mediaWidth,
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 0,
@@ -773,14 +625,15 @@ export function VideoPage({
             position: 'absolute',
             top: 0,
             left: 0,
-            width,
+            width: mediaWidth,
             height: availableHeight,
+            overflow: 'hidden',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <ZoomableMedia
-            width={width}
+            width={mediaWidth}
             height={availableHeight}
             active={active}
             accessibilityLabel="Video"
@@ -791,8 +644,8 @@ export function VideoPage({
               ref={view}
               player={player}
               style={{
-                width: rotated ? availableHeight : width,
-                height: rotated ? width : availableHeight,
+                width: rotated ? availableHeight : mediaWidth,
+                height: rotated ? mediaWidth : availableHeight,
                 transform: [{ rotate: `${rotation}deg` }],
               }}
               contentFit="contain"
@@ -810,10 +663,10 @@ export function VideoPage({
                 paddingHorizontal: 22,
                 paddingVertical: 18,
                 borderRadius: radius.lg,
-                backgroundColor: colors.overlay,
+                backgroundColor: DARK.overlay,
               }}
             >
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={DARK.primary} />
               <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
                 {status === 'error'
                   ? serverUrl
@@ -826,20 +679,20 @@ export function VideoPage({
                   onPress={() => setAttempt((value) => value + 1)}
                   radius={radius.pill}
                   label="Try video again"
-                  style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.surface }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: DARK.surface }}
                 >
-                  <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Try again</Text>
+                  <Text style={{ color: DARK.text, fontSize: 13, fontWeight: '700' }}>Try again</Text>
                 </Touchable>
               )}
             </View>
           )}
         </View>
 
-      {controlsVisible && <View
+      {controlsVisible && <Glass colorScheme="dark" tint="transparent" interactive radius={radius.lg}
         style={{
           position: 'absolute',
-          left: 16,
-          right: 16,
+          left: chromeFrame.left - insets.left,
+          width: chromeFrame.width,
           // The timeline belongs above the filmstrip and action dock, exactly
           // where Photos places it. Every one of those layers is absolute, so
           // showing the chrome never changes the video's measured rectangle.
@@ -850,10 +703,6 @@ export function VideoPage({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 8,
-          borderRadius: radius.md,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: colors.surface,
         }}
       >
         <Touchable
@@ -868,11 +717,11 @@ export function VideoPage({
           style={{ width: 38, height: 38 }}
         >
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={playing ? 'pause' : 'play'} size={19} color={colors.text} />
+            <Icon name={playing ? 'pause' : 'play'} size={19} color={DARK.text} />
           </View>
         </Touchable>
 
-        <Text style={{ width: 38, textAlign: 'right', color: colors.text, fontSize: 11 }}>
+        <Text style={{ width: 38, textAlign: 'right', color: DARK.text, fontSize: 11 }}>
           {clockTime(displayedTime)}
         </Text>
         <VideoSeekBar
@@ -882,7 +731,7 @@ export function VideoPage({
           onScrubMove={seekPreview}
           onScrubEnd={finishScrubbing}
         />
-        <Text style={{ width: 38, color: colors.text, fontSize: 11 }}>{clockTime(duration)}</Text>
+        <Text style={{ width: 38, color: DARK.text, fontSize: 11 }}>{clockTime(duration)}</Text>
 
         <Touchable
           onPress={() => void view.current?.enterFullscreen()}
@@ -891,10 +740,10 @@ export function VideoPage({
           style={{ width: 38, height: 38 }}
         >
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="fullscreen" size={20} color={colors.text} />
+            <Icon name="fullscreen" size={20} color={DARK.text} />
           </View>
         </Touchable>
-      </View>}
+      </Glass>}
       </View>
     </View>
   );
@@ -969,13 +818,13 @@ function VideoSeekBar({
       onResponderTerminationRequest={() => false}
       style={{ flex: 1, height: 44, justifyContent: 'center' }}
     >
-      <View pointerEvents="none" style={{ height: 3, borderRadius: 2, backgroundColor: colors.border }}>
+      <View pointerEvents="none" style={{ height: 3, borderRadius: 2, backgroundColor: DARK.border }}>
         <View
           style={{
             width: `${progress * 100}%`,
             height: 3,
             borderRadius: 2,
-            backgroundColor: colors.primary,
+            backgroundColor: DARK.primary,
           }}
         />
         <View
@@ -987,7 +836,7 @@ function VideoSeekBar({
             height: 13,
             marginLeft: -6.5,
             borderRadius: 7,
-            backgroundColor: colors.primary,
+            backgroundColor: DARK.primary,
           }}
         />
       </View>
@@ -1006,23 +855,6 @@ function clockTime(value: number) {
     : `${minutes}:${remainder}`;
 }
 
-function ViewerActionPlate({ children }: { children: ReactNode }) {
-  return (
-    <View
-      style={{
-        width: 48,
-        height: 48,
-        borderRadius: radius.pill,
-        backgroundColor: colors.bg,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {children}
-    </View>
-  );
-}
-
 function ViewerAction({
   icon,
   label,
@@ -1037,14 +869,12 @@ function ViewerAction({
   disabled?: boolean;
 }) {
   return (
-    // A fixed square rather than a flexible column: these sit beside a title
-    // that should take whatever width is left, not share it equally.
     <Touchable
       onPress={onPress}
       disabled={disabled}
       radius={radius.pill}
       label={label}
-      style={{ width: VIEWER_ACTION_DOCK_HEIGHT, height: VIEWER_ACTION_DOCK_HEIGHT }}
+      style={{ width: 44, height: VIEWER_ACTION_DOCK_HEIGHT }}
     >
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Icon name={icon} size={24} color={tint} />

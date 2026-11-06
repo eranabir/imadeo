@@ -14,7 +14,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Network from 'expo-network';
 import { Platform } from 'react-native';
 import { libraryChanged, request } from './api';
-import { ensureFreshToken, refreshToken, storedToken } from './auth';
+import { ensureFreshToken, refreshToken, sessionGeneration, storedToken } from './auth';
 import { cellularAllowed } from './preferences';
 import { getItem, removeItem, setItem } from './storage';
 import { STORAGE_KEYS } from './storageKeys';
@@ -32,6 +32,123 @@ const DEVICE_KEY = STORAGE_KEYS.deviceId;
  * own photos you have already sent to your own server.
  */
 const DONE_FILE = `${FileSystem.documentDirectory ?? ''}uploaded.json`;
+
+const EXCLUSIONS_FILE = `${FileSystem.documentDirectory ?? ''}backup-exclusions.json`;
+interface ExclusionScope {
+  baseUrl: string;
+  deviceId: string;
+  accountId: string;
+  ids: string[];
+}
+let exclusionCache: ExclusionScope[] | null = null;
+let exclusionWrites: Promise<void> = Promise.resolve();
+
+/** Decode only for cache partitioning; the server verifies authentication. */
+function cacheAccountId(token: string | null): string | null {
+  try {
+    const payload = token?.split('.')[1];
+    if (!payload) return null;
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    let value = 0, bits = 0, decoded = '';
+    for (const character of payload.replace(/=+$/, '')) {
+      const digit = alphabet.indexOf(character);
+      if (digit < 0) return null;
+      value = (value << 6) | digit;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        decoded += String.fromCharCode(value >> bits);
+        value &= (1 << bits) - 1;
+      }
+    }
+    const { sub } = JSON.parse(decoded);
+    return typeof sub === 'string' && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Non-secret bookkeeping; serialize every read/modify/write across servers. */
+async function updateExclusions(
+  baseUrl: string,
+  deviceId: string,
+  accountId: string | null,
+  update: (ids: Set<string>) => void,
+): Promise<Set<string>> {
+  if (!accountId) {
+    const ids = new Set<string>();
+    update(ids);
+    return ids;
+  }
+  const operation = exclusionWrites.then(async () => {
+    if (exclusionCache === null) {
+      try {
+        const saved: unknown = JSON.parse(await FileSystem.readAsStringAsync(EXCLUSIONS_FILE));
+        exclusionCache = Array.isArray(saved) ? saved.filter((scope): scope is ExclusionScope =>
+          scope !== null && typeof scope === 'object' && typeof scope.baseUrl === 'string'
+          && typeof scope.deviceId === 'string' && typeof scope.accountId === 'string' && Array.isArray(scope.ids)
+          && scope.ids.every((id: unknown) => typeof id === 'string')) : [];
+      } catch {
+        exclusionCache = [];
+      }
+    }
+    const index = exclusionCache.findIndex(scope => scope.baseUrl === baseUrl && scope.deviceId === deviceId && scope.accountId === accountId);
+    const previous = exclusionCache[index]?.ids ?? [];
+    const ids = new Set(previous);
+    update(ids);
+    if (previous.length !== ids.size || previous.some(id => !ids.has(id))) {
+      const next = { baseUrl, deviceId, accountId, ids: [...ids] };
+      if (index >= 0) {
+        if (ids.size) exclusionCache[index] = next;
+        else exclusionCache.splice(index, 1);
+      } else if (ids.size) exclusionCache.push(next);
+      try {
+        await FileSystem.writeAsStringAsync(EXCLUSIONS_FILE, JSON.stringify(exclusionCache));
+      } catch {
+        // Keep the in-memory answer. A cache failure must not turn a successful
+        // upload or an intentional Trash skip into a failed media item.
+      }
+    }
+    return ids;
+  });
+  exclusionWrites = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+async function knownExclusions(
+  baseUrl: string,
+  deviceId: string,
+  done: Set<string>,
+  signal?: AbortSignal,
+  required = false,
+): Promise<Set<string>> {
+  const generation = sessionGeneration();
+  const accountId = cacheAccountId(await storedToken());
+  let serverIds: string[] = [];
+  try {
+    serverIds = await request<string[]>(baseUrl,
+      `/assets/backup-exclusions?deviceId=${encodeURIComponent(deviceId)}`, { signal });
+  } catch (cause) {
+    if (required || signal?.aborted || generation !== sessionGeneration()) throw cause;
+    // Library rendering can still hide known Trash while the server is offline.
+  }
+  if (generation !== sessionGeneration()) throw new Error('The selected session changed.');
+  return updateExclusions(baseUrl, deviceId, accountId, ids => {
+    serverIds.forEach(id => ids.add(id));
+    done.forEach(id => ids.delete(id));
+  });
+}
+
+/** Deleted server backups stay hidden until they are explicitly backed up again. */
+export async function excludedBackupIds(baseUrl: string, signal?: AbortSignal): Promise<Set<string>> {
+  const generation = sessionGeneration();
+  const done = await uploadedIds(baseUrl, signal);
+  const deviceId = await currentDeviceId();
+  if (generation !== sessionGeneration()) throw new Error('The selected session changed.');
+  const ids = await abortable(knownExclusions(baseUrl, deviceId, done, signal), signal);
+  if (generation !== sessionGeneration()) throw new Error('The selected session changed.');
+  return ids;
+}
 
 /**
  * Which device assets have already reached the server.
@@ -409,9 +526,9 @@ async function send(
 
   const wanted = only ? new Set(only) : null;
   // Deleted items are not backed up, but must not return automatically.
-  const excluded = wanted ? new Set<string>() : new Set(await request<string[]>(
-    baseUrl, `/assets/backup-exclusions?deviceId=${encodeURIComponent(id)}`, { signal },
-  ));
+  const excluded = wanted ? new Set<string>() : await abortable(
+    knownExclusions(baseUrl, id, done, signal, true), signal,
+  );
   const unsent = assets.filter(
     (asset) => !done.has(asset.id) && !excluded.has(asset.id) && (wanted === null || wanted.has(asset.id)),
   );
@@ -438,12 +555,12 @@ async function send(
   };
   onProgress({ ...progress });
 
-  for (const [index, asset] of pending.entries()) {
+  for (const asset of pending) {
     if (shouldStop()) break;
 
     // Published before the upload starts, so the screen can say which photo is
     // in flight rather than only how many have been.
-    progress.at = index;
+    progress.at = progress.queue.findIndex(item => item.id === asset.id);
     onProgress({ ...progress });
 
     try {
@@ -522,8 +639,12 @@ async function send(
         let excludedByServer = false;
         try { excludedByServer = response.status === 409 && JSON.parse(response.body).code === 'BACKUP_EXCLUDED'; } catch { /* normal error below */ }
         if (excludedByServer) {
-          progress.held += 1;
-          progress.total -= 1;
+          await updateExclusions(baseUrl, id, cacheAccountId(token), ids => ids.add(asset.id));
+          // This was discovered by checksum after preflight. Remove it from
+          // the visible queue without calling it a Wi-Fi hold or a failure.
+          progress.queue = progress.queue.filter(item => item.id !== asset.id);
+          progress.total = progress.queue.length;
+          progress.at = -1;
           onProgress({ ...progress });
           continue;
         }
@@ -560,6 +681,9 @@ async function send(
        * file write costs nothing next to having just uploaded a video.
        */
       await saveDone(done);
+      // Explicit restores must become visible again, even if this server still
+      // has a stale exclusion row. Reported backed-up ids also clear the cache.
+      if (wanted) await updateExclusions(baseUrl, id, cacheAccountId(token), ids => ids.delete(asset.id));
     } catch (e) {
       // Cancellation is a user choice, not a failed media item. Leave this and
       // everything after it pending so the next run resumes cleanly.
@@ -597,6 +721,9 @@ async function send(
 /** How many device items have not been sent from this phone yet. */
 export async function pendingCount(baseUrl?: string): Promise<number> {
   const done = await uploadedIds(baseUrl);
+  const excluded = baseUrl
+    ? await knownExclusions(baseUrl, await currentDeviceId(), done)
+    : new Set<string>();
   const assets = await allDeviceAssets();
-  return assets.filter((asset) => !done.has(asset.id)).length;
+  return assets.filter((asset) => !done.has(asset.id) && !excluded.has(asset.id)).length;
 }

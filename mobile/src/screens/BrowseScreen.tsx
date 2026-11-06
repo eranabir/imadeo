@@ -1,6 +1,6 @@
-import { MediaSortControl, type MediaSort } from '../components/MediaSort';
+import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Platform, Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { Account } from '../components/Account';
 import { AlbumCard, FolderCard, Section } from '../components/Cards';
@@ -8,7 +8,8 @@ import { Header, HeaderAction, useHeaderClearance, type HeaderConfig } from '../
 import type { IconName } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
-import { Segmented } from '../components/Segmented';
+import { BrowseTabs } from '../components/BrowseTabs';
+import { BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_GAP, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
 import { PlacesBody } from './PlacesScreen';
 import { SharingShelf } from './SharingScreen';
 import {
@@ -31,6 +32,7 @@ import {
 import { useRouter } from 'expo-router';
 import { colors } from '../theme';
 import { useMediaViewMode } from '../lib/viewMode';
+import { sortContainers } from '../lib/containerSort';
 
 interface Props {
   serverUrl: string;
@@ -43,7 +45,6 @@ interface Props {
 }
 
 type Shelf = 'photos' | 'folders' | 'albums' | 'places' | 'sharing';
-
 /** Whatever a long press landed on. */
 type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boolean };
 
@@ -64,6 +65,8 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   const atRoot = folderId === null;
 
   const [shelf, setShelf] = useState<Shelf>('photos');
+  const [browseTabHeight, setBrowseTabHeight] = useState(BROWSE_TAB_HEIGHT);
+  const browseTabsHeight = browseTabHeight + BROWSE_TAB_GAP * 2;
   const selection = useSelection();
   const [viewMode, setViewMode] = useMediaViewMode();
   const [sort, setSort] = useState<MediaSort>('date');
@@ -146,12 +149,10 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
     : active.loading;
 
   const reload = useCallback(() => {
-    timeline.reload();
-    allAlbums.reload();
-    contents.reload();
-    folderAssets.reload();
-    devices.reload();
-    lockedTree.reload();
+    return Promise.all([
+      timeline.reload(), allAlbums.reload(), contents.reload(),
+      folderAssets.reload(), devices.reload(), lockedTree.reload(),
+    ]);
   }, [timeline.reload, allAlbums.reload, contents.reload, folderAssets.reload, devices.reload, lockedTree.reload]);
 
   const lockedFolder = useMemo(() => {
@@ -166,19 +167,19 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
     return locked ? find(lockedTree.data ?? []) : null;
   }, [folderId, locked, lockedTree.data]);
 
-  const folders = showing === 'folders'
+  const folders = sortContainers(showing === 'folders'
     ? locked
       ? lockedFolder?.children ?? []
       : contents.data?.folders ?? []
-    : [];
-  const albums =
+    : [], sort, order);
+  const albums = sortContainers(
     showing === 'albums'
       ? allAlbums.data ?? []
       : showing === 'folders'
         ? locked
           ? lockedFolder?.albums ?? []
           : contents.data?.albums ?? []
-        : [];
+        : [], sort, order);
   const assets =
     showing === 'photos'
       ? timeline.items
@@ -202,7 +203,8 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         ? 'Shared with you'
       : undefined;
 
-  const clearance = useHeaderClearance(atRoot ? 54 : 0);
+  const showSorting = showing === 'folders' || showing === 'albums';
+  const clearance = useHeaderClearance((atRoot ? browseTabsHeight : 0) + (showSorting ? MEDIA_SORT_HEIGHT : 0));
 
   const bar: HeaderConfig = {
     title: title ?? 'Browse',
@@ -217,7 +219,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
             ? 'shared'
           : 'browse') as IconName,
     action:
-      showing === 'folders' || showing === 'albums' ? (
+      showing === 'photos' || showing === 'folders' || showing === 'albums' ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <HeaderAction
             label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
@@ -225,7 +227,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
             compact
             onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
           />
-        <HeaderAction
+        {showing !== 'photos' && <HeaderAction
           label="New"
           icon="plus"
           onPress={() => {
@@ -236,12 +238,16 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
               { text: 'Cancel', style: 'cancel' },
             ]);
           }}
-        />
+        />}
         </View>
       ) : undefined,
     below: atRoot ? (
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <Segmented
+      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? 440 : undefined,
+        alignSelf: 'flex-start', marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0, height: browseTabsHeight,
+        paddingHorizontal: Platform.OS === 'ios' ? BROWSE_TAB_INSET : 16, paddingVertical: BROWSE_TAB_GAP }}>
+        <BrowseTabs
+          height={browseTabHeight}
+          onHeightChange={setBrowseTabHeight}
           segments={[
             { id: 'photos', label: 'Photos', icon: 'library' },
             { id: 'folders', label: 'Folders', icon: 'folder' },
@@ -276,8 +282,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   };
 
   const header = (
-    <View style={{ paddingTop: 16 }}>
-      {showing === 'folders' && !atRoot && <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />}
+    <View>
       {(error || failure) && (
         <Text
           style={{
@@ -384,8 +389,8 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
          * question, and when each was taken is beside the point there — they
          * keep the plain grid.
          */
-        groupByDay={atRoot && showing === 'photos'}
-        viewMode={showing === 'folders' ? viewMode : 'grid'}
+        groupByDay={atRoot && showing === 'photos' && viewMode === 'grid'}
+        viewMode={viewMode}
         serverUrl={serverUrl}
         assets={assets}
         token={token}
@@ -445,6 +450,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
 
       <Header {...bar} onBack={onBack} account={atRoot ? <Account /> : undefined}>
         {bar.below}
+        {showSorting && <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />}
       </Header>
       <SelectionDock />
 

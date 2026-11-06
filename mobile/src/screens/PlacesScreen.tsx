@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
@@ -69,6 +70,8 @@ const nameOf = (place: Place) =>
 export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInset: number }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const contentWidth = width - insets.left - insets.right;
 
   const places = useResource<Place[]>(serverUrl, '/assets/places');
 
@@ -108,12 +111,13 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
 
   const frame = useMemo(() => frameOf(markers), [markers]);
 
-  const size = Math.floor((width - 16 * 2 - 12) / 2);
+  const columns = Math.max(2, Math.min(5, Math.floor(contentWidth / 180)));
+  const size = Math.floor((contentWidth - 32 - 12 * (columns - 1)) / columns);
   const loading = places.loading;
 
   if (loading && list.length === 0) {
     return (
-      <View style={{ paddingTop: topInset }}>
+      <View style={{ paddingTop: topInset, paddingLeft: insets.left, paddingRight: insets.right }}>
         <Loading label="Finding your places…" />
       </View>
     );
@@ -121,7 +125,7 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
 
   if (list.length === 0) {
     return (
-      <View style={{ paddingTop: topInset }}>
+      <View style={{ paddingTop: topInset, paddingLeft: insets.left, paddingRight: insets.right }}>
         <Empty
           icon="pin"
           title="No photos with a location"
@@ -134,13 +138,14 @@ export function PlacesBody({ serverUrl, topInset }: { serverUrl: string; topInse
   return (
     <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE }}
+        contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE,
+          paddingLeft: insets.left, paddingRight: insets.right }}
       >
       <View
         style={[
           {
             height: 320,
-            marginTop: 14,
+            marginTop: 0,
             marginHorizontal: 16,
             borderRadius: radius.lg,
             overflow: 'hidden',

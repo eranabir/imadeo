@@ -34,7 +34,7 @@ export const viewerMediaBottom = (screenHeight: number, safeBottom: number, vide
 
 /**
  * Reserve the full header and bottom panel. Neither thumbnails nor playback
- * controls overlap the contained image. Tapping only fades controls; it never
+ * controls overlap the contained image. Tapping only hides controls; it never
  * changes the media rectangle. Images and videos each keep their aspect ratio.
  */
 export function viewerMediaViewport(
@@ -60,4 +60,11 @@ export function containedMediaSize(
   }
   const scale = Math.min(viewportWidth / mediaWidth, viewportHeight / mediaHeight);
   return { width: mediaWidth * scale, height: mediaHeight * scale };
+}
+
+/** Align all viewer controls while keeping them comfortable on wide displays. */
+export function viewerChromeFrame(screenWidth: number, safeLeft = 0, safeRight = 0) {
+  const safeWidth = Math.max(1, screenWidth - safeLeft - safeRight);
+  const width = Math.max(1, Math.min(560, safeWidth - 32));
+  return { left: safeLeft + (safeWidth - width) / 2, width };
 }

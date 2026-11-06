@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Account } from '../components/Account';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { AlbumCard, FolderCard, SubjectCard, Section } from '../components/Cards';
 import { Header, useHeaderClearance, type HeaderConfig } from '../components/Header';
+import { Glass } from '../components/Glass';
 import { Icon } from '../components/Icon';
 import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
-import { Segmented } from '../components/Segmented';
+import { BrowseTabs as GlassTabs } from '../components/BrowseTabs';
+import { BROWSE_TAB_GAP, BROWSE_TAB_HEIGHT, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
 import { useResource, type Asset, type Paged, type Subject } from '../lib/api';
 import { useRouter } from 'expo-router';
 import { colors, radius } from '../theme';
@@ -50,6 +52,8 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
+  const [tabsHeight, setTabsHeight] = useState(BROWSE_TAB_HEIGHT);
+  const [inputHeight, setInputHeight] = useState(44);
 
   // Content search encodes the phrase on the server before it can look
   // anything up, so a request per keystroke would queue work for prefixes
@@ -123,78 +127,85 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
     mode === 'smart' ? '/assets/search/status' : null,
   );
 
-  const clearance = useHeaderClearance(104);
+  const clearance = useHeaderClearance(inputHeight + tabsHeight + BROWSE_TAB_GAP * 2);
 
   const bar: HeaderConfig = {
     title: 'Search',
     icon: 'search',
     below: (
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 10 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 9,
-            paddingHorizontal: 13,
-            borderRadius: radius.md,
-            borderWidth: 1,
-            borderColor: focused ? colors.primary : colors.border,
-            backgroundColor: colors.surface,
-          }}
-        >
-          <Icon name="search" size={17} color={focused ? colors.primary : colors.faint} />
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder={
-              mode === 'smart'
-                ? 'What is in the photo?'
-                : mode === 'people-and-pets'
-                  ? "A person or pet's name"
-                  : mode === 'places'
-                    ? 'A town, album or folder'
-                    : 'A file name'
-            }
-            placeholderTextColor={colors.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            // Skips the debounce when someone has finished typing and said so.
-            onSubmitEditing={() => setQuery(text.trim())}
-            style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: 11 }}
-          />
-          {text.length > 0 && (
-            <Pressable
-              onPress={() => setText('')}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Clear"
-            >
-              <Icon name="close" size={16} color={colors.faint} />
-            </Pressable>
-          )}
+      <View style={{ width: '100%', maxWidth: 440, alignSelf: 'flex-start',
+        marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0,
+        paddingBottom: BROWSE_TAB_GAP, gap: BROWSE_TAB_GAP }}>
+        <View style={{ paddingHorizontal: 20 }}>
+          <View
+            onLayout={event => setInputHeight(event.nativeEvent.layout.height)}
+          >
+          <Glass radius={radius.pill} tint="transparent" style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 9,
+              paddingHorizontal: 13,
+              borderWidth: 1,
+              borderColor: focused ? colors.primary : colors.border,
+            }}>
+            <Icon name="search" size={17} color={focused ? colors.primary : colors.faint} />
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder={
+                mode === 'smart'
+                  ? 'What is in the photo?'
+                  : mode === 'people-and-pets'
+                    ? "A person or pet's name"
+                    : mode === 'places'
+                      ? 'A town, album or folder'
+                      : 'A file name'
+              }
+              placeholderTextColor={colors.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              // Skips the debounce when someone has finished typing and said so.
+              onSubmitEditing={() => setQuery(text.trim())}
+              style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: 11 }}
+            />
+            {text.length > 0 && (
+              <Pressable
+                onPress={() => setText('')}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Clear"
+              >
+                <Icon name="close" size={16} color={colors.faint} />
+              </Pressable>
+            )}
+          </Glass>
+          </View>
         </View>
 
-        <Segmented
-          segments={[
-            { id: 'smart', label: 'Content', icon: 'sparkle' },
-            {
-              id: 'people-and-pets',
-              label: 'People & Pets',
-              icon: 'people-and-pets',
-              weight: 1.3,
-            },
-            { id: 'places', label: 'Places', icon: 'pin' },
-            { id: 'files', label: 'Files', icon: 'photo' },
-          ]}
-          active={mode}
-          onChange={(next) => {
-            selection.clear();
-            setMode(next);
-          }}
-        />
+        <View style={{ height: tabsHeight, paddingHorizontal: BROWSE_TAB_INSET }}>
+          <GlassTabs
+            height={tabsHeight}
+            onHeightChange={setTabsHeight}
+            segments={[
+              { id: 'smart', label: 'Content', icon: 'sparkle' },
+              {
+                id: 'people-and-pets',
+                label: 'People & Pets',
+                icon: 'people-and-pets',
+              },
+              { id: 'places', label: 'Places', icon: 'pin' },
+              { id: 'files', label: 'Files', icon: 'photo' },
+            ]}
+            active={mode}
+            onChange={(next) => {
+              selection.clear();
+              setMode(next);
+            }}
+          />
+        </View>
       </View>
     ),
   };

@@ -91,6 +91,8 @@ export default function RootLayout() {
  * back.
  */
 function Gate() {
+  // Read palette colors during render, after the saved appearance is restored.
+  const fill = { flex: 1, backgroundColor: colors.bg };
   const {
     server,
     signedIn,
@@ -248,14 +250,14 @@ function Gate() {
 
   if (restoring || biometrics.loading) {
     return (
-      <View style={[styles.fill, styles.centre]}>
+      <View style={[fill, styles.centre]}>
         <Opening />
       </View>
     );
   }
 
   if (restoreError) return (
-    <View style={[styles.fill, styles.centre, { padding: 28, gap: 20 }]}>
+    <View style={[fill, styles.centre, { padding: 28, gap: 20 }]}>
       <Text style={{ color: colors.text, textAlign: 'center' }}>{restoreError}</Text>
       <Button label="Try again" onPress={retryRestore} />
     </View>
@@ -264,7 +266,7 @@ function Gate() {
   if (!server) return <ConnectScreen onConnected={connect} />;
 
   if (biometrics.locked) return (
-    <View style={[styles.fill, styles.centre, { padding: 28, gap: 20 }]}>
+    <View style={[fill, styles.centre, { padding: 28, gap: 20 }]}>
       <Text style={{ color: colors.text, fontSize: 26, fontWeight: '700' }}>Welcome back</Text>
       <Text style={{ color: colors.muted, textAlign: 'center' }}>Unlock your saved Imadeo login.</Text>
       {biometrics.error && <Text style={{ color: colors.danger, textAlign: 'center' }}>{biometrics.error}</Text>}
@@ -297,7 +299,7 @@ function Gate() {
 
   if (reachability === 'checking' && !verifiedServer) {
     return (
-      <View style={[styles.fill, styles.centre]}>
+      <View style={[fill, styles.centre]}>
         <Opening />
       </View>
     );
@@ -332,7 +334,7 @@ function Gate() {
 
   if (!verifiedServer) {
     return (
-      <View style={[styles.fill, styles.centre]}>
+      <View style={[fill, styles.centre]}>
         <Opening />
       </View>
     );
@@ -345,7 +347,7 @@ function Gate() {
    * UIKit's tab-controller appearance during startup.
    */
   return (
-    <View style={styles.fill}>
+    <View style={fill}>
     <NativeHeaderContext.Provider value={Platform.OS === 'ios'}>
     <Stack
       screenOptions={{
@@ -367,6 +369,5 @@ function Gate() {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.bg },
   centre: { alignItems: 'center', justifyContent: 'center' },
 });

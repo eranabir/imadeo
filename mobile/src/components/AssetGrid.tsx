@@ -1,4 +1,5 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { photoColumns } from '../lib/layout';
 import {
   useCallback,
@@ -36,7 +37,7 @@ interface Props {
   assets: Asset[];
   token: string | null;
   loading?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<unknown>;
   /** Cards, chips and counts that scroll away with the photos. */
   header?: ReactElement | null;
   /** Room for the floating header, which the list passes underneath. */
@@ -113,6 +114,21 @@ export function AssetGrid({
   viewMode = 'grid',
 }: Props) {
   const { width } = useWindowDimensions();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshGeneration = useRef(0);
+  useFocusEffect(useCallback(() => () => {
+    refreshGeneration.current++;
+    setRefreshing(false);
+  }, []));
+  const refresh = async () => {
+    const mine = ++refreshGeneration.current;
+    setRefreshing(true);
+    try {
+      await onRefresh?.();
+    } finally {
+      if (mine === refreshGeneration.current) setRefreshing(false);
+    }
+  };
   const insets = useSafeAreaInsets();
   const columns = requestedColumns ?? photoColumns(width - insets.left - insets.right);
   const selecting = (selected?.length ?? 0) > 0;
@@ -417,7 +433,7 @@ export function AssetGrid({
       ?.scrollTo({ y: offset, animated: false });
   }, []);
 
-  const shared = {
+  const scrolling = {
     ref: list as never,
     onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
       useNativeDriver: false,
@@ -433,6 +449,10 @@ export function AssetGrid({
     onContentSizeChange: (_: number, height: number) => setContentHeight(height),
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
+  };
+
+  const shared = {
+    ...scrolling,
     // Every cell reports where it sits, which is what the date is read from.
     CellRendererComponent: Cell,
     /*
@@ -455,8 +475,8 @@ export function AssetGrid({
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
       <RefreshControl
-        refreshing={loading}
-        onRefresh={onRefresh}
+        refreshing={refreshing}
+        onRefresh={refresh}
         tintColor={colors.primary}
         colors={[colors.primary]}
         progressBackgroundColor={colors.surface}
@@ -570,6 +590,7 @@ export function AssetGrid({
     <>
       <ScrollViewMarker style={{ flex: 1 }}>
         <FlatList
+          {...scrolling}
           data={assets}
           keyExtractor={(item) => item.id}
           numColumns={viewMode === 'list' ? 1 : columns}
@@ -581,8 +602,8 @@ export function AssetGrid({
           refreshControl={
             onRefresh ? (
               <RefreshControl
-                refreshing={loading}
-                onRefresh={onRefresh}
+                refreshing={refreshing}
+                onRefresh={refresh}
                 tintColor={colors.primary}
                 colors={[colors.primary]}
                 progressBackgroundColor={colors.surface}
@@ -608,6 +629,16 @@ export function AssetGrid({
           }
         />
       </ScrollViewMarker>
+
+      <Scrubber
+        scrollY={scrollY}
+        contentHeight={contentHeight}
+        viewportHeight={viewportHeight}
+        topInset={topInset}
+        visible={away || seeking}
+        onSeek={seek}
+        onDrag={setSeeking}
+      />
 
     <AssetViewer
       serverUrl={serverUrl}

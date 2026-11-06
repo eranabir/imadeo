@@ -11,7 +11,7 @@ export interface Segment<T extends string> {
   weight?: number;
 }
 
-interface Props<T extends string> {
+export interface SegmentedProps<T extends string> {
   segments: Segment<T>[];
   active: T;
   onChange: (id: T) => void;
@@ -24,7 +24,7 @@ interface Props<T extends string> {
  * still read as choices — a row of plain words does not look pressable, and on
  * these screens the second option is the one people are usually after.
  */
-export function Segmented<T extends string>({ segments, active, onChange }: Props<T>) {
+export function Segmented<T extends string>({ segments, active, onChange }: SegmentedProps<T>) {
   /*
    * Four across a phone leaves under 100pt a column, and a label beside an
    * icon does not fit in it — "People & Pets" alone is most of that width.

@@ -1,14 +1,16 @@
-import { useState } from 'react';
-import { FlatList, Text, useWindowDimensions, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { FlatList, Platform, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { Account } from '../components/Account';
 import { Empty } from '../components/AssetGrid';
 import { Loading } from '../components/Loading';
 import { SubjectCard } from '../components/Cards';
 import { Header, useHeaderClearance, type HeaderConfig } from '../components/Header';
-import { Segmented } from '../components/Segmented';
+import { BrowseTabs as GlassTabs } from '../components/BrowseTabs';
+import { BROWSE_TAB_HEIGHT, BROWSE_TAB_GAP, BROWSE_TAB_INSET, BROWSE_TAB_LEADING_OFFSET } from '../components/browseTabGeometry';
 import { useResource, type Subject } from '../lib/api';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, TAB_BAR_CLEARANCE } from '../theme';
 
 interface Status {
@@ -20,8 +22,8 @@ interface Status {
 
 type Kind = 'PERSON' | 'PET';
 
-const COLUMNS = 4;
 const GUTTER = 16;
+const MIN_AVATAR = 96;
 
 /**
  * Everyone the server has found faces for, and every pet beside them.
@@ -33,7 +35,18 @@ const GUTTER = 16;
 export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
   const router = useRouter();
   const [kind, setKind] = useState<Kind>('PERSON');
+  const [tabHeight, setTabHeight] = useState(BROWSE_TAB_HEIGHT);
+  const tabRowHeight = tabHeight + BROWSE_TAB_GAP * 2;
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const contentWidth = Math.max(0, width - insets.left - insets.right);
+  const columns = Math.max(2, Math.min(8, Math.floor((contentWidth - GUTTER) / (MIN_AVATAR + GUTTER))));
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshGeneration = useRef(0);
+  useFocusEffect(useCallback(() => () => {
+    refreshGeneration.current++;
+    setRefreshing(false);
+  }, []));
 
   /**
    * Every group, however few photos it has.
@@ -59,15 +72,29 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
    * and the screen goes quiet again.
    */
   const status = useResource<Status>(serverUrl, '/people-and-pets/status', 4000);
+  const refresh = useCallback(async () => {
+    const mine = ++refreshGeneration.current;
+    setRefreshing(true);
+    try {
+      await Promise.all([reload(), status.reload()]);
+    } finally {
+      if (mine === refreshGeneration.current) setRefreshing(false);
+    }
+  }, [reload, status.reload]);
 
-  const clearance = useHeaderClearance(54);
+  const clearance = useHeaderClearance(tabRowHeight);
 
   const bar: HeaderConfig = {
     title: 'People & Pets',
     icon: 'people-and-pets',
     below: (
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-        <Segmented
+      <View style={{ width: '100%', maxWidth: Platform.OS === 'ios' ? 230 : undefined,
+        alignSelf: 'flex-start', marginLeft: Platform.OS === 'ios' ? BROWSE_TAB_LEADING_OFFSET : 0,
+        height: tabRowHeight, paddingHorizontal: Platform.OS === 'ios' ? BROWSE_TAB_INSET : 16,
+        paddingVertical: BROWSE_TAB_GAP }}>
+        <GlassTabs
+          height={tabHeight}
+          onHeightChange={setTabHeight}
           segments={[
             { id: 'PERSON', label: 'People', icon: 'person' },
             { id: 'PET', label: 'Pets', icon: 'pet' },
@@ -79,34 +106,37 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
     ),
   };
 
-  // Four across, with the gutters taken out before the split rather than after,
-  // so the last column ends the same distance from the edge as the first begins.
-  const avatar = Math.floor((width - GUTTER * 2 - GUTTER * (COLUMNS - 1)) / COLUMNS);
+  // Keep portraits readable as the window folds, excluding the native side rail.
+  const avatar = Math.max(1, Math.floor((contentWidth - GUTTER * 2 - GUTTER * (columns - 1)) / columns));
 
   // Do not leave People on screen below the Pets selector while the second
   // request is loading or failed. That made the tab look as if every person
   // were being classified as a pet.
   const subjects = loadedPath === subjectsPath ? data ?? [] : [];
   const noun = kind === 'PET' ? 'pets' : 'people';
+  const noticeError = error ?? status.error;
+  const notice = recognitionNotice(status.data, noticeError, noun);
 
   return (
     <View collapsable={false} style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollViewMarker style={{ flex: 1 }}>
         <FlatList
+          key={columns}
           data={subjects}
           keyExtractor={(subject) => subject.id}
-          numColumns={COLUMNS}
-          columnWrapperStyle={{ gap: GUTTER, paddingHorizontal: GUTTER }}
+          numColumns={columns}
+          columnWrapperStyle={{ gap: GUTTER, paddingHorizontal: GUTTER, marginBottom: 18 }}
           contentContainerStyle={{
-            paddingTop: clearance + 8,
+            paddingTop: clearance,
             paddingBottom: TAB_BAR_CLEARANCE,
-            gap: 18,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
           }}
-          onRefresh={reload}
-          refreshing={loading && subjects.length > 0}
+          onRefresh={refresh}
+          refreshing={refreshing}
           progressViewOffset={clearance}
           ListHeaderComponent={
-            <Notice status={status.data} error={error ?? status.error} noun={noun} />
+            notice ? <Notice message={notice} error={noticeError} /> : null
           }
           renderItem={({ item }) => (
             <SubjectCard
@@ -158,16 +188,8 @@ export function PeopleAndPetsScreen({ serverUrl }: { serverUrl: string }) {
  * that has just been backed up shows almost nobody. Without saying so, the
  * feature simply looks broken.
  */
-function Notice({
-  status,
-  error,
-  noun,
-}: {
-  status: Status | null;
-  error: string | null;
-  noun: string;
-}) {
-  const message = error
+function recognitionNotice(status: Status | null, error: string | null, noun: string) {
+  return error
     ? error
     : !status
       ? null
@@ -181,8 +203,9 @@ function Notice({
             ? `${status.pendingAssets.toLocaleString()} photos are still waiting to be scanned, so more ${noun} may appear.`
             : null;
 
-  if (!message) return null;
+}
 
+function Notice({ message, error }: { message: string; error: string | null }) {
   return (
     <View
       style={{

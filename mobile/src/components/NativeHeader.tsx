@@ -7,7 +7,7 @@ import { colors } from '../theme';
 import type { HeaderConfig } from './Header';
 import type { IconName } from './Icon';
 
-export const NATIVE_HEADING_HEIGHT = 72;
+export const NATIVE_HEADING_HEIGHT = 56;
 
 type Action = { label: string; icon?: IconName; onPress: () => void };
 const symbols: Partial<Record<IconName, StackToolbarButtonProps['icon']>> = {
@@ -38,7 +38,7 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
   const actions = items(action, actionType);
   return <>
     <Stack.Screen options={{ title: '', headerShown: true, headerBackVisible: false,
-      headerTransparent: true, headerStyle: { backgroundColor: theme.colors.background }, headerBlurEffect: 'none', headerTintColor: colors.primary, headerTitleStyle: { color: theme.colors.text }, headerShadowVisible: false }} />
+      headerTransparent: true, headerStyle: { backgroundColor: 'transparent' }, headerBlurEffect: 'none', headerTintColor: colors.primary, headerTitleStyle: { color: theme.colors.text }, headerShadowVisible: false }} />
     <Stack.Toolbar placement="left">
       {onBack && <Stack.Toolbar.Button tintColor={colors.primary} icon="chevron.backward" onPress={onBack}>Back</Stack.Toolbar.Button>}
     </Stack.Toolbar>
@@ -46,7 +46,7 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
       {actions}
       {account && <Stack.Toolbar.Button tintColor={colors.primary} icon="person.crop.circle" onPress={() => router.push('/account')}>Account</Stack.Toolbar.Button>}
     </Stack.Toolbar>
-    <View style={{ position: 'absolute', top: headerHeight, left: insets.left,
+    <View style={{ position: 'absolute', top: 0, paddingTop: headerHeight, left: insets.left,
       right: insets.right, zIndex: 10, backgroundColor: theme.colors.background }}>
       <View style={{ height: NATIVE_HEADING_HEIGHT, paddingHorizontal: 16, justifyContent: 'center' }}>
         <Text accessibilityRole="header" numberOfLines={1}

@@ -1,4 +1,4 @@
-import { MediaSortControl, type MediaSort } from '../components/MediaSort';
+import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
@@ -42,7 +42,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
   // Album metadata is small but the photos are paged independently. Keeping
   // it in the first response avoids a second endpoint just for its title.
   const { data } = useResource<AlbumDetail>(serverUrl, `/albums/${albumId}?size=1&sortBy=date&order=desc`);
-  const clearance = useHeaderClearance();
+  const clearance = useHeaderClearance(MEDIA_SORT_HEIGHT);
   const selection = useSelection();
   const [viewMode, setViewMode] = useMediaViewMode();
   const [sharing, setSharing] = useState(false);
@@ -93,7 +93,6 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
         topInset={clearance}
         viewMode={viewMode}
         header={<>
-          <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />
           {error || shareError || data?.description ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}>
               {error && <Text style={{ color: colors.danger, fontSize: 14 }}>{error}</Text>}
@@ -132,7 +131,9 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
           reload();
         }}
       />
-      <Header {...bar} />
+      <Header {...bar}>
+        <MediaSortControl sort={sort} order={order} onSort={value => { selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />
+      </Header>
       <SelectionDock />
 
       {!locked ? <ShareSheet

@@ -23,6 +23,8 @@ interface Props {
   tint?: string;
   /** Lets the glass react to touches. Cannot be changed after mount. */
   interactive?: boolean;
+  /** Media viewers keep dark chrome over their neutral black backdrop. */
+  colorScheme?: 'light' | 'dark';
 }
 
 /**
@@ -40,28 +42,14 @@ interface Props {
  * tab bar built on it alone would be fully transparent and photographs would
  * scroll straight through the labels.
  */
-export function Glass({ children, style, radius = 0, tint, interactive = false }: Props) {
+export function Glass({ children, style, radius = 0, tint, interactive = false, colorScheme }: Props) {
   const shape: ViewStyle = {
     borderRadius: radius,
     // Without this the blur is a rectangle behind rounded content on Android.
     overflow: 'hidden',
   };
 
-  /*
-   * The wash the bar's own content sits on.
-   *
-   * Both materials need it and for the same reason: Expo's own note on
-   * `GlassView` is that the effect "may appear nearly invisible" over dark
-   * content, and a selection bar laid on nothing is a row of glyphs floating on
-   * a photograph. It goes under the children rather than into `tintColor`,
-   * because that prop tints the material and does not give it a body.
-   *
-   * The two materials need different weights. `film` is a translucent wash and
-   * it works over a blur, which has already lifted what is behind it; liquid
-   * glass lifts nothing over a dark grid, so there the bar takes `surface` —
-   * the same opaque card the bar at the top of the screen is drawn on, which is
-   * the surface this one is a twin of anyway.
-   */
+  // Older platforms need a wash for contrast; native glass supplies its own.
   const film = (colour: string) => (
     <View style={[StyleSheet.absoluteFill, { backgroundColor: colour }]} pointerEvents="none" />
   );
@@ -73,11 +61,11 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
         // Follows the app's own setting, not the phone's: the two can disagree,
         // and glass that turned milky white over a dark grid was exactly that
         // disagreement showing.
-        colorScheme={resolvedDark() ? 'dark' : 'light'}
+        colorScheme={colorScheme ?? (resolvedDark() ? 'dark' : 'light')}
+        tintColor={tint}
         isInteractive={interactive}
         style={[shape, style]}
       >
-        {film(tint ?? colors.surface)}
         {children}
       </GlassView>
     );
@@ -86,7 +74,7 @@ export function Glass({ children, style, radius = 0, tint, interactive = false }
   const android = Platform.OS === 'android';
   // Read from the palette rather than the OS: the app's own setting decides
   // this, and it can disagree with the system.
-  const light = !resolvedDark();
+  const light = colorScheme ? colorScheme === 'light' : !resolvedDark();
 
   return (
     <BlurView

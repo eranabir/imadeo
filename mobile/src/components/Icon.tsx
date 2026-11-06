@@ -7,6 +7,7 @@ export type IconName =
   | 'album'
   | 'grid'
   | 'list'
+  | 'sort'
   | 'search'
   | 'people-and-pets'
   | 'person'
@@ -83,6 +84,8 @@ const HEART =
 
 function shapes(name: IconName, color: string) {
   switch (name) {
+    case 'sort':
+      return <Path d="M4 7h11M4 12h8M4 17h5M18 5v14m-3-3 3 3 3-3" />;
     // lucide's `Images`: a sheet showing behind the front one, which is what
     // separates "all my photos" from the single-frame photo icon below.
     case 'library':

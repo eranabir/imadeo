@@ -1,6 +1,11 @@
-import { useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { RefreshControl, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AssetThumbnail } from '../components/AssetThumbnail';
+import { Icon } from '../components/Icon';
+import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
+import { Touchable } from '../components/ui';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { FolderCard, Section } from '../components/Cards';
 import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
@@ -8,11 +13,13 @@ import { PhotoActions } from '../components/PhotoActions';
 import { SelectionDock } from '../components/SelectionDock';
 import { ConfirmSheet } from '../components/sheets';
 import { actions } from '../lib/actions';
-import { usePagedResource, useResource, type Asset, type Device } from '../lib/api';
+import { useResource, type Device } from '../lib/api';
 import { cancelBackup, currentDeviceId } from '../lib/backup';
 import { isEnabled, setEnabled } from '../lib/autobackup';
 import { useMediaViewMode } from '../lib/viewMode';
-import { colors } from '../theme';
+import { colors, radius, TAB_BAR_CLEARANCE } from '../theme';
+import { sortDevices } from '../lib/deviceSort';
+import { useDeviceAssets } from '../lib/useDeviceAssets';
 
 interface ListProps {
   serverUrl: string;
@@ -22,15 +29,34 @@ interface ListProps {
 /** Mobile libraries that have backed up to this account. */
 export function DevicesScreen({ serverUrl, onBack }: ListProps) {
   const router = useRouter();
-  const { data, error, loading, reload } = useResource<Device[]>(serverUrl, '/devices');
-  const clearance = useHeaderClearance();
-  const devices = data ?? [];
+  const { data, token, error, loading, reload } = useResource<Device[]>(serverUrl, '/devices');
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const [viewMode, setViewMode] = useMediaViewMode();
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshGeneration = useRef(0);
+  useFocusEffect(useCallback(() => () => { refreshGeneration.current++; setRefreshing(false); }, []));
+  const refresh = async () => {
+    const mine = ++refreshGeneration.current;
+    setRefreshing(true);
+    try { await reload(); } finally { if (mine === refreshGeneration.current) setRefreshing(false); }
+  };
+  const clearance = useHeaderClearance(MEDIA_SORT_HEIGHT);
+  const devices = sortDevices(data ?? [], sort, order);
+  const availableWidth = width - insets.left - insets.right - 32;
+  const columns = Math.max(2, Math.min(5, Math.floor(availableWidth / 170)));
+  const cardWidth = Math.floor((availableWidth - 12 * (columns - 1)) / columns);
+  const openDevice = (device: Device) => router.push({ pathname: '/device/[id]',
+    params: { id: device.id, title: device.libraryName } });
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
-        contentContainerStyle={{ paddingTop: clearance + 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={reload} tintColor={colors.primary} />}
+        contentContainerStyle={{ paddingTop: clearance, paddingBottom: TAB_BAR_CLEARANCE,
+          paddingLeft: insets.left, paddingRight: insets.right }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} progressViewOffset={clearance} tintColor={colors.primary} />}
       >
         {error && <Text style={{ color: colors.danger, paddingHorizontal: 16 }}>{error}</Text>}
         {!loading && devices.length === 0 ? (
@@ -42,19 +68,27 @@ export function DevicesScreen({ serverUrl, onBack }: ListProps) {
           </View>
         ) : (
           <Section title="Libraries" trailing={`${devices.length}`}>
-            <View style={{ paddingHorizontal: 16, gap: 8 }}>
+            <View style={{ paddingHorizontal: 16, gap: viewMode === 'grid' ? 12 : 8,
+              flexDirection: viewMode === 'grid' ? 'row' : 'column',
+              flexWrap: viewMode === 'grid' ? 'wrap' : 'nowrap' }}>
               {devices.map((device) => (
-                <FolderCard
-                  key={device.id}
+                viewMode === 'grid' ? <Touchable key={device.id} radius={radius.md}
+                  label={device.libraryName} onPress={() => openDevice(device)}
+                  style={{ width: cardWidth, backgroundColor: colors.surface }}>
+                  <View style={{ height: cardWidth, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+                    {device.coverAssetId ? <AssetThumbnail serverUrl={serverUrl} assetId={device.coverAssetId}
+                      token={token} style={{ width: '100%', height: '100%' }} contentFit="cover" /> :
+                      <Icon name="phone" size={36} color={colors.primary} />}
+                  </View>
+                  <View style={{ padding: 12 }}>
+                    <Text numberOfLines={1} style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>{device.libraryName}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, marginTop: 3 }}>{device.assetCount.toLocaleString()} items</Text>
+                  </View>
+                </Touchable> : <View key={device.id} style={{ width: '100%' }}><FolderCard
                   folder={{ name: device.libraryName, cardIcon: 'phone', assetCount: device.assetCount }}
                   detail={`${device.assetCount.toLocaleString()} ${device.assetCount === 1 ? 'item' : 'items'}`}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/device/[id]',
-                      params: { id: device.id, title: device.libraryName },
-                    })
-                  }
-                />
+                  onPress={() => openDevice(device)}
+                /></View>
               ))}
             </View>
           </Section>
@@ -65,7 +99,12 @@ export function DevicesScreen({ serverUrl, onBack }: ListProps) {
         subtitle={`${devices.length} device ${devices.length === 1 ? 'library' : 'libraries'}`}
         icon="phone"
         onBack={onBack}
-      />
+        action={<HeaderAction label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
+          icon={viewMode === 'grid' ? 'list' : 'grid'} compact
+          onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')} />}
+      >
+        <MediaSortControl sort={sort} order={order} onSort={value => { setSort(value); setOrder(value === 'date' ? 'desc' : 'asc'); }} onOrder={setOrder} />
+      </Header>
     </View>
   );
 }
@@ -81,8 +120,10 @@ interface DetailProps {
 export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: DetailProps) {
   const router = useRouter();
   const device = useResource<Device>(serverUrl, `/devices/${deviceId}`);
-  const assets = usePagedResource<Asset>(serverUrl, `/assets?deviceId=${encodeURIComponent(deviceId)}`);
-  const clearance = useHeaderClearance();
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+  const assets = useDeviceAssets(serverUrl, deviceId, sort, order);
+  const clearance = useHeaderClearance(MEDIA_SORT_HEIGHT);
   const selection = useSelection();
   const [viewMode, setViewMode] = useMediaViewMode();
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -115,11 +156,8 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         assets={assets.items}
         token={assets.token}
         loading={assets.loading || device.loading}
-        onRefresh={() => {
-          device.reload();
-          assets.reload();
-        }}
-        topInset={clearance + 16}
+        onRefresh={() => Promise.all([device.reload(), assets.reload()])}
+        topInset={clearance}
         selected={selection.ids}
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
@@ -129,9 +167,9 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         onLoadMore={assets.loadMore}
         viewMode={viewMode}
         header={
-          removeError ? (
+          removeError || assets.error || device.error ? (
             <Text style={{ color: colors.danger, paddingHorizontal: 16, paddingVertical: 12 }}>
-              {removeError}
+              {removeError ?? assets.error ?? device.error}
             </Text>
           ) : null
         }
@@ -164,11 +202,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         onBack={onBack}
         action={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {assets.items.length > 0 && <HeaderAction
-              label={selection.active ? 'Clear selection' : 'Select loaded items'}
-              icon="check" compact
-              onPress={() => selection.active ? selection.clear() : selection.toggleMany(assets.items.map((asset) => asset.id))}
-            />}
+
             <HeaderAction
               label={viewMode === 'grid' ? 'Show as list' : 'Show as grid'}
               icon={viewMode === 'grid' ? 'list' : 'grid'}
@@ -183,7 +217,11 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
             />
           </View>
         }
-      />
+      >
+        <MediaSortControl sort={sort} order={order} onSort={value => {
+          selection.clear(); setSort(value); setOrder(value === 'date' ? 'desc' : 'asc');
+        }} onOrder={value => { selection.clear(); setOrder(value); }} />
+      </Header>
       <SelectionDock />
 
       <ConfirmSheet

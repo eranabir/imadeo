@@ -51,6 +51,7 @@ interface AssetPage<T> {
 type PageItemsKey = 'items' | 'assets';
 
 export interface Folder {
+  createdAt?: string;
   id: string;
   name: string;
   parentId: string | null;
@@ -67,6 +68,7 @@ export interface Folder {
 }
 
 export interface Album {
+  createdAt?: string;
   id: string;
   owner?: { id: string; name: string | null };
   name: string;
