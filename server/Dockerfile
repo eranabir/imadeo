@@ -16,6 +16,7 @@ WORKDIR /src
 # shim that ships in the Node image — which cannot read this lockfile at all.
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
+COPY .yarn/patches .yarn/patches
 
 # Manifests only, so editing a source file does not invalidate the install layer.
 COPY server/package.json server/
@@ -42,6 +43,7 @@ RUN apk add --no-cache libc6-compat openssl && corepack enable
 COPY --from=deps /src/node_modules node_modules
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
+COPY .yarn/patches .yarn/patches
 COPY server server
 
 WORKDIR /src/server

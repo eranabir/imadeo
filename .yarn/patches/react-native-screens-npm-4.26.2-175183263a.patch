@@ -1,0 +1,12 @@
+diff --git a/ios/tabs/host/RNSTabsHostComponentView.mm b/ios/tabs/host/RNSTabsHostComponentView.mm
+index 8b61f5b7d3800bf090ff4a7878ad44676b50bbaf..0d870e9c1f22c4df897aa5bedc59c0c8c88c3202 100644
+--- a/ios/tabs/host/RNSTabsHostComponentView.mm
++++ b/ios/tabs/host/RNSTabsHostComponentView.mm
+@@ -126,6 +126,7 @@ - (void)invalidateImpl
+ - (void)didMoveToWindow
+ {
+   if (self.window != nil && _controller.parentViewController == nil) {
++    _controller.view.frame = self.bounds;
+     BOOL mountResult = [RNSContainerHelpers addChildViewController:_controller
+                                           toViewControllerManaging:self.reactSuperview
+                                                  withContainerView:self];

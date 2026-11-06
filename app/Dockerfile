@@ -7,6 +7,7 @@ WORKDIR /src
 
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
+COPY .yarn/patches .yarn/patches
 COPY server/package.json server/
 COPY app/package.json app/
 COPY mobile/package.json mobile/
@@ -23,6 +24,7 @@ COPY --from=deps /src/node_modules node_modules
 COPY --from=deps /src/app/node_modules app/node_modules
 COPY .yarnrc.yml package.json yarn.lock ./
 COPY .yarn/releases .yarn/releases
+COPY .yarn/patches .yarn/patches
 COPY app app
 
 WORKDIR /src/app
