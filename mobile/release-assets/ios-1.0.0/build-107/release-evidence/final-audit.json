@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-06T14:34:52.362Z",
+  "readOnlyRefreshStartedAt": "2026-11-06T14:34:50.643Z",
+  "appId": "6799252901",
+  "version": "1.0.0",
+  "source": "a16fa96e33f775a9d24b417ccf91ce908b6d6781",
+  "sourceMatchesBuild107": true,
+  "build": {
+    "id": "71c82dba-6bd3-4ab8-936f-f99f1e451f18",
+    "number": "107",
+    "processingState": "VALID",
+    "audience": "APP_STORE_ELIGIBLE",
+    "expired": false,
+    "usesNonExemptEncryption": false,
+    "selectedForVersion": true
+  },
+  "release": {
+    "type": "AFTER_APPROVAL",
+    "versionStateAtAudit": "DEVELOPER_REJECTED",
+    "reviewDraftStateAtAudit": "READY_FOR_REVIEW",
+    "submitted": false,
+    "note": "Screenshot processing and review-item association are managed separately; this audit does not submit the release."
+  },
+  "metadata": {
+    "category": "PHOTO_AND_VIDEO",
+    "locale": "en-US",
+    "subtitle": "Photos on your own server",
+    "marketingUrl": "https://imadeo.app/",
+    "supportUrl": "https://imadeo.app/support.html",
+    "privacyPolicyUrl": "https://imadeo.app/privacy.html",
+    "descriptionHasActualParagraphBreaks": true,
+    "existingReviewCredentialsPresent": true,
+    "existingReviewContactPresent": true
+  },
+  "publicEndpointChecks": [
+    {
+      "name": "marketing",
+      "url": "https://imadeo.app/",
+      "method": "GET",
+      "status": 200,
+      "durationMs": 344
+    },
+    {
+      "name": "privacy",
+      "url": "https://imadeo.app/privacy.html",
+      "method": "GET",
+      "status": 200,
+      "durationMs": 325
+    },
+    {
+      "name": "reviewHealth",
+      "url": "https://eran.ddns.net:11111/api/health",
+      "method": "GET",
+      "status": 200,
+      "durationMs": 82
+    },
+    {
+      "name": "setupGuide",
+      "url": "https://imadeo.app/guide.html",
+      "method": "GET",
+      "status": 200,
+      "durationMs": 362
+    },
+    {
+      "name": "support",
+      "url": "https://imadeo.app/support.html",
+      "method": "GET",
+      "status": 200,
+      "durationMs": 333
+    }
+  ],
+  "authenticatedChecks": {
+    "observation": "Verified during the immediately preceding audit in this agent session; retained here without another sign-in or mutation.",
+    "server": "https://eran.ddns.net:11111",
+    "login": {
+      "status": 200
+    },
+    "account": {
+      "status": 200,
+      "durationMs": 31,
+      "active": true,
+      "administrator": false
+    },
+    "statistics": {
+      "status": 200,
+      "durationMs": 32,
+      "images": 16,
+      "videos": 0,
+      "total": 16
+    },
+    "library": {
+      "status": 200,
+      "durationMs": 59,
+      "total": 16,
+      "sampled": 16
+    },
+    "deletion": {
+      "status": 200,
+      "durationMs": 51,
+      "graceDays": 30,
+      "requested": false
+    },
+    "contextSearch": {
+      "status": 200,
+      "durationMs": 227,
+      "query": "beach",
+      "results": 16
+    },
+    "publicSampleAsset": {
+      "status": 200,
+      "id": "08024d58-7219-4ef7-a4c7-89bdaa047405",
+      "name": "Beach day.png",
+      "type": "IMAGE"
+    }
+  },
+  "newMaterialBlockers": []
+}
