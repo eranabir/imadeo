@@ -38,6 +38,7 @@ describe('native navigation actions', () => {
       children: React.createElement('SearchInput') });
     tree.root.findByType('NativeButton' as any).props.onPress();
     expect(back).toHaveBeenCalledOnce();
+    expect(tree.root.findAllByType('Text' as any).some(text => text.props.children === 'Album')).toBe(true);
     expect(tree.root.findByType('SearchInput' as any)).toBeTruthy();
     expect(tree.root.findAllByType('NativeToolbar' as any).flatMap(toolbar => toolbar.findAllByType('SearchInput' as any))).toHaveLength(0);
     expect(tree.root.findByType('ScreenOptions' as any).props.options.headerShown).toBe(true);

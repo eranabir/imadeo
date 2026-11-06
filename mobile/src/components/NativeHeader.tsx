@@ -7,6 +7,8 @@ import { colors } from '../theme';
 import type { HeaderConfig } from './Header';
 import type { IconName } from './Icon';
 
+export const NATIVE_HEADING_HEIGHT = 72;
+
 type Action = { label: string; icon?: IconName; onPress: () => void };
 const symbols: Partial<Record<IconName, StackToolbarButtonProps['icon']>> = {
   backup: 'icloud.and.arrow.up', plus: 'plus', list: 'list.bullet', grid: 'square.grid.2x2',
@@ -35,7 +37,7 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const actions = items(action, actionType);
   return <>
-    <Stack.Screen options={{ title, headerShown: true, headerBackVisible: false,
+    <Stack.Screen options={{ title: '', headerShown: true, headerBackVisible: false,
       headerTransparent: true, headerStyle: { backgroundColor: theme.colors.background }, headerBlurEffect: 'none', headerTintColor: colors.primary, headerTitleStyle: { color: theme.colors.text }, headerShadowVisible: false }} />
     <Stack.Toolbar placement="left">
       {onBack && <Stack.Toolbar.Button tintColor={colors.primary} icon="chevron.backward" onPress={onBack}>Back</Stack.Toolbar.Button>}
@@ -44,11 +46,15 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
       {actions}
       {account && <Stack.Toolbar.Button tintColor={colors.primary} icon="person.crop.circle" onPress={() => router.push('/account')}>Account</Stack.Toolbar.Button>}
     </Stack.Toolbar>
-    {(subtitle || children) && <View style={{ position: 'absolute', top: headerHeight, left: insets.left,
+    <View style={{ position: 'absolute', top: headerHeight, left: insets.left,
       right: insets.right, zIndex: 10, backgroundColor: theme.colors.background }}>
-      {subtitle && <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13,
-        paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>{subtitle}</Text>}
+      <View style={{ height: NATIVE_HEADING_HEIGHT, paddingHorizontal: 16, justifyContent: 'center' }}>
+        <Text accessibilityRole="header" numberOfLines={1}
+          style={{ color: theme.colors.text, fontSize: 24, lineHeight: 30, fontWeight: '700' }}>{title}</Text>
+        {subtitle && <Text numberOfLines={1} style={{ color: colors.muted, fontSize: 13,
+          lineHeight: 18, marginTop: 2 }}>{subtitle}</Text>}
+      </View>
       {children}
-    </View>}
+    </View>
   </>;
 }
