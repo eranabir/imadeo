@@ -24,9 +24,11 @@ does not introduce a styling override or a sidebar-adaptation workaround.
 [Native verification](release-evidence/native-navigation-verification.json)
 records the fresh immutable-install checks and coordinator-observed cold starts:
 three of three unfolded Duo launches, one regular iPhone launch, and one iPad
-launch passed. The final Duo Favorites interaction check was still pending host
-unlock when this evidence snapshot was prepared. QA captures containing Apple
-simulator stock photographs are excluded from these release assets.
+launch passed. The final Duo Favorites interaction was **not performed** because
+simulator access remained unavailable; the user directed proceeding with the
+release using the existing passed checks. This is recorded as deferred, not
+passed. QA captures containing Apple simulator stock photographs are excluded
+from these release assets.
 
 ## Candidate and deployment verification
 
@@ -37,7 +39,8 @@ The [Apple delivery receipt](release-evidence/apple-delivery.json) confirms that
 the exact EAS artifact uploaded successfully and build 109 reached `VALID`.
 The [TestFlight receipt](release-evidence/testflight.json) confirms
 `IN_BETA_TESTING` and access for the existing internal **Team (Expo)** group.
-Public App Review submission remains a separate check.
+The [public submission receipt](release-evidence/public-submission.json) records
+Apple's confirmed `WAITING_FOR_REVIEW` state and submitted timestamp.
 
 Both exact-source GitHub workflows completed successfully:
 [Publish images](https://github.com/eranabir/imadeo/actions/runs/42244737562) and
@@ -62,13 +65,24 @@ Apple validated build `38498df2-5c7b-433e-8b18-ea29adc8e28c` at the
 with no recorded error codes, and the signed IPA matches the EAS artifact hash.
 Internal TestFlight availability was confirmed at
 `2026-11-06T16:14:28.752Z`: the build is `IN_BETA_TESTING`, and the existing
-internal Team (Expo) group has access through its all-builds setting. At this
-snapshot, **public App Review had not been submitted**.
+internal Team (Expo) group has access through its all-builds setting.
 
-The [candidate selection receipt](release-evidence/candidate-selection.json)
-confirms build 109 is selected in the same unsubmitted review draft, with the
-same review item restored. Apple reports `READY_FOR_REVIEW` with a null submitted
-date. The final Duo Favorites interaction awaits host unlock. The public review
-submission and Apple's submitted timestamp must be recorded before reporting the
-release submitted.
-App Store publication is configured for automatic release after Apple approval.
+The historical [candidate selection receipt](release-evidence/candidate-selection.json)
+records build 109 being selected in the same review draft, with the same item
+restored, before public submission. That snapshot's `READY_FOR_REVIEW` state and
+null submitted date describe the earlier selection step.
+
+**Build 109 was submitted for public App Review** at
+`2026-11-06T20:56:51.868Z`, and Apple confirmed `WAITING_FOR_REVIEW` at
+`2026-11-06T20:56:53.605Z`. The
+[submission receipt](release-evidence/public-submission.json) records the exact
+draft, build, successful submission request, and `AFTER_APPROVAL` release type.
+The final Duo Favorites interaction remains explicitly **not performed** and
+deferred under the user's instruction to proceed with the release; the passing
+regular-iPhone Favorites checks, automated tests, typechecks, and native cold
+starts remain recorded separately.
+
+An independent confirmation at `2026-11-06T20:57:14.321Z` verified both the
+version and review states are `WAITING_FOR_REVIEW`, with build 109 selected and
+exactly one review item. The app is awaiting Apple review, not publicly available
+yet. Publication is configured for automatic release after Apple approval.

@@ -31,8 +31,14 @@
       "passed": true,
       "nativeTopTabsVisible": true
     },
-    "finalDuoFavoritesInteraction": "pending host unlock at snapshot"
+    "finalDuoFavoritesInteraction": "NOT_PERFORMED: deferred when the user directed immediate App Store release while simulator access remained unavailable."
   },
   "capturePolicy": "Native navigation QA captures contain Apple simulator stock photographs and are excluded from release assets and store screenshots.",
-  "diagnosticNote": "The first unsigned local QA build failed SecureStore restoration. Rebuilding with normal ad-hoc signing resolved it; no app authentication change was retained."
+  "diagnosticNote": "The first unsigned local QA build failed SecureStore restoration. Rebuilding with normal ad-hoc signing resolved it; no app authentication change was retained.",
+  "deferredVerification": {
+    "check": "Final Duo Favorites interaction check after Mac unlock",
+    "status": "NOT_PERFORMED",
+    "reason": "User directed immediate App Store release after the optional final Duo interaction check remained blocked by simulator access. Existing regular-iPhone Favorites UI verification,460 tests,typechecks,and native cold-launch verification remain passed.",
+    "recordedAt": "2026-11-06T20:56:41.587Z"
+  }
 }

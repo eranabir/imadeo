@@ -1,0 +1,41 @@
+{
+  "appId": "6799252901",
+  "version": "1.0.0",
+  "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+  "checkedAt": "2026-11-06T20:56:53.605Z",
+  "draft": "f7a41b8e-6bb7-4f70-94f9-437bb7cd78ed",
+  "build": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+  "buildNumber": "109",
+  "state": "WAITING_FOR_REVIEW",
+  "submittedDate": "2026-11-06T20:56:51.868Z",
+  "releaseType": "AFTER_APPROVAL",
+  "mode": "SUBMIT",
+  "mutationSent": true,
+  "reconciledAfterRequestError": false,
+  "publicReviewSubmitted": true,
+  "publiclyAvailable": false,
+  "publicationCondition": "Automatic release after Apple approval.",
+  "deferredVerification": {
+    "check": "Final Duo Favorites interaction check after Mac unlock",
+    "status": "NOT_PERFORMED",
+    "reason": "User directed immediate App Store release after the optional final Duo interaction check remained blocked by simulator access. Existing regular-iPhone Favorites UI verification,460 tests,typechecks,and native cold-launch verification remain passed.",
+    "recordedAt": "2026-11-06T20:56:41.587Z"
+  },
+  "independentConfirmation": {
+    "verifiedAt": "2026-11-06T20:57:14.321Z",
+    "appId": "6799252901",
+    "version": "1.0.0",
+    "buildNumber": "109",
+    "buildId": "38498df2-5c7b-433e-8b18-ea29adc8e28c",
+    "source": "99b866b9099008dc56fcd5394fc2253f96dd0f28",
+    "draft": "f7a41b8e-6bb7-4f70-94f9-437bb7cd78ed",
+    "reviewState": "WAITING_FOR_REVIEW",
+    "versionState": "WAITING_FOR_REVIEW",
+    "submittedDate": "2026-11-06T20:56:51.868Z",
+    "releaseType": "AFTER_APPROVAL",
+    "itemCount": 1,
+    "reviewItem": "ZjdhNDFiOGUtNmJiNy00ZjcwLTk0ZjktNDM3YmI3Y2Q3OGVkfDZ8ODg5NDY1MTEx",
+    "appStoreLive": false,
+    "requestReconciledAfterError": false
+  }
+}
