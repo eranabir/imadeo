@@ -1081,15 +1081,15 @@ function DeviceViewer({
           />
         </Animated.View>
 
-        <ViewerHeader visible={chrome} width={width} insets={insets}
-          onClose={leave} title={asset.filename}
+        <ViewerHeader visible={chrome} width={width} height={height} insets={insets}
+          title={asset.filename}
           subtitle={[
             `${at + 1} of ${assets.length}`,
             taken ? taken.toLocaleDateString() : null,
             asset.mediaType === 'video' ? runningTime(asset.duration) : null,
           ].filter(Boolean).join(' · ')} />
 
-        <ViewerDock visible={chrome} width={width} insets={insets} safeBottom={safeBottom}
+        <ViewerDock visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={leave}
           items={assets.map(item => ({ id: item.id, source: item.uri }))}
           current={at} onSelect={showAt}>
             <ViewerAction

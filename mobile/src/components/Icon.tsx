@@ -20,6 +20,7 @@ export type IconName =
   | 'play'
   | 'pause'
   | 'fullscreen'
+  | 'fullscreen-exit'
   | 'sparkle'
   | 'photo'
   | 'download'
@@ -242,6 +243,11 @@ function shapes(name: IconName, color: string) {
           <Rect x="13.5" y="5" width="3.5" height="14" rx="1" fill={color} />
         </>
       );
+
+    case 'fullscreen-exit':
+      return <>
+        <Path d="M4 8.5h4.5V4M20 8.5h-4.5V4M20 15.5h-4.5V20M4 15.5h4.5V20" />
+      </>;
 
     case 'fullscreen':
       return (

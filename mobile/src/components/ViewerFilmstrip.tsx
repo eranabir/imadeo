@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { VIEWER_FILMSTRIP_HEIGHT } from './viewerGeometry';
 import {
   FILMSTRIP_CELL_WIDTH, FILMSTRIP_THUMB_HEIGHT, FILMSTRIP_THUMB_WIDTH,
-  filmstripInitialIndex, filmstripItemLayout, filmstripOffset, filmstripPadding,
+  filmstripInitialIndex, filmstripItemLayout, filmstripOffset, filmstripSnapOffset, filmstripViewportWidth, FILMSTRIP_EDGE_GUTTER,
 } from './filmstripGeometry';
 
 export interface ViewerFilmstripItem {
@@ -16,12 +16,13 @@ export interface ViewerFilmstripItem {
 }
 
 /** Starts at the first photo and scrolls only enough to keep selection visible. */
-export function ViewerFilmstrip({ items, current, width, onSelect }: {
+export function ViewerFilmstrip({ items, current, width: availableWidth, onSelect }: {
   items: ViewerFilmstripItem[];
   current: number;
   width: number;
   onSelect: (index: number) => void;
 }) {
+  const width = filmstripViewportWidth(availableWidth, items.length);
   const strip = useRef<FlatList<ViewerFilmstripItem>>(null);
   const previous = useRef<{ index: number; width: number } | null>(null);
   const dragging = useRef(false);
@@ -31,7 +32,8 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
 
   const reveal = (animated = false) => {
     if (!items[current] || dragging.current) return;
-    const offset = filmstripOffset(current, width, items.length, scrollOffset.current);
+    const restingOffset = filmstripSnapOffset(scrollOffset.current, width, items.length);
+    const offset = filmstripOffset(current, width, items.length, restingOffset);
     if (Math.abs(offset - scrollOffset.current) < 0.5) return;
     scrollOffset.current = offset;
     strip.current?.scrollToOffset({ offset, animated });
@@ -45,7 +47,11 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
   const settle = (offset: number) => {
     if (!dragging.current) return;
     dragging.current = false;
-    scrollOffset.current = offset;
+    const snapped = filmstripSnapOffset(offset, width, items.length);
+    scrollOffset.current = snapped;
+    if (Math.abs(snapped - offset) >= 0.5) {
+      strip.current?.scrollToOffset({ offset: snapped, animated: true });
+    }
   };
 
   return (
@@ -55,8 +61,9 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
       data={items}
       extraData={current}
       keyExtractor={(item) => item.id}
-      style={{ height: VIEWER_FILMSTRIP_HEIGHT, flexGrow: 0 }}
-      contentContainerStyle={{ paddingHorizontal: filmstripPadding(), alignItems: 'center' }}
+      style={{ width: Math.max(0, width - 2 * FILMSTRIP_EDGE_GUTTER), marginHorizontal: FILMSTRIP_EDGE_GUTTER,
+        height: VIEWER_FILMSTRIP_HEIGHT, flexGrow: 0 }}
+      contentContainerStyle={{ paddingHorizontal: 0, alignItems: 'center' }}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
       showsHorizontalScrollIndicator={false}
@@ -67,7 +74,14 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
       initialNumToRender={Math.ceil(width / FILMSTRIP_CELL_WIDTH) + 4}
       windowSize={3}
       maxToRenderPerBatch={8}
-      getItemLayout={(_data, index) => filmstripItemLayout(index)}
+      getItemLayout={(_data, index) => {
+        // Gutters sit outside the scroll view, so another image cannot peek
+        // through them when the viewport ends between complete cells.
+        const layout = filmstripItemLayout(index);
+        return { ...layout, offset: layout.offset - FILMSTRIP_EDGE_GUTTER };
+      }}
+      snapToInterval={FILMSTRIP_CELL_WIDTH}
+      snapToAlignment="start"
       decelerationRate="fast"
       onContentSizeChange={() => reveal()}
       onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.x; }}

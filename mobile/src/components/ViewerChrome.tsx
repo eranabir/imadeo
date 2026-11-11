@@ -1,67 +1,77 @@
-import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { Children, isValidElement, type ReactNode } from 'react';
+import { ScrollView, Text, View } from 'react-native';
 import { DARK, radius } from '../theme';
 import { Glass } from './Glass';
-import { ViewerAction } from './ViewerButton';
+import { ViewerAction, ViewerActionGroup } from './ViewerButton';
+import { filmstripViewportWidth } from './filmstripGeometry';
 import { ViewerFilmstrip, type ViewerFilmstripItem } from './ViewerFilmstrip';
 import {
-  VIEWER_ACTION_DOCK_HEIGHT,
-  VIEWER_FILMSTRIP_GAP,
   VIEWER_FILMSTRIP_HEIGHT,
   VIEWER_HEADER_HEIGHT,
   viewerChromeFrame,
   viewerHeaderTop,
+  viewerRailFrame,
 } from './viewerGeometry';
 
 interface ChromeProps {
   visible: boolean;
   width: number;
+  height: number;
   insets: { top: number; left: number; right: number };
 }
 
-/** Floating metadata and native navigation over the full-screen photo. */
-export function ViewerHeader({ visible, width, insets, title, subtitle, onClose }: ChromeProps & {
+/** Metadata is centered over the photo; navigation belongs to the side rail. */
+export function ViewerHeader({ visible, width, insets, title, subtitle }: ChromeProps & {
   title: string;
   subtitle: string;
-  onClose: () => void;
 }) {
   const frame = viewerChromeFrame(width, insets.left, insets.right);
   return (
-    <View style={{ position: 'absolute', top: viewerHeaderTop(insets.top), ...frame,
-      height: VIEWER_HEADER_HEIGHT, display: visible ? 'flex' : 'none' }}>
-      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <ViewerAction icon="back" label="Close" onPress={onClose} />
-        <Glass colorScheme="dark" tint="transparent" radius={radius.pill}
-          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: VIEWER_HEADER_HEIGHT, paddingHorizontal: 16 }}>
-          <Text numberOfLines={1} style={{ color: DARK.text, fontSize: 14, fontWeight: '700' }}>{title}</Text>
-          {!!subtitle && <Text numberOfLines={1} style={{ color: DARK.muted, fontSize: 11.5, marginTop: 2 }}>{subtitle}</Text>}
-        </Glass>
-        <View pointerEvents="none" style={{ width: 44 }} />
-      </View>
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: viewerHeaderTop(insets.top), ...frame,
+      height: VIEWER_HEADER_HEIGHT, display: visible ? 'flex' : 'none', alignItems: 'center' }}>
+      <Glass radius={radius.pill}
+        style={{ maxWidth: '100%', alignItems: 'center', justifyContent: 'center', height: VIEWER_HEADER_HEIGHT, paddingHorizontal: 20 }}>
+        <Text numberOfLines={1} style={{ color: DARK.text, fontSize: 14, fontWeight: '700' }}>{title}</Text>
+        {!!subtitle && <Text numberOfLines={1} style={{ color: DARK.muted, fontSize: 11.5, marginTop: 2 }}>{subtitle}</Text>}
+      </Glass>
     </View>
   );
 }
 
-/** Thumbnails float above independent native action buttons. */
-export function ViewerDock({ visible, width, insets, safeBottom, items, current, onSelect, children }: ChromeProps & {
+/** One trailing axis for navigation, grouped actions and deletion, as in Photos. */
+export function ViewerDock({ visible, width, height, insets, safeBottom, items, current, onSelect, onClose, children }: ChromeProps & {
   safeBottom: number;
   items: ViewerFilmstripItem[];
   current: number;
   onSelect: (index: number) => void;
+  onClose: () => void;
   children: ReactNode;
 }) {
-  const frame = viewerChromeFrame(width, insets.left, insets.right);
-  return (
-    <View style={{ position: 'absolute', bottom: safeBottom, ...frame,
-      height: VIEWER_FILMSTRIP_HEIGHT + VIEWER_FILMSTRIP_GAP + VIEWER_ACTION_DOCK_HEIGHT,
-      display: visible ? 'flex' : 'none' }}>
-      <View style={{ flex: 1 }}>
-        <ViewerFilmstrip width={frame.width} items={items} current={current} onSelect={onSelect} />
-        <View style={{ marginTop: VIEWER_FILMSTRIP_GAP, height: VIEWER_ACTION_DOCK_HEIGHT,
-          paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          {children}
-        </View>
-      </View>
+  const rail = viewerRailFrame(width, height, insets, safeBottom);
+  const frame = viewerChromeFrame(width, insets.left, Math.max(insets.right, rail.right + rail.width));
+  const stripWidth = filmstripViewportWidth(frame.width, items.length);
+  const stripFrame = { left: frame.left + (frame.width - stripWidth) / 2, width: stripWidth };
+  const actions = Children.toArray(children);
+  const icon = (node: ReactNode) => isValidElement<{ icon?: string }>(node) ? node.props.icon : undefined;
+  const deviceActions = actions.some(node => ['backup', 'cloud-done'].includes(icon(node) ?? ''));
+  const primaryIcons = ['shared', 'download', 'backup', 'cloud-done', ...(deviceActions ? ['info'] : [])];
+  const primary = actions.filter(node => primaryIcons.includes(icon(node) ?? ''));
+  const tools = actions.filter(node => ![...primaryIcons, 'trash'].includes(icon(node) ?? ''));
+  const trash = actions.filter(node => icon(node) === 'trash');
+  return <>
+    <View style={{ position: 'absolute', bottom: safeBottom + 12, ...stripFrame,
+      height: VIEWER_FILMSTRIP_HEIGHT, display: visible ? 'flex' : 'none' }}>
+      <ViewerFilmstrip width={stripWidth} items={items} current={current} onSelect={onSelect} />
     </View>
-  );
+    <View pointerEvents="box-none" style={{ position: 'absolute', ...rail, display: visible ? 'flex' : 'none' }}>
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false}
+        contentInsetAdjustmentBehavior="never" contentContainerStyle={{ flexGrow: 1, gap: 12, alignItems: 'center' }}>
+        <ViewerActionGroup><ViewerAction icon="back" label="Close" onPress={onClose} /></ViewerActionGroup>
+        {primary.length > 0 && <ViewerActionGroup>{primary}</ViewerActionGroup>}
+        <View pointerEvents="none" style={{ flexGrow: 1 }} />
+        {tools.length > 0 && <ViewerActionGroup>{tools}</ViewerActionGroup>}
+        {trash.length > 0 && <ViewerActionGroup>{trash}</ViewerActionGroup>}
+      </ScrollView>
+    </View>
+  </>;
 }

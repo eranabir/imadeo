@@ -4,9 +4,23 @@ export const FILMSTRIP_THUMB_WIDTH = 36;
 export const FILMSTRIP_THUMB_HEIGHT = 44;
 export const FILMSTRIP_EDGE_GUTTER = 8;
 
+/** Fit complete thumbnail cells between equal gutters, including at fractional widths. */
+export function filmstripViewportWidth(availableWidth: number, count: number) {
+  const available = Math.max(0, availableWidth);
+  const cells = Math.min(Math.max(0, count),
+    Math.max(1, Math.floor((available - 2 * FILMSTRIP_EDGE_GUTTER) / FILMSTRIP_CELL_WIDTH)));
+  return Math.min(available, cells * FILMSTRIP_CELL_WIDTH + 2 * FILMSTRIP_EDGE_GUTTER);
+}
+
 export const filmstripPadding = () => FILMSTRIP_EDGE_GUTTER;
 export const filmstripMaxOffset = (width: number, count: number) =>
   Math.max(0, count * FILMSTRIP_CELL_WIDTH + 2 * FILMSTRIP_EDGE_GUTTER - width);
+
+/** Settle between cells without changing which photo is selected. */
+export function filmstripSnapOffset(offset: number, width: number, count: number) {
+  return Math.max(0, Math.min(filmstripMaxOffset(width, count),
+    Math.round(offset / FILMSTRIP_CELL_WIDTH) * FILMSTRIP_CELL_WIDTH));
+}
 
 /** Move only enough to reveal selection, and never scroll past either edge. */
 export function filmstripOffset(index: number, width: number, count: number, offset = 0) {

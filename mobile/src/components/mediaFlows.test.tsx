@@ -219,33 +219,13 @@ describe('Refresh and bulk result safety', () => {
   });
 });
 describe('Viewer layout matrix', () => {
-  for (const [width, height, safeTop] of [[932, 656, 0], [440, 956, 0], [440, 956, 62], [874, 402, 0]]) {
-    for (const [photoWidth, photoHeight] of [[1080, 1920], [4032, 3024], [3024, 4032], [8000, 1500]]) {
-      it(`balances visible media gaps at ${width}×${height} for ${photoWidth}×${photoHeight}`, () => {
-        const safeBottom = clampViewerSafeBottom(34, true);
-        const headerBottom = viewerHeaderTop(safeTop) + VIEWER_HEADER_HEIGHT;
-        for (const video of [true]) {
-          const viewport = viewerMediaViewport(height, safeTop, safeBottom, video);
-          const image = containedMediaSize(width, viewport.height, photoWidth, photoHeight);
-          const imageTop = viewport.top + (viewport.height - image.height) / 2;
-          const imageBottom = imageTop + image.height;
-          const controlsTop = video
-            ? height - viewerVideoControlsBottom(safeBottom) - 48
-            : height - viewerFilmstripBottom(safeBottom) - VIEWER_FILMSTRIP_HEIGHT;
-          expect(imageTop - headerBottom).toBeCloseTo(controlsTop - imageBottom, 8);
-          expect(imageTop - headerBottom).toBeGreaterThanOrEqual(VIEWER_MEDIA_TOP_GAP - 0.001);
-        }
-        if (safeTop === 0) expect(viewerHeaderTop(safeTop)).toBe(safeBottom);
-      });
-    }
-  }
-  it('lowers the iPhone dock and recovers media height without shrinking touch targets or row gaps', () => {
+  it('keeps overlay controls above the home indicator without reducing media height', () => {
     const bottom = clampViewerSafeBottom(34, true);
     expect(bottom).toBe(12);
     expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
     for (const video of [false, true]) {
       expect(viewerBottomPanelHeight(34, video) - viewerBottomPanelHeight(bottom, video)).toBe(22);
-      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(video ? 22 : 0);
+      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(0);
     }
     expect(clampViewerSafeBottom(20, true)).toBe(12);
     expect(clampViewerSafeBottom(0, true)).toBe(0);
@@ -253,8 +233,8 @@ describe('Viewer layout matrix', () => {
     // With 24pt icons in a 48pt target, their bottom edge is 24pt above
     // the screen edge: clear of the home indicator without a blank footer.
     expect(bottom + (VIEWER_ACTION_DOCK_HEIGHT - 24) / 2).toBe(24);
-    expect(viewerBottomPanelHeight(bottom, true)).toBe(184);
-    expect(viewerBottomPanelHeight(bottom, false)).toBe(128);
+    expect(viewerBottomPanelHeight(bottom, true)).toBe(140);
+    expect(viewerBottomPanelHeight(bottom, false)).toBe(84);
   });
   for(const [width,height,top,bottom] of [[320,568,20,0],[375,812,44,34],[402,874,62,34],[440,956,62,34],[1024,1366,24,20],[1366,1024,24,20]]) {
     for(const [mw,mh] of [[4032,3024],[3024,4032],[1920,1080],[1080,1920],[640,640],[8000,1500],[1000,5000]]) {
@@ -265,9 +245,9 @@ describe('Viewer layout matrix', () => {
         expect(v.top).toBe(0);
         expect(v.bottom).toBe(height);
         const video = viewerMediaViewport(height,top,bottom,true);
-        expect(video.bottom).toBeLessThanOrEqual(height-viewerVideoControlsBottom(bottom)-48);
+        expect(video).toEqual(v);
         expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
-        expect(viewerFilmstripBottom(bottom)-viewerDockHeight(bottom)).toBe(VIEWER_FILMSTRIP_GAP);
+        expect(viewerFilmstripBottom(bottom)).toBe(bottom + 12);
         expect(viewerVideoControlsBottom(bottom)-viewerFilmstripBottom(bottom)-VIEWER_FILMSTRIP_HEIGHT).toBe(VIEWER_FILMSTRIP_GAP);
       });
     }

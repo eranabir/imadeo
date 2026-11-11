@@ -1,4 +1,4 @@
-import { ViewerAction } from './ViewerButton';
+import { ViewerAction, ViewerActionGroup } from './ViewerButton';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -44,6 +44,7 @@ import {
   viewerMediaViewport,
   viewerVideoControlsBottom,
   viewerChromeFrame,
+  viewerRailFrame,
 } from './viewerGeometry';
 
 /**
@@ -286,14 +287,14 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
         />
         </Animated.View>
 
-        <ViewerHeader visible={chrome} width={width} insets={insets}
-          onClose={onClose} title={asset.originalFileName ?? 'Photo'}
+        <ViewerHeader visible={chrome} width={width} height={height} insets={insets}
+          title={asset.originalFileName ?? 'Photo'}
           subtitle={[
             asset.localDateTime ? new Date(asset.localDateTime).toLocaleDateString() : null,
             formatDuration(asset.duration),
           ].filter(Boolean).join(' · ')} />
 
-        <ViewerDock visible={chrome} width={width} insets={insets} safeBottom={safeBottom}
+        <ViewerDock visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={onClose}
           items={assets.map(item => ({
             id: item.id,
             source: {
@@ -449,7 +450,7 @@ export function VideoPage({
   onZoomChange?: (zoomed: boolean) => void;
   onTap?: () => void;
 }) {
-  const view = useRef<VideoView>(null);
+  const [immersive, setImmersive] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -544,13 +545,28 @@ export function VideoPage({
     }
   }, [active, player, status]);
 
+  useEffect(() => {
+    if (!active) setImmersive(false);
+  }, [active]);
+
+  const toggleFullscreen = () => {
+    // The gallery already covers the screen. Keep its player and geometry;
+    // AVKit's separate full-screen presentation adds its own safe-area margins.
+    setImmersive(current => !current);
+    onTap?.();
+  };
+  const tapVideo = () => {
+    setImmersive(false);
+    onTap?.();
+  };
   const displayedTime = scrubbingTime ?? currentTime;
   const insets = useSafeAreaInsets();
   const viewport = viewerMediaViewport(height, insets.top, safeBottom, true);
   const videoTop = viewport.top;
   const availableHeight = viewport.height;
-  const mediaWidth = Math.max(1, width - insets.left - insets.right);
-  const chromeFrame = viewerChromeFrame(width, insets.left, insets.right);
+  const mediaWidth = Math.max(1, width);
+  const rail = viewerRailFrame(width, height, insets, safeBottom);
+  const chromeFrame = viewerChromeFrame(width, insets.left, Math.max(insets.right, rail.right + rail.width));
   const rotated = rotation === 90 || rotation === 270;
 
   const seekPreview = (next: number) => {
@@ -614,7 +630,7 @@ export function VideoPage({
           position: 'absolute',
           top: videoTop,
           bottom: 0,
-          left: insets.left,
+          left: 0,
           width: mediaWidth,
           alignItems: 'center',
           justifyContent: 'center',
@@ -638,11 +654,10 @@ export function VideoPage({
             height={availableHeight}
             active={active}
             accessibilityLabel="Video"
-            onTap={onTap}
+            onTap={tapVideo}
             onZoomChange={onZoomChange}
           >
             <VideoView
-              ref={view}
               player={player}
               style={{
                 width: rotated ? availableHeight : mediaWidth,
@@ -651,7 +666,7 @@ export function VideoPage({
               }}
               contentFit="contain"
               nativeControls={false}
-              fullscreenOptions={{ enable: true }}
+              fullscreenOptions={{ enable: false }}
             />
           </ZoomableMedia>
 
@@ -689,40 +704,34 @@ export function VideoPage({
           )}
         </View>
 
-      {controlsVisible && <Glass colorScheme="dark" tint="transparent" interactive radius={radius.lg}
+      {controlsVisible && !immersive && <ViewerActionGroup horizontal
         style={{
           position: 'absolute',
-          left: chromeFrame.left - insets.left,
+          left: chromeFrame.left,
           width: chromeFrame.width,
-          // The timeline belongs above the filmstrip and action dock, exactly
-          // where Photos places it. Every one of those layers is absolute, so
-          // showing the chrome never changes the video's measured rectangle.
+          // Float one glass capsule directly above the thumbnails. It never
+          // reserves space in the video or extends under the side actions.
           bottom: viewerVideoControlsBottom(safeBottom),
           zIndex: 2,
           minHeight: 48,
-          paddingHorizontal: 10,
+          paddingHorizontal: 4,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 8,
         }}
       >
-        <Touchable
+        <ViewerAction
+          icon={playing ? 'pause' : 'play'}
           onPress={() => {
             if (status !== 'readyToPlay') setAttempt((value) => value + 1);
             else if (playing) player.pause();
             else if (duration > 0 && currentTime >= duration - 0.05) player.replay();
             else player.play();
           }}
-          radius={radius.pill}
           label={playing ? 'Pause' : 'Play'}
-          style={{ width: 38, height: 38 }}
-        >
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name={playing ? 'pause' : 'play'} size={19} color={DARK.text} />
-          </View>
-        </Touchable>
+        />
 
-        <Text style={{ width: 38, textAlign: 'right', color: DARK.text, fontSize: 11 }}>
+        <Text style={{ width: 28, textAlign: 'right', color: DARK.text, fontSize: 11 }}>
           {clockTime(displayedTime)}
         </Text>
         <VideoSeekBar
@@ -732,19 +741,15 @@ export function VideoPage({
           onScrubMove={seekPreview}
           onScrubEnd={finishScrubbing}
         />
-        <Text style={{ width: 38, color: DARK.text, fontSize: 11 }}>{clockTime(duration)}</Text>
+        <Text style={{ width: 28, color: DARK.text, fontSize: 11 }}>{clockTime(duration)}</Text>
 
-        <Touchable
-          onPress={() => void view.current?.enterFullscreen()}
-          radius={radius.pill}
-          label="Full screen"
-          style={{ width: 38, height: 38 }}
-        >
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="fullscreen" size={20} color={DARK.text} />
-          </View>
-        </Touchable>
-      </Glass>}
+        <ViewerAction icon="fullscreen" label="Full screen" onPress={toggleFullscreen} />
+      </ViewerActionGroup>}
+      {active && immersive && <View style={{ position: 'absolute', top: rail.top, right: rail.right }}>
+        <ViewerActionGroup>
+          <ViewerAction icon="fullscreen-exit" label="Exit full screen" onPress={toggleFullscreen} />
+        </ViewerActionGroup>
+      </View>}
       </View>
     </View>
   );
