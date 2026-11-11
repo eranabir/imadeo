@@ -1,14 +1,17 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ push: vi.fn(), regular: false }));
+const mocks = vi.hoisted(() => ({ push: vi.fn(), regular: false, right: 84 }));
 vi.mock('../lib/deviceLayout', () => ({ get isRegularIPhone() { return mocks.regular; } }));
 vi.mock('expo-router/react-navigation', () => ({ HeaderHeightContext: React.createContext(44), useTheme: () => ({ colors: { background: 'background', text: 'text' } }) }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Platform: { OS: 'ios' } }));
-vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, left: 0, right: 84, bottom: 0 }) }));
+vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, left: 0, right: mocks.right, bottom: 0 }) }));
 vi.mock('expo-router', () => {
   const Toolbar = Object.assign((props: any) => React.createElement('NativeToolbar', props, props.children), {
     Button: (props: any) => React.createElement('NativeButton', props, props.children),
+    Menu: (props: any) => React.createElement('NativeMenu', props, props.children),
+    MenuAction: (props: any) => React.createElement('NativeMenuAction', props, props.children),
+    Label: (props: any) => React.createElement('NativeLabel', props, props.children),
   });
   return { Stack: { Screen: (props: any) => React.createElement('ScreenOptions', props), Toolbar }, useRouter: () => ({ push: mocks.push }) };
 });
@@ -16,7 +19,7 @@ import { NativeHeader } from './NativeHeader';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const mounted: ReactTestRenderer[] = [];
 const Action = (_: any) => null;
-afterEach(async () => { for (const tree of mounted.splice(0)) await act(async () => tree.unmount()); vi.clearAllMocks(); mocks.regular = false; });
+afterEach(async () => { for (const tree of mounted.splice(0)) await act(async () => tree.unmount()); vi.clearAllMocks(); mocks.regular = false; mocks.right = 84; });
 async function render(props: React.ComponentProps<typeof NativeHeader>) {
   let tree!: ReactTestRenderer;
   await act(async () => { tree = create(<NativeHeader {...props} />); }); mounted.push(tree); return tree;
@@ -27,11 +30,20 @@ describe('native navigation actions', () => {
     const tree = await render({ title: 'Browse', actionType: Action, account: <React.Fragment />,
       action: <React.Fragment><Action icon="list" label="Show as list" onPress={list} /><React.Fragment>
         <Action icon="plus" label="New" onPress={add} /></React.Fragment></React.Fragment> });
-    const buttons = tree.root.findAllByType('NativeButton' as any);
+    expect(tree.root.findAllByType('NativeButton' as any)).toHaveLength(0);
+    expect(tree.root.findAllByType('NativeMenu' as any)).toHaveLength(1);
+    const buttons = tree.root.findAllByType('NativeMenuAction' as any);
     expect(buttons.map(b => b.props.children)).toEqual(['Show as list', 'New', 'Account']);
     buttons[0].props.onPress(); buttons[1].props.onPress(); buttons[2].props.onPress();
     expect(list).toHaveBeenCalledOnce(); expect(add).toHaveBeenCalledOnce(); expect(mocks.push).toHaveBeenCalledWith('/account');
     expect(buttons.map(b => b.props.icon)).toEqual(['list.bullet', 'plus', 'person.crop.circle']);
+  });
+  it('keeps direct action buttons when navigation is along the bottom', async () => {
+    mocks.right = 0;
+    const tree = await render({ title: 'Library', actionType: Action, account: <React.Fragment />,
+      action: <Action icon="backup" label="Back up" onPress={vi.fn()} /> });
+    expect(tree.root.findAllByType('NativeMenu' as any)).toHaveLength(0);
+    expect(tree.root.findAllByType('NativeButton' as any).map(b => b.props.children)).toEqual(['Back up', 'Account']);
   });
   it('preserves the detail-screen back handler and search content outside the toolbar', async () => {
     const back = vi.fn();

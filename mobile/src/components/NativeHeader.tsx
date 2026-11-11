@@ -1,5 +1,5 @@
 import { HeaderHeightContext, useTheme } from 'expo-router/react-navigation';
-import { Children, isValidElement, useContext, type ComponentType, type ReactElement, type ReactNode } from 'react';
+import { Children, isValidElement, useContext, type ComponentType, type ReactNode } from 'react';
 import { Stack, useRouter, type StackToolbarButtonProps } from 'expo-router';
 import { Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,14 +18,12 @@ const symbols: Partial<Record<IconName, StackToolbarButtonProps['icon']>> = {
   pause: 'pause', play: 'play', check: 'checkmark', done: 'checkmark',
   edit: 'pencil', trash: 'trash', move: 'folder', download: 'square.and.arrow.down',
 };
-function items(node: ReactNode, actionType: ComponentType<any>): ReactElement[] {
-  return Children.toArray(node).flatMap((child, index) => {
+function items(node: ReactNode, actionType: ComponentType<any>): Action[] {
+  return Children.toArray(node).flatMap((child) => {
     if (!isValidElement(child)) return [];
     if (child.type === actionType) {
       const action = child.props as Action;
-      return [<Stack.Toolbar.Button key={`${action.label}-${index}`}
-        icon={action.icon ? symbols[action.icon] ?? 'ellipsis' : 'ellipsis'} tintColor={colors.primary}
-        onPress={action.onPress}>{action.label}</Stack.Toolbar.Button>];
+      return [action];
     }
     return items((child.props as { children?: ReactNode }).children, actionType);
   });
@@ -38,9 +36,18 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
   const insets = useSafeAreaInsets();
   const headerHeight = useContext(HeaderHeightContext) ?? 0;
   const actions = items(action, actionType);
+  if (account) actions.push({ label: 'Account', onPress: () => router.push('/account') });
+  // The call/status cluster and tabs share this vertical column. Reserve just
+  // one toolbar slot so UIKit cannot push our actions into the tab platter.
+  const grouped = insets.right > 0 && actions.length > 1;
+  const ActionItem = grouped ? Stack.Toolbar.MenuAction : Stack.Toolbar.Button;
+  const actionItems = actions.map((action, index) => <ActionItem key={`${action.label}-${index}`}
+    icon={action.label === 'Account' && !action.icon ? 'person.crop.circle'
+      : action.icon ? symbols[action.icon] ?? 'ellipsis' : 'ellipsis'}
+    tintColor={colors.primary} onPress={action.onPress}>{action.label}</ActionItem>);
   const headingHeight = isRegularIPhone
     ? regularIPhoneHeaderHeight(headerHeight, insets.top) - insets.top : NATIVE_HEADING_HEIGHT;
-  const actionWidth = (actions.length + (account ? 1 : 0)) * 44 + 24;
+  const actionWidth = actions.length * 44 + 24;
   return <>
     <Stack.Screen options={{ title: '', headerShown: true, headerBackVisible: false,
       headerTransparent: true, headerStyle: { backgroundColor: 'transparent' }, headerBlurEffect: 'none', headerTintColor: colors.primary, headerTitleStyle: { color: theme.colors.text }, headerShadowVisible: false }} />
@@ -48,8 +55,10 @@ export function NativeHeader({ title, subtitle, onBack, action, account, childre
       {onBack && <Stack.Toolbar.Button tintColor={colors.primary} icon="chevron.backward" onPress={onBack}>Back</Stack.Toolbar.Button>}
     </Stack.Toolbar>
     <Stack.Toolbar placement="right">
-      {actions}
-      {account && <Stack.Toolbar.Button tintColor={colors.primary} icon="person.crop.circle" onPress={() => router.push('/account')}>Account</Stack.Toolbar.Button>}
+      {grouped ? <Stack.Toolbar.Menu icon="ellipsis" tintColor={colors.primary} accessibilityLabel="Actions">
+        <Stack.Toolbar.Label>Actions</Stack.Toolbar.Label>
+        {actionItems}
+      </Stack.Toolbar.Menu> : actionItems}
     </Stack.Toolbar>
     <View style={{ position: 'absolute', top: 0, paddingTop: isRegularIPhone ? insets.top : headerHeight, left: insets.left,
       right: insets.right, zIndex: 10, backgroundColor: theme.colors.background }}>
