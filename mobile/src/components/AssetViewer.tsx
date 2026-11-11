@@ -1,3 +1,4 @@
+import { ViewerAction } from './ViewerButton';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -158,7 +159,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   const mediaViewport = viewerMediaViewport(height, insets.top, safeBottom);
   const mediaTop = mediaViewport.top;
   const mediaHeight = mediaViewport.height;
-  const mediaWidth = Math.max(1, width - insets.left - insets.right);
+  const mediaWidth = Math.max(1, width);
 
   const run = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -263,7 +264,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                 />
               ) : (
                 <View
-                  style={{ position: 'absolute', top: mediaTop, left: insets.left, width: mediaWidth, height: mediaHeight, overflow: 'hidden' }}
+                  style={{ position: 'absolute', top: mediaTop, left: 0, width: mediaWidth, height: mediaHeight, overflow: 'hidden' }}
                 >
                   <ServerPhoto
                     serverUrl={serverUrl}
@@ -853,32 +854,4 @@ function clockTime(value: number) {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, '0')}:${remainder}`
     : `${minutes}:${remainder}`;
-}
-
-function ViewerAction({
-  icon,
-  label,
-  tint,
-  onPress,
-  disabled,
-}: {
-  icon: IconName;
-  label: string;
-  tint: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Touchable
-      onPress={onPress}
-      disabled={disabled}
-      radius={radius.pill}
-      label={label}
-      style={{ width: 44, height: VIEWER_ACTION_DOCK_HEIGHT }}
-    >
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={24} color={tint} />
-      </View>
-    </Touchable>
-  );
 }

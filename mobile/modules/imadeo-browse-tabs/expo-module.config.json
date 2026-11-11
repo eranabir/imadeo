@@ -1,6 +1,6 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["ImadeoBrowseTabsModule"]
+    "modules": ["ImadeoBrowseTabsModule", "ImadeoViewerButtonModule"]
   }
 }

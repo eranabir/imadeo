@@ -1,3 +1,4 @@
+import { ViewerAction } from '../components/ViewerButton';
 import { photoColumns } from '../lib/layout';
 import { isRegularIPhone } from '../lib/deviceLayout';
 import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
@@ -977,7 +978,7 @@ function DeviceViewer({
   const mediaViewport = viewerMediaViewport(height, insets.top, safeBottom);
   const mediaTop = mediaViewport.top;
   const mediaHeight = mediaViewport.height;
-  const mediaWidth = Math.max(1, width - insets.left - insets.right);
+  const mediaWidth = Math.max(1, width);
 
   const showAt = (next: number) => {
     const bounded = Math.max(0, Math.min(assets.length - 1, next));
@@ -1053,7 +1054,7 @@ function DeviceViewer({
                   />
                 ) : (
                   <View
-                    style={{ position: 'absolute', top: mediaTop, left: insets.left, width: mediaWidth, height: mediaHeight, overflow: 'hidden' }}
+                    style={{ position: 'absolute', top: mediaTop, left: 0, width: mediaWidth, height: mediaHeight, overflow: 'hidden' }}
                   >
                     <ZoomableMedia
                       width={mediaWidth}
@@ -1294,34 +1295,6 @@ function Fact({ label, value, tint }: { label: string; value: string; tint?: str
   );
 }
 
-
-function ViewerAction({
-  icon,
-  label,
-  tint,
-  onPress,
-  disabled,
-}: {
-  icon: IconName;
-  label: string;
-  tint: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Touchable
-      onPress={onPress}
-      disabled={disabled}
-      radius={radius.pill}
-      label={label}
-      style={{ width: 44, height: VIEWER_ACTION_DOCK_HEIGHT }}
-    >
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} size={24} color={tint} />
-      </View>
-    </Touchable>
-  );
-}
 
 /** One photo in the device grid. */
 function Tile({

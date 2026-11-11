@@ -56,13 +56,13 @@ describe('Viewer filmstrip', () => {
     expect(props().windowSize).toBe(3);
     expect(props().maxToRenderPerBatch).toBe(8);
   });
-  it('selects relative to the current thumbnail when a drag ends, and only once', async () => {
+  it('does not select a photo when a drag ends', async () => {
     const { props, onSelect } = await render();
     const offset = props().contentOffset.x + 2 * 44;
     await act(async () => props().onScrollBeginDrag());
     await act(async () => props().onScrollEndDrag({ nativeEvent: { velocity: { x: 0 }, contentOffset: { x: offset + 5 } } }));
     await act(async () => props().onMomentumScrollEnd({ nativeEvent: { contentOffset: { x: offset } } }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(52);
+    expect(onSelect).not.toHaveBeenCalled();
   });
   it('does not change the second selection after a drag settles at the beginning', async () => {
     const { props, onSelect } = await render(1);
@@ -78,7 +78,18 @@ describe('Viewer filmstrip', () => {
     await act(async () => props().onScrollEndDrag({ nativeEvent: { velocity: { x: 1 }, contentOffset: { x: initial + 2 * 44 } } }));
     expect(onSelect).not.toHaveBeenCalled(); expect(scrollToOffset).not.toHaveBeenCalled();
     await act(async () => props().onMomentumScrollEnd({ nativeEvent: { contentOffset: { x: initial + 15 * 44 } } }));
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(65);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+  it('suppresses the release press after a drag but permits a fresh tap', async () => {
+    const { props, onSelect } = await render();
+    const thumb = props().renderItem({ item: items[51], index: 51 });
+    thumb.props.onPressIn();
+    await act(async () => props().onScrollBeginDrag());
+    await act(async () => props().onScrollEndDrag({ nativeEvent: { velocity: { x: 0 }, contentOffset: { x: 100 } } }));
+    thumb.props.onPress();
+    expect(onSelect).not.toHaveBeenCalled();
+    thumb.props.onPressIn(); thumb.props.onPress();
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(51);
   });
   it('scrolls only when the next selection leaves the visible area', async () => {
     const { tree, onSelect, scrollToOffset } = await render(0);

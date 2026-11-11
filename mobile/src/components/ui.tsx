@@ -30,6 +30,7 @@ import { Icon, type IconName } from './Icon';
 export function Touchable({
   onPress,
   onLongPress,
+  onPressIn,
   disabled,
   style,
   children,
@@ -40,6 +41,7 @@ export function Touchable({
 }: {
   onPress?: () => void;
   onLongPress?: () => void;
+  onPressIn?: () => void;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
@@ -53,6 +55,7 @@ export function Touchable({
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
+      onPressIn={onPressIn}
       disabled={disabled}
       accessibilityRole={role}
       accessibilityLabel={label}

@@ -36,17 +36,14 @@ export const viewerBottomPanelHeight = (safeBottom: number, video = false) =>
 export const viewerMediaBottom = (screenHeight: number, safeBottom: number, video = false) =>
   screenHeight - viewerBottomPanelHeight(safeBottom, video);
 
-/**
- * Reserve the full header and bottom panel. Neither thumbnails nor playback
- * controls overlap the contained image. Tapping only hides controls; it never
- * changes the media rectangle. Images and videos each keep their aspect ratio.
- */
+/** Photos fill the screen beneath floating chrome; videos keep playback clearance. */
 export function viewerMediaViewport(
   screenHeight: number,
   safeTop: number,
   safeBottom: number,
   video = false,
 ) {
+  if (!video) return { top: 0, height: Math.max(1, screenHeight), bottom: screenHeight };
   const top = viewerHeaderTop(safeTop) + VIEWER_HEADER_HEIGHT + VIEWER_MEDIA_TOP_GAP;
   const height = Math.max(1, viewerMediaBottom(screenHeight, safeBottom, video) - top);
   return { top, height, bottom: top + height };

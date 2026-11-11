@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { VIEWER_FILMSTRIP_HEIGHT } from './viewerGeometry';
 import {
   FILMSTRIP_CELL_WIDTH, FILMSTRIP_THUMB_HEIGHT, FILMSTRIP_THUMB_WIDTH,
-  filmstripIndex, filmstripInitialIndex, filmstripItemLayout, filmstripOffset, filmstripPadding, FILMSTRIP_EDGE_GUTTER,
+  filmstripInitialIndex, filmstripItemLayout, filmstripOffset, filmstripPadding,
 } from './filmstripGeometry';
 
 export interface ViewerFilmstripItem {
@@ -27,7 +27,7 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
   const dragging = useRef(false);
   const initial = useRef({ index: current, offset: { x: filmstripOffset(current, width, items.length), y: 0 } }).current;
   const scrollOffset = useRef(initial.offset.x);
-  const dragAnchor = useRef(0);
+  const suppressPress = useRef(false);
 
   const reveal = (animated = false) => {
     if (!items[current] || dragging.current) return;
@@ -46,13 +46,6 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
     if (!dragging.current) return;
     dragging.current = false;
     scrollOffset.current = offset;
-    const next = filmstripIndex(offset, items.length, dragAnchor.current);
-    if (items[next] && next !== current) onSelect(next);
-    const visibleOffset = filmstripOffset(next, width, items.length, offset);
-    if (Math.abs(visibleOffset - offset) >= 0.5) {
-      scrollOffset.current = visibleOffset;
-      strip.current?.scrollToOffset({ offset: visibleOffset, animated: false });
-    }
   };
 
   return (
@@ -75,15 +68,13 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
       windowSize={3}
       maxToRenderPerBatch={8}
       getItemLayout={(_data, index) => filmstripItemLayout(index)}
-      snapToInterval={FILMSTRIP_CELL_WIDTH}
       decelerationRate="fast"
       onContentSizeChange={() => reveal()}
       onScroll={event => { scrollOffset.current = event.nativeEvent.contentOffset.x; }}
       scrollEventThrottle={16}
       onScrollBeginDrag={() => {
         dragging.current = true;
-        dragAnchor.current = FILMSTRIP_EDGE_GUTTER + current * FILMSTRIP_CELL_WIDTH
-          + FILMSTRIP_CELL_WIDTH / 2 - scrollOffset.current;
+        suppressPress.current = true;
       }}
       onScrollEndDrag={(event) => {
         // A slow drag can end without a momentum event on iOS.
@@ -92,7 +83,8 @@ export function ViewerFilmstrip({ items, current, width, onSelect }: {
       onMomentumScrollEnd={(event) => settle(event.nativeEvent.contentOffset.x)}
       renderItem={({ item, index }) => (
         <Touchable
-          onPress={() => { dragging.current = false; onSelect(index); }}
+          onPress={() => { if (!suppressPress.current) onSelect(index); }}
+          onPressIn={() => { suppressPress.current = dragging.current; }}
           selected={index === current}
           radius={radius.sm}
           label={`Show item ${index + 1}`}

@@ -1,3 +1,4 @@
+vi.mock('./ViewerButton', () => ({ ViewerAction: 'ViewerAction' }));
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -111,40 +112,30 @@ describe('Video viewer bounds', () => {
 
 
 describe('Viewer chrome', () => {
-  it('groups the viewer into aligned dark materials even with the light app theme', async () => {
+  it('floats native navigation and actions separately from the photo strip', async () => {
     applyPalette(LIGHT);
     state.insets = { top: 0, bottom: 34, left: 62, right: 62 };
     let tree!: ReactTestRenderer;
+    const close = vi.fn();
     await act(async () => {
       tree = create(<>
-        <ViewerHeader visible width={874} insets={state.insets} title="Video.mp4" subtitle="Today" onClose={vi.fn()} />
-        <VideoPage {...props} width={874} height={402} />
+        <ViewerHeader visible width={874} insets={state.insets} title="Video.mp4" subtitle="Today" onClose={close} />
         <ViewerDock visible width={874} insets={state.insets} safeBottom={12}
           items={[]} current={0} onSelect={vi.fn()}><TextAction /></ViewerDock>
       </>);
     });
     mounted.push(tree);
     const materials = tree.root.findAllByType('Glass' as any);
-    expect(materials).toHaveLength(3);
-    for (const material of materials) {
-      expect(material.props.colorScheme).toBe('dark');
-      expect(material.props.tint).toBe('transparent');
-      expect(material.props.interactive).toBe(true);
-    }
-    const [header, playback, dock] = materials;
-    expect(header.parent!.props.style.width).toBe(560);
-    expect(dock.parent!.props.style.width).toBe(560);
-    expect(playback.props.style.width).toBe(560);
-    const videoContainer = tree.root.findByType('ZoomableMedia' as any).parent!.parent!;
-    expect(playback.props.style.left + videoContainer.props.style.left).toBe(header.parent!.props.style.left);
-    expect(dock.parent!.props.style.left).toBe(header.parent!.props.style.left);
-    const headerBottom = header.parent!.props.style.top + header.parent!.props.style.height;
-    const mediaTop = videoContainer.props.style.top;
-    const mediaHeight = tree.root.findByType('ZoomableMedia' as any).props.height;
-    const playbackTop = 402 - playback.props.style.bottom - playback.props.style.minHeight;
-    expect(mediaTop - headerBottom).toBe(playbackTop - (mediaTop + mediaHeight));
-    expect(header.parent!.props.style.top).toBe(dock.parent!.props.style.bottom);
-    const text = header.findAllByType('Text' as any);
+    expect(materials).toHaveLength(1);
+    const metadata = materials[0];
+    expect(metadata.props.colorScheme).toBe('dark');
+    const frame = metadata.parent!.parent!;
+    expect(frame.props.style.width).toBe(560);
+    const button = tree.root.findByType('ViewerAction' as any);
+    expect(button.props.icon).toBe('back');
+    button.props.onPress();
+    expect(close).toHaveBeenCalledOnce();
+    const text = metadata.findAllByType('Text' as any);
     expect(text[0].props.style.color).toBe(DARK.text);
     expect(text[1].props.style.color).toBe(DARK.muted);
   });

@@ -224,7 +224,7 @@ describe('Viewer layout matrix', () => {
       it(`balances visible media gaps at ${width}×${height} for ${photoWidth}×${photoHeight}`, () => {
         const safeBottom = clampViewerSafeBottom(34, true);
         const headerBottom = viewerHeaderTop(safeTop) + VIEWER_HEADER_HEIGHT;
-        for (const video of [false, true]) {
+        for (const video of [true]) {
           const viewport = viewerMediaViewport(height, safeTop, safeBottom, video);
           const image = containedMediaSize(width, viewport.height, photoWidth, photoHeight);
           const imageTop = viewport.top + (viewport.height - image.height) / 2;
@@ -245,7 +245,7 @@ describe('Viewer layout matrix', () => {
     expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
     for (const video of [false, true]) {
       expect(viewerBottomPanelHeight(34, video) - viewerBottomPanelHeight(bottom, video)).toBe(22);
-      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(22);
+      expect(viewerMediaViewport(874, 62, bottom, video).height - viewerMediaViewport(874, 62, 34, video).height).toBe(video ? 22 : 0);
     }
     expect(clampViewerSafeBottom(20, true)).toBe(12);
     expect(clampViewerSafeBottom(0, true)).toBe(0);
@@ -262,8 +262,8 @@ describe('Viewer layout matrix', () => {
         const v=viewerMediaViewport(height,top,bottom); const media=containedMediaSize(width,v.height,mw,mh);
         expect(media.width).toBeLessThanOrEqual(width+0.001); expect(media.height).toBeLessThanOrEqual(v.height+0.001);
         expect(media.width/media.height).toBeCloseTo(mw/mh,5);
-        expect(v.top).toBeGreaterThanOrEqual(top + 52);
-        expect(v.bottom).toBeLessThanOrEqual(height-viewerFilmstripBottom(bottom)-VIEWER_FILMSTRIP_HEIGHT);
+        expect(v.top).toBe(0);
+        expect(v.bottom).toBe(height);
         const video = viewerMediaViewport(height,top,bottom,true);
         expect(video.bottom).toBeLessThanOrEqual(height-viewerVideoControlsBottom(bottom)-48);
         expect(VIEWER_ACTION_DOCK_HEIGHT).toBe(48);
