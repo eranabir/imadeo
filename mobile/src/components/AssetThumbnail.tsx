@@ -6,7 +6,7 @@ import { onTokenChanged } from '../lib/auth';
 
 // FlatList regroups rows after a deletion. Keep a bounded set of decoded
 // thumbnails so surviving images render synchronously in their new cells.
-// This is deliberately not an original-image cache (about 10 MiB at the default 250px thumbnail size).
+// This is deliberately not an original-image cache (at most ~40 MiB with 512px decoded images).
 const decoded = new Map<string, ImageRef>();
 const pending = new Map<string, Promise<ImageRef>>();
 const LIMIT = 40;
@@ -23,9 +23,11 @@ export function cachedThumbnail(serverUrl: string, assetId: string, token: strin
 export const AssetThumbnail = memo(function AssetThumbnail({
   serverUrl, assetId, token, ...props
 }: Omit<ImageProps, 'source'> & { serverUrl: string; assetId: string; token: string | null }) {
-  // Previews are viewer-sized (1440px); decoding them for every small tile
-  // overwhelms memory and image workers during a long fling.
-  const source = useMemo(() => thumbnail(serverUrl, assetId, token), [serverUrl, assetId, token]);
+  // Keep retina tiles sharp, but decode the viewer-sized source only once,
+  // at a bounded size. Mounting a URI Image while loadAsync runs duplicates
+  // image work and retains a second, larger decoded bitmap for every tile.
+  const source = useMemo(() => ({ ...thumbnail(serverUrl, assetId, token), uri: `${serverUrl}/api/assets/${assetId}/thumbnail?size=preview` }), [serverUrl, assetId, token]);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const key = `${serverUrl}\n${token ?? ''}\n${assetId}`;
   const [loaded, setLoaded] = useState<{ key: string; image: ImageRef } | null>(null);
   const image = decoded.get(key) ?? (loaded?.key === key ? loaded.image : null);
@@ -42,7 +44,7 @@ export const AssetThumbnail = memo(function AssetThumbnail({
     const started = epoch;
     let task = pending.get(key);
     if (!task) {
-      task = Image.loadAsync(source, { maxWidth: 768, maxHeight: 768 });
+      task = Image.loadAsync(source, { maxWidth: 512, maxHeight: 512 });
       pending.set(key, task);
     }
     void task.then((result) => {
@@ -51,9 +53,10 @@ export const AssetThumbnail = memo(function AssetThumbnail({
       while (decoded.size > LIMIT) decoded.delete(decoded.keys().next().value!);
       if (alive) setLoaded({ key, image: result });
     }).catch(() => {
-      // The regular Image loader below remains responsible for errors/retry.
+      // Let the native loader report errors to callers if preloading failed.
+      if (alive) setFailedKey(key);
     }).finally(() => { if (pending.get(key) === task) pending.delete(key); });
     return () => { alive = false; };
   }, [key, source, token]);
-  return <Image {...props} source={image ?? source} transition={0} recyclingKey={assetId} />;
+  return <Image {...props} source={image ?? (failedKey === key ? thumbnail(serverUrl, assetId, token) : !token ? source : null)} transition={0} recyclingKey={assetId} />;
 });

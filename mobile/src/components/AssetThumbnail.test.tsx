@@ -21,11 +21,14 @@ beforeEach(() => { mocks.memoryWarning?.(); mocks.load.mockReset().mockImplement
 afterEach(async () => { for (const tree of mounted.splice(0)) await act(async () => tree.unmount()); });
 
 describe('Grid thumbnail loading', () => {
-  it('uses small authenticated thumbnails instead of viewer previews during scrolling', async () => {
+  it('decodes sharp authenticated tiles once at a bounded size while scrolling', async () => {
     const tree = await render();
     const image = tree.root.findByType('Image' as any);
-    expect(image.props.source).toEqual({ uri: 'https://photos.test/api/assets/photo/thumbnail', headers: { Authorization: 'Bearer token' } });
-    expect(mocks.load.mock.calls[0][0]).toEqual(image.props.source);
+    expect(image.props.source).toBeNull();
+    expect(mocks.load).toHaveBeenCalledExactlyOnceWith(
+      { uri: 'https://photos.test/api/assets/photo/thumbnail?size=preview', headers: { Authorization: 'Bearer token' } },
+      { maxWidth: 512, maxHeight: 512 },
+    );
     expect(image.props.transition).toBe(0);
   });
 
@@ -40,6 +43,12 @@ describe('Grid thumbnail loading', () => {
     const recycled = await render();
     expect(recycled.root.findByType('Image' as any).props.source).toBe(image);
     expect(mocks.load).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the small thumbnail if decoding the preview fails', async () => {
+    mocks.load.mockRejectedValue(new Error('Preview missing'));
+    const tree = await render();
+    expect(tree.root.findByType('Image' as any).props.source.uri).toBe('https://photos.test/api/assets/photo/thumbnail');
   });
 
   it('does not retain a late thumbnail after logout', async () => {
