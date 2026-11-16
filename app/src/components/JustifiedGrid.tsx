@@ -1,4 +1,3 @@
-import { frameScheduler } from '../lib/frameScheduler';
 import clsx from 'clsx';
 import { Heart, Play } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -186,29 +185,25 @@ export function JustifiedGrid({
       setRange((current) => (current.start === start && current.end === end ? current : { start, end }));
     };
 
-    const { schedule: scheduleUpdate, cancel } = frameScheduler(update);
-
     update();
-    parent?.addEventListener('scroll', scheduleUpdate, { passive: true });
-    window.addEventListener('scroll', scheduleUpdate, { passive: true });
-    window.addEventListener('resize', scheduleUpdate);
-    const observer = new ResizeObserver(scheduleUpdate);
+    parent?.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    const observer = new ResizeObserver(update);
     observer.observe(element);
     if (parent) observer.observe(parent);
     return () => {
-      cancel();
-      parent?.removeEventListener('scroll', scheduleUpdate);
-      window.removeEventListener('scroll', scheduleUpdate);
-      window.removeEventListener('resize', scheduleUpdate);
+      parent?.removeEventListener('scroll', update);
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
       observer.disconnect();
     };
   }, [rows.length, rowOffsets, totalHeight]);
 
   const selecting = (selected?.size ?? 0) > 0;
 
-  // Mounted rows change while scrolling; they must never become browser scroll anchors.
   return (
-    <div ref={container} className="relative w-full" style={{ height: totalHeight, overflowAnchor: 'none' }}>
+    <div ref={container} className="relative w-full" style={{ height: totalHeight }}>
       {rows.slice(range.start, range.end).map((row, index) => {
         const rowIndex = range.start + index;
         return (
