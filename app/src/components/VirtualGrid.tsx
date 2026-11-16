@@ -1,3 +1,4 @@
+import { frameScheduler } from '../lib/frameScheduler';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface Props<T> {
@@ -79,19 +80,23 @@ export function VirtualGrid<T>({
       const next = { start: start * columns, end: Math.min(items.length, end * columns) };
       setRange((current) => (current.start === next.start && current.end === next.end ? current : next));
     };
+    const { schedule: scheduleUpdate, cancel } = frameScheduler(update);
+
     update();
-    parent?.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update);
+    parent?.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate);
     return () => {
-      parent?.removeEventListener('scroll', update);
-      window.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
+      cancel();
+      parent?.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
     };
   }, [items.length, columns, height, gap, rows]);
 
+  // Mounted rows change while scrolling; they must never become browser scroll anchors.
   return (
-    <div ref={element} className={`relative w-full ${className ?? ''}`} style={{ height: totalHeight }}>
+    <div ref={element} className={`relative w-full ${className ?? ''}`} style={{ height: totalHeight, overflowAnchor: 'none' }}>
       {items.slice(range.start, range.end).map((item, index) => {
         const at = range.start + index;
         const column = at % columns;
