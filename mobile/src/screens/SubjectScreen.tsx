@@ -1,3 +1,4 @@
+import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { AssetGrid, useSelection } from '../components/AssetGrid';
@@ -26,6 +27,8 @@ interface SubjectAsset extends Asset {
 
 /** Every photo one person or pet appears in. */
 export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBack }: Props) {
+  const [sort, setSort] = useState<MediaSort>('date');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [name, setName] = useState(title === 'Unnamed' ? '' : title);
   const [naming, setNaming] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -62,9 +65,9 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBa
 
   const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<SubjectAsset>(
     serverUrl,
-    `/people-and-pets/${subjectId}/assets`,
+    `/people-and-pets/${subjectId}/assets?sortBy=${sort}&order=${order}`,
   );
-  const clearance = useHeaderClearance();
+  const clearance = useHeaderClearance(MEDIA_SORT_HEIGHT);
   const selection = useSelection();
 
   const total = pagination?.total ?? 0;
@@ -139,7 +142,21 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBa
           reload();
         }}
       />
-      <Header {...bar} />
+      <Header {...bar}>
+        <MediaSortControl
+          sort={sort}
+          order={order}
+          onSort={value => {
+            selection.clear();
+            setSort(value);
+            setOrder(value === 'date' ? 'desc' : 'asc');
+          }}
+          onOrder={value => {
+            selection.clear();
+            setOrder(value);
+          }}
+        />
+      </Header>
       <SelectionDock />
 
       {naming && (

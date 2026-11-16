@@ -33,6 +33,7 @@ import {
   FaceIdsDto,
   MergeSubjectsDto,
   SubjectQueryDto,
+  SubjectAssetsQueryDto,
   ReassignFacesDto,
   SetCoverDto,
   SubjectIdsDto,
@@ -306,15 +307,9 @@ export class PeopleAndPetsController {
   getAssets(
     @AuthedUserId() userId: string,
     @Param('id') id: string,
-    @Query('page') page?: string,
-    @Query('size') size?: string,
+    @Query() query: SubjectAssetsQueryDto,
   ) {
-    return this.subjects.getAssets(
-      userId,
-      id,
-      page ? Number.parseInt(page, 10) : 1,
-      size ? Number.parseInt(size, 10) : 250,
-    );
+    return this.subjects.getAssets(userId, id, query.page ?? 1, query.size ?? 250, query);
   }
 
   @Put(':id')

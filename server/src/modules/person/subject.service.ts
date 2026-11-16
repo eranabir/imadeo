@@ -9,7 +9,7 @@ import { SubjectKind } from '../../db';
 import { MediaService } from '../../infra/media/media.service';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { StorageService } from '../../infra/storage/storage.service';
-import type { SubjectQueryDto, UpdateSubjectDto } from './person.dto';
+import type { SubjectAssetsQueryDto, SubjectQueryDto, UpdateSubjectDto } from './person.dto';
 
 @Injectable()
 export class SubjectService {
@@ -112,7 +112,10 @@ export class SubjectService {
   }
 
   /** Every photo this person appears in. */
-  async getAssets(userId: string, personId: string, page = 1, size = 250) {
+  async getAssets(
+    userId: string, personId: string, page = 1, size = 250,
+    query: Pick<SubjectAssetsQueryDto, 'sortBy' | 'order'> = {},
+  ) {
     await this.get(userId, personId);
 
     const safePage = Number.isFinite(page) ? Math.max(1, Math.trunc(page)) : 1;
@@ -122,6 +125,13 @@ export class SubjectService {
       ...mainLibraryAssetWhere(userId),
       faces: { some: { personId, deletedAt: null } },
     };
+
+    const order = query.order ?? 'desc';
+    const orderBy: Prisma.AssetOrderByWithRelationInput[] = query.sortBy === 'name'
+      ? [{ originalFileName: order }, { id: 'asc' }]
+      : query.sortBy === 'type'
+        ? [{ type: order }, { originalFileName: 'asc' }, { id: 'asc' }]
+        : [{ localDateTime: order }, { id: 'desc' }];
 
     const [items, total] = await Promise.all([
       this.prisma.asset.findMany({
@@ -133,7 +143,7 @@ export class SubjectService {
           // the wrong one would remove a different person from their own page.
           faces: { where: { personId, deletedAt: null }, select: { id: true } },
         },
-        orderBy: [{ localDateTime: 'desc' }],
+        orderBy,
         skip: (safePage - 1) * safeSize,
         take: safeSize,
       }),

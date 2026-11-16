@@ -54,6 +54,31 @@ describe('SubjectService.getAssets', () => {
   });
 });
 
+describe('Subject photo ordering', () => {
+  it.each([
+    ['date', 'asc', [{ localDateTime: 'asc' }, { id: 'desc' }]],
+    ['date', 'desc', [{ localDateTime: 'desc' }, { id: 'desc' }]],
+    ['name', 'asc', [{ originalFileName: 'asc' }, { id: 'asc' }]],
+    ['name', 'desc', [{ originalFileName: 'desc' }, { id: 'asc' }]],
+    ['type', 'asc', [{ type: 'asc' }, { originalFileName: 'asc' }, { id: 'asc' }]],
+    ['type', 'desc', [{ type: 'desc' }, { originalFileName: 'asc' }, { id: 'asc' }]],
+  ] as const)('orders %s %s before slicing the page and retains subject detections', async (sortBy, order, orderBy) => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const count = vi.fn().mockResolvedValue(500);
+    const service = new SubjectService({ asset: { findMany, count } } as never,
+      {} as never, {} as never, {} as never);
+    const get = vi.spyOn(service, 'get').mockResolvedValue({ id: 'person' } as never);
+    await service.getAssets('owner', 'person', 2, 100, { sortBy, order });
+    expect(get).toHaveBeenCalledWith('owner', 'person');
+    const query = findMany.mock.calls[0][0];
+    expect(query).toMatchObject({ orderBy, skip: 100, take: 100,
+      where: { ownerId: 'owner', faces: { some: { personId: 'person', deletedAt: null } } },
+      include: { faces: { where: { personId: 'person', deletedAt: null }, select: { id: true } } },
+    });
+    expect(count).toHaveBeenCalledWith({ where: query.where });
+  });
+});
+
 describe('SubjectService classification corrections', () => {
   it('removes pet species from the subject and its detections when moved to People', async () => {
     const personUpdate = vi.fn().mockResolvedValue({

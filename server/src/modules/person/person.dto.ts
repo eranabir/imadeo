@@ -42,6 +42,30 @@ export class SetCoverDto {
   assetId!: string;
 }
 
+/** Apply ordering before pagination so it covers the whole subject. */
+export class SubjectAssetsQueryDto {
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  size?: number;
+
+  @ApiPropertyOptional({ enum: ['date', 'name', 'type'] })
+  @IsOptional()
+  @IsIn(['date', 'name', 'type'])
+  sortBy?: 'date' | 'name' | 'type';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  order?: 'asc' | 'desc';
+}
+
 export class SubjectQueryDto {
   @ApiPropertyOptional({
     enum: ['PERSON', 'PET'],
