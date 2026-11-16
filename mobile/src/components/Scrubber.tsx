@@ -102,10 +102,12 @@ export function Scrubber({
     [runway, travel, onSeek, onDrag],
   );
 
-  scrollY.removeAllListeners();
-  scrollY.addListener(({ value }) => {
-    offset.current = value;
-  });
+  useEffect(() => {
+    const listener = scrollY.addListener(({ value }) => {
+      offset.current = value;
+    });
+    return () => scrollY.removeListener(listener);
+  }, [scrollY]);
 
   // Nowhere to go, or barely: the platform's own indicator is enough.
   if (travel < viewportHeight || runway <= 0) return null;
@@ -189,12 +191,13 @@ const AWAY = 12;
  */
 export function useScrolledAway(): [boolean, (offset: number) => void] {
   const [away, setAway] = useState(false);
+  const previous = useRef(false);
 
   const mark = useCallback((offset: number) => {
-    setAway((was) => {
-      const now = offset > AWAY;
-      return now === was ? was : now;
-    });
+    const now = offset > AWAY;
+    if (now === previous.current) return;
+    previous.current = now;
+    setAway(now);
   }, []);
 
   return [away, mark];

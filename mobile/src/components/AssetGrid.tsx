@@ -32,6 +32,9 @@ import { GridSkeleton, ListSkeleton } from './Loading';
 import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from './Scrubber';
 import { Touchable } from './ui';
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<Asset>);
+const AnimatedSectionList = Animated.createAnimatedComponent(SectionList<Asset[]>);
+
 interface Props {
   serverUrl: string;
   assets: Asset[];
@@ -433,16 +436,25 @@ export function AssetGrid({
       ?.scrollTo({ y: offset, animated: false });
   }, []);
 
-  const scrolling = {
-    ref: list as never,
-    onScroll: Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-      useNativeDriver: false,
+  const onScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+    {
+      useNativeDriver: true,
       listener: (event: { nativeEvent: { contentOffset: { y: number } } }) => {
         markAway(event.nativeEvent.contentOffset.y);
-        markDay(event.nativeEvent.contentOffset.y);
+        if (groupByDay) markDay(event.nativeEvent.contentOffset.y);
       },
-    }),
+    },
+  ), [scrollY, markAway, markDay, groupByDay]);
+
+  const scrolling = {
+    ref: list as never,
+    onScroll,
     scrollEventThrottle: 16,
+    // Bound decoded images and native views to nearby screens. The default
+    // 21-screen window mounts hundreds of tiles in a large folder.
+    windowSize: 5,
+    maxToRenderPerBatch: 6,
     // The platform's own indicator would sit right beside the handle saying the
     // same thing in grey, and only one of the two can be grabbed.
     showsVerticalScrollIndicator: false,
@@ -500,7 +512,7 @@ export function AssetGrid({
     return (
       <>
         <ScrollViewMarker style={{ flex: 1 }}>
-          <SectionList
+          <AnimatedSectionList
           sections={days}
           // Deletion repacks a day's rows. Keep the row instances mounted so
           // surviving thumbnails do not flash through their empty state.
@@ -589,7 +601,7 @@ export function AssetGrid({
   return (
     <>
       <ScrollViewMarker style={{ flex: 1 }}>
-        <FlatList
+        <AnimatedFlatList
           {...scrolling}
           data={assets}
           keyExtractor={(item) => item.id}
