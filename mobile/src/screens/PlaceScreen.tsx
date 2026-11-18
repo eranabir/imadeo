@@ -37,6 +37,7 @@ export function PlaceScreen({ serverUrl, city, title, onBack }: Props) {
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        totalCount={pagination?.total}
         hasMore={hasMore}
         loadingMore={loadingMore}
         onLoadMore={loadMore}

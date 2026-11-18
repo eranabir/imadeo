@@ -118,6 +118,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBa
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        totalCount={pagination?.total}
         hasMore={hasMore}
         loadingMore={loadingMore}
         onLoadMore={loadMore}

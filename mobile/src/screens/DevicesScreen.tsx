@@ -162,6 +162,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={assets.reload}
+        totalCount={assets.pagination?.total}
         hasMore={assets.hasMore}
         loadingMore={assets.loadingMore}
         onLoadMore={assets.loadMore}

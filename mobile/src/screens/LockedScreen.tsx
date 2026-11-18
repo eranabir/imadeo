@@ -96,6 +96,7 @@ export function LockedScreen({
         onRefresh={reload}
         topInset={clearance}
         onChanged={reload}
+        totalCount={media.pagination?.total}
         hasMore={media.hasMore}
         loadingMore={media.loadingMore}
         onLoadMore={media.loadMore}

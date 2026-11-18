@@ -37,6 +37,7 @@ export function FavoritesScreen({ serverUrl, onBack }: {
         selected={selection.ids}
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
+        totalCount={media.pagination?.total}
         hasMore={media.hasMore}
         loadingMore={media.loadingMore}
         onLoadMore={media.loadMore}

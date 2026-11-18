@@ -109,6 +109,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
         onToggle={selection.toggle}
         onStartSelecting={selection.start}
         onChanged={reload}
+        totalCount={pagination?.total}
         hasMore={hasMore}
         loadingMore={loadingMore}
         onLoadMore={loadMore}

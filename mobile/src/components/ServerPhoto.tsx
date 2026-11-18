@@ -22,6 +22,7 @@ interface Props {
   accessibilityLabel?: string;
   onTap?: () => void;
   onZoomChange?: (zoomed: boolean) => void;
+  onPageSwipe?: (direction: -1 | 1) => void;
 }
 
 /** Cached tile → preview → original. A failed upgrade never removes a good image. */
@@ -30,7 +31,7 @@ export const ServerPhoto = memo(function ServerPhoto(props: Props) {
 });
 
 function PhotoRequest({ serverUrl, token, asset, width, height, rotation, loadOriginal,
-  active, accessibilityLabel, onTap, onZoomChange }: Props) {
+  active, accessibilityLabel, onTap, onZoomChange, onPageSwipe }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [retryToken, setRetryToken] = useState<string | null>(null);
   const [displayed, setDisplayed] = useState<Partial<Record<Layer, boolean>>>({});
@@ -105,7 +106,7 @@ function PhotoRequest({ serverUrl, token, asset, width, height, rotation, loadOr
   return (
     <View style={{ width, height }}>
       <ZoomableMedia width={width} height={height} active={active}
-        accessibilityLabel={accessibilityLabel} onTap={onTap} onZoomChange={onZoomChange}>
+        accessibilityLabel={accessibilityLabel} onTap={onTap} onZoomChange={onZoomChange} onPageSwipe={onPageSwipe}>
       {(['thumb', 'preview', 'original'] as const).map(layer => {
         if (layer === 'original' && ((!loadOriginal && !displayed.original) || failed.original)) return null;
         if (layer === 'preview' && (failed.preview || displayed.original)) return null;

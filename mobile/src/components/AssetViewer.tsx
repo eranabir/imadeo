@@ -151,6 +151,12 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   const asset = assets[current];
   if (!asset) return null;
 
+  const swipePage = (direction: -1 | 1) => {
+    const next = current + direction;
+    if (next < 0 || next >= assets.length) return;
+    showAt(next);
+  };
+
   const favorite = favorites[asset.id] ?? asset.isFavorite ?? false;
   const rotation = rotations[asset.id] ?? asset.rotation ?? 0;
   const locked = asset.visibility === 'LOCKED';
@@ -261,6 +267,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                   safeBottom={safeBottom}
                   onScrubbingChange={setScrubbing}
                   onZoomChange={setZoomed}
+                  onPageSwipe={swipePage}
                   onTap={() => setChrome((on) => !on)}
                 />
               ) : (
@@ -276,6 +283,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                     accessibilityLabel={item.originalFileName ?? 'Photo'}
                     onTap={() => setChrome((on) => !on)}
                     onZoomChange={setZoomed}
+                    onPageSwipe={swipePage}
                     width={mediaWidth}
                     height={mediaHeight}
                     rotation={rotations[item.id] ?? item.rotation ?? 0}
@@ -434,6 +442,7 @@ export function VideoPage({
   safeBottom = 0,
   onScrubbingChange,
   onZoomChange,
+  onPageSwipe,
   onTap,
 }: {
   uri: string;
@@ -448,6 +457,7 @@ export function VideoPage({
   safeBottom?: number;
   onScrubbingChange?: (scrubbing: boolean) => void;
   onZoomChange?: (zoomed: boolean) => void;
+  onPageSwipe?: (direction: -1 | 1) => void;
   onTap?: () => void;
 }) {
   const [immersive, setImmersive] = useState(false);
@@ -656,6 +666,7 @@ export function VideoPage({
             accessibilityLabel="Video"
             onTap={tapVideo}
             onZoomChange={onZoomChange}
+            onPageSwipe={onPageSwipe}
           >
             <VideoView
               player={player}

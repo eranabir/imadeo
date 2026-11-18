@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** The handle's size, and the rail it runs in. */
 const HANDLE = 44;
-const RAIL = 34;
+const RAIL = HANDLE + 8;
 
 /**
  * A way through a library that is years long.
@@ -41,6 +41,7 @@ export function Scrubber({
   viewportHeight,
   topInset,
   visible,
+  position,
   onSeek,
   onDrag,
 }: {
@@ -52,6 +53,8 @@ export function Scrubber({
   topInset: number;
   /** Only while the list is moving, or being dragged by the handle itself. */
   visible: boolean;
+  /** Logical seek position while unloaded metadata is being fetched. */
+  position?: number | null;
   onSeek: (offset: number) => void;
   onDrag: (dragging: boolean) => void;
 }) {
@@ -69,7 +72,11 @@ export function Scrubber({
    * would render the whole grid to move one small view.
    */
   const offset = useRef(0);
-  const grabbed = useRef(0);
+  const grabbed = useRef({ at: 0, runway: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragY = useRef(new Animated.Value(0)).current;
+  const latest = useRef({ runway, travel, position, onSeek, onDrag });
+  latest.current = { runway, travel, position, onSeek, onDrag };
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -82,25 +89,36 @@ export function Scrubber({
     return () => animation.stop();
   }, [visible, fade]);
 
-  const responder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => {
-          grabbed.current = runway > 0 ? (offset.current / travel) * runway : 0;
-          onDrag(true);
-        },
-        onPanResponderMove: (_, gesture) => {
-          if (runway <= 0) return;
-          const at = Math.min(runway, Math.max(0, grabbed.current + gesture.dy));
-          onSeek((at / runway) * travel);
-        },
-        onPanResponderRelease: () => onDrag(false),
-        onPanResponderTerminate: () => onDrag(false),
-      }),
-    [runway, travel, onSeek, onDrag],
-  );
+  // One responder owns a drag even when pagination changes the geometry.
+  const responder = useMemo(() => {
+    const finish = () => {
+      setDragging(false);
+      latest.current.onDrag(false);
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        const current = latest.current;
+        const fraction = current.position ?? (current.travel > 0 ? offset.current / current.travel : 0);
+        const at = Math.min(1, Math.max(0, fraction)) * current.runway;
+        grabbed.current = { at, runway: current.runway };
+        dragY.setValue(at);
+        setDragging(true);
+        current.onDrag(true);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const start = grabbed.current;
+        if (start.runway <= 0) return;
+        const at = Math.min(start.runway, Math.max(0, start.at + gesture.dy));
+        dragY.setValue(at);
+        latest.current.onSeek((at / start.runway) * latest.current.travel);
+      },
+      onPanResponderRelease: finish,
+      onPanResponderTerminate: finish,
+    });
+  }, [dragY]);
 
   useEffect(() => {
     const listener = scrollY.addListener(({ value }) => {
@@ -131,7 +149,7 @@ export function Scrubber({
           right: 4,
           width: HANDLE,
           height: HANDLE,
-          transform: [{ translateY: y }],
+          transform: [{ translateY: dragging ? dragY : position != null ? position * runway : y }],
         }}
       >
         <View

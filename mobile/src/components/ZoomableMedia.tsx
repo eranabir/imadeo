@@ -21,6 +21,8 @@ interface Props {
   onTap?: () => void;
   /** Locks the surrounding paged gallery while this media owns horizontal movement. */
   onZoomChange?: (zoomed: boolean) => void;
+  /** Swipe beyond a magnified image edge to reach its neighbour. */
+  onPageSwipe?: (direction: -1 | 1) => void;
 }
 
 /**
@@ -39,6 +41,7 @@ export function ZoomableMedia({
   accessibilityLabel,
   onTap,
   onZoomChange,
+  onPageSwipe,
 }: Props) {
   const scale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -48,6 +51,7 @@ export function ZoomableMedia({
   const startY = useSharedValue(0);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
+  const edgePull = useSharedValue(0);
   const [panEnabled, setPanEnabled] = useState(false);
   const [pagingLocked, setPagingLocked] = useState(false);
   const zoomChange = useRef(onZoomChange);
@@ -141,15 +145,27 @@ export function ZoomableMedia({
   const pan = Gesture.Pan()
     .enabled(active && panEnabled)
     .minDistance(2)
+    .maxPointers(1)
     .onStart(() => {
+      edgePull.value = 0;
       startX.value = translateX.value;
       startY.value = translateY.value;
     })
     .onUpdate((event) => {
       const maxX = (width * scale.value - width) / 2;
       const maxY = (height * scale.value - height) / 2;
-      translateX.value = clamp(startX.value + event.translationX, -maxX, maxX);
+      const requestedX = startX.value + event.translationX;
+      translateX.value = clamp(requestedX, -maxX, maxX);
       translateY.value = clamp(startY.value + event.translationY, -maxY, maxY);
+      edgePull.value = requestedX - translateX.value;
+    })
+    .onEnd((event) => {
+      // Panning within the enlarged image stays local; only a deliberate
+      // horizontal pull past its edge changes the page.
+      if (onPageSwipe && Math.abs(edgePull.value) >= Math.max(48, width * 0.12) &&
+          Math.abs(event.translationX) > Math.abs(event.translationY) * 1.2) {
+        runOnJS(onPageSwipe)(edgePull.value < 0 ? 1 : -1);
+      }
     });
 
   const doubleTap = Gesture.Tap()
@@ -204,7 +220,7 @@ export function ZoomableMedia({
       <Reanimated.View
         accessible
         accessibilityLabel={accessibilityLabel}
-        accessibilityHint="Pinch or double tap to zoom"
+        accessibilityHint="Pinch or double tap to zoom. Swipe past an image edge to change photos."
         style={{ width, height, overflow: 'hidden' }}
       >
         <Reanimated.View

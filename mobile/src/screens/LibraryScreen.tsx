@@ -1,3 +1,4 @@
+import { fullScrollHeight, usePaginatedSeek } from '../components/usePaginatedSeek';
 import { ViewerAction } from '../components/ViewerButton';
 import { photoColumns } from '../lib/layout';
 import { isRegularIPhone } from '../lib/deviceLayout';
@@ -578,9 +579,20 @@ export function LibraryScreen({ server }: Props) {
 
   const [day, markDay, Cell] = useDayAtTop(sections, clearance);
 
-  const seek = useCallback((offset: number) => {
+  const scrollTo = useCallback((offset: number) => {
     list.current?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
   }, []);
+
+  const fullHeight = fullScrollHeight(contentHeight, assets.length, hasMore ? (total ?? assets.length) : assets.length,
+    columns, rowHeight || (windowWidth - insets.left - insets.right) / columns);
+  const { seek, cancel: cancelSeek, begin: beginSeek, fraction: seekPosition } = usePaginatedSeek({
+    contentHeight: fullHeight, loadedHeight: contentHeight, viewportHeight,
+    loadedCount: assets.length, hasMore, loadingMore, onLoadMore: loadMore, scrollTo,
+  });
+  const dragSeek = useCallback((dragging: boolean) => {
+    if (dragging) beginSeek();
+    setSeeking(dragging);
+  }, [beginSeek]);
 
   /*
    * The gate stands here, below every hook.
@@ -645,11 +657,13 @@ export function LibraryScreen({ server }: Props) {
             markDay(event.nativeEvent.contentOffset.y);
           },
         })}
+        scrollEnabled={!seeking}
+        onScrollBeginDrag={cancelSeek}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={(_, height) => setContentHeight(height)}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
-        onEndReached={() => void loadMore()}
+        onEndReached={seekPosition === null && !seeking ? () => void loadMore() : undefined}
         onEndReachedThreshold={0.7}
         // Every cell reports where it sits, which is what the date is read from.
         CellRendererComponent={Cell}
@@ -791,12 +805,13 @@ export function LibraryScreen({ server }: Props) {
 
       <Scrubber
         scrollY={scrollY}
-        contentHeight={contentHeight}
+        contentHeight={fullHeight}
+        position={seekPosition}
         viewportHeight={viewportHeight}
         topInset={clearance}
         visible={away || seeking}
         onSeek={seek}
-        onDrag={setSeeking}
+        onDrag={dragSeek}
       />
 
       {/*
@@ -988,6 +1003,12 @@ function DeviceViewer({
     pager.current?.scrollToOffset({ offset: bounded * width, animated: Math.abs(bounded - at) === 1 });
   };
 
+  const swipePage = (direction: -1 | 1) => {
+    const next = at + direction;
+    if (next < 0 || next >= assets.length) return;
+    showAt(next);
+  };
+
   return (
     <Modal visible transparent animationType="none" onRequestClose={leave} statusBarTranslucent>
       <StatusBar style="light" />
@@ -1050,6 +1071,7 @@ function DeviceViewer({
                     safeBottom={safeBottom}
                     onScrubbingChange={setScrubbing}
                     onZoomChange={setZoomed}
+                    onPageSwipe={swipePage}
                     onTap={() => setChrome((on) => !on)}
                   />
                 ) : (
@@ -1063,6 +1085,7 @@ function DeviceViewer({
                       accessibilityLabel={item.filename}
                       onTap={() => setChrome((on) => !on)}
                       onZoomChange={setZoomed}
+                    onPageSwipe={swipePage}
                     >
                       <Image
                         source={item.uri}
@@ -1162,6 +1185,7 @@ function DeviceVideoPage({
   safeBottom,
   onScrubbingChange,
   onZoomChange,
+  onPageSwipe,
   onTap,
 }: {
   asset: MediaLibrary.Asset;
@@ -1172,6 +1196,7 @@ function DeviceVideoPage({
   safeBottom: number;
   onScrubbingChange: (scrubbing: boolean) => void;
   onZoomChange: (zoomed: boolean) => void;
+  onPageSwipe: (direction: -1 | 1) => void;
   onTap: () => void;
 }) {
   return (
@@ -1186,6 +1211,7 @@ function DeviceVideoPage({
       safeBottom={safeBottom}
       onScrubbingChange={onScrubbingChange}
       onZoomChange={onZoomChange}
+      onPageSwipe={onPageSwipe}
       onTap={onTap}
     />
   );

@@ -1,3 +1,4 @@
+import { fullScrollHeight, usePaginatedSeek } from './usePaginatedSeek';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { photoColumns } from '../lib/layout';
@@ -68,6 +69,7 @@ interface Props {
   /** Something was changed from the viewer, so this list is stale. */
   onChanged?: () => void;
   /** API pagination follows the native list's recycled cells. */
+  totalCount?: number;
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
@@ -110,6 +112,7 @@ export function AssetGrid({
   onToggleDay,
   onStartSelecting,
   onChanged,
+  totalCount,
   hasMore = false,
   loadingMore = false,
   onLoadMore,
@@ -427,7 +430,7 @@ export function AssetGrid({
 
   const [day, markDay, Cell] = useDayAtTop(days, topInset);
 
-  const seek = useCallback((offset: number) => {
+  const scrollTo = useCallback((offset: number) => {
     // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
     // the handle is working in pixels, and section indices cannot answer where
     // 43% of the way down is.
@@ -435,6 +438,19 @@ export function AssetGrid({
       ?.getScrollResponder()
       ?.scrollTo({ y: offset, animated: false });
   }, []);
+
+  const fullHeight = fullScrollHeight(contentHeight, assets.length,
+    hasMore ? (totalCount ?? assets.length) : assets.length, viewMode === 'list' ? 1 : columns,
+    viewMode === 'list' ? 80 : rowHeight || (width - insets.left - insets.right) / columns);
+  const { seek, cancel: cancelSeek, begin: beginSeek, fraction: seekPosition } = usePaginatedSeek({
+    contentHeight: fullHeight, loadedHeight: contentHeight, viewportHeight,
+    loadedCount: assets.length, hasMore, loadingMore, onLoadMore, scrollTo,
+  });
+
+  const dragSeek = useCallback((dragging: boolean) => {
+    if (dragging) beginSeek();
+    setSeeking(dragging);
+  }, [beginSeek]);
 
   const onScroll = useMemo(() => Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -450,6 +466,8 @@ export function AssetGrid({
   const scrolling = {
     ref: list as never,
     onScroll,
+    scrollEnabled: !seeking,
+    onScrollBeginDrag: cancelSeek,
     scrollEventThrottle: 16,
     // Bound decoded images and native views to nearby screens. The default
     // 21-screen window mounts hundreds of tiles in a large folder.
@@ -504,7 +522,7 @@ export function AssetGrid({
         {emptyExtra}
       </Empty>
     ),
-    onEndReached: hasMore && !loadingMore ? onLoadMore : undefined,
+    onEndReached: hasMore && !loadingMore && !seeking && seekPosition === null ? onLoadMore : undefined,
     onEndReachedThreshold: 1.5,
   };
 
@@ -576,12 +594,13 @@ export function AssetGrid({
         {(
           <Scrubber
             scrollY={scrollY}
-            contentHeight={contentHeight}
+            contentHeight={fullHeight}
+        position={seekPosition}
             viewportHeight={viewportHeight}
             topInset={topInset}
             visible={away || seeking}
             onSeek={seek}
-            onDrag={setSeeking}
+            onDrag={dragSeek}
           />
         )}
 
@@ -627,7 +646,7 @@ export function AssetGrid({
           renderItem={({ item, index }) =>
             viewMode === 'list' ? renderListItem(item, index) : renderTile(item, index)
           }
-          onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
+          onEndReached={hasMore && !loadingMore && !seeking && seekPosition === null ? onLoadMore : undefined}
           onEndReachedThreshold={1.5}
           ListEmptyComponent={
             !showEmptyState ? null : loading ? (
@@ -644,12 +663,13 @@ export function AssetGrid({
 
       <Scrubber
         scrollY={scrollY}
-        contentHeight={contentHeight}
+        contentHeight={fullHeight}
+        position={seekPosition}
         viewportHeight={viewportHeight}
         topInset={topInset}
         visible={away || seeking}
         onSeek={seek}
-        onDrag={setSeeking}
+        onDrag={dragSeek}
       />
 
     <AssetViewer

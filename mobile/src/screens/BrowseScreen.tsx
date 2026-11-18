@@ -421,6 +421,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         onToggleDay={selection.toggleMany}
         onStartSelecting={selection.start}
         onChanged={reload}
+        totalCount={total ?? undefined}
         hasMore={showing === 'photos' ? timeline.hasMore : folderAssets.hasMore}
         loadingMore={showing === 'photos' ? timeline.loadingMore : folderAssets.loadingMore}
         onLoadMore={showing === 'photos' ? timeline.loadMore : folderAssets.loadMore}
