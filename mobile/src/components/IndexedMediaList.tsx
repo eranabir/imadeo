@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { PhotoScrollHandle } from './PhotoScrollHandle';
-import { Animated, View, VirtualizedList, useWindowDimensions, type RefreshControlProps } from 'react-native';
+import { View, VirtualizedList, useWindowDimensions, type RefreshControlProps } from 'react-native';
 import { ScrollViewMarker } from 'react-native-screens/experimental';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { IndexedCollection } from '../lib/indexedCollection';
@@ -30,9 +29,6 @@ export function IndexedMediaList<T>({ collection, columns, rowHeight: height, to
   const offset = useRef(0), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef({ collection, columns, rowHeight, topInset, headerHeight, viewport, onTopItem, active });
   latest.current = { collection, columns, rowHeight, topInset, headerHeight, viewport, onTopItem, active };
-  const list = useRef<VirtualizedList<number>>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const [content, setContent] = useState(0);
   const rows = Math.ceil(collection.total / columns);
 
   const updateWindow = useCallback(() => {
@@ -59,7 +55,6 @@ export function IndexedMediaList<T>({ collection, columns, rowHeight: height, to
 
   return <View style={{ flex: 1 }}><ScrollViewMarker style={{ flex: 1 }}>
     <VirtualizedList<number>
-      ref={list}
       key={`${collection.key}-${columns}-${rowHeight}`}
       style={{ flex: 1 }}
       data={collection}
@@ -75,7 +70,6 @@ export function IndexedMediaList<T>({ collection, columns, rowHeight: height, to
       automaticallyAdjustContentInsets={false}
       automaticallyAdjustsScrollIndicatorInsets={false}
       showsVerticalScrollIndicator
-      onContentSizeChange={(_width, height) => setContent(height)}
       indicatorStyle="white"
       scrollIndicatorInsets={{ top: topInset, bottom: insets.bottom, right: insets.right }}
       contentContainerStyle={{ paddingTop: topInset, paddingBottom: TAB_BAR_CLEARANCE, paddingLeft: insets.left, paddingRight: insets.right }}
@@ -83,7 +77,7 @@ export function IndexedMediaList<T>({ collection, columns, rowHeight: height, to
       ListEmptyComponent={empty}
       refreshControl={refreshControl}
       onLayout={event => { setViewport(event.nativeEvent.layout.height); setLayoutWidth(event.nativeEvent.layout.width); }}
-      onScroll={event => { offset.current = event.nativeEvent.contentOffset.y; scrollY.setValue(offset.current); updateWindow(); }}
+      onScroll={event => { offset.current = event.nativeEvent.contentOffset.y; updateWindow(); }}
       scrollEventThrottle={32}
       renderItem={({ item: row }) => <View style={{ height: rowHeight, flexDirection: 'row' }}>
         {Array.from({ length: columns }, (_, column) => {
@@ -99,7 +93,5 @@ export function IndexedMediaList<T>({ collection, columns, rowHeight: height, to
       </View>}
     />
   </ScrollViewMarker>
-    {active && rows > 0 && <PhotoScrollHandle scrollY={scrollY} viewport={viewport} content={content} topInset={topInset}
-      onSeek={offset => list.current?.scrollToOffset({ offset, animated: false })} />}
   </View>;
 }

@@ -2,7 +2,6 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('react-native', () => ({ Animated: { Value: class { setValue() {} } }, Platform: { OS: 'ios' }, View: 'View', VirtualizedList: 'VirtualizedList', useWindowDimensions: () => ({ width: 390, height: 844 }) }));
-vi.mock('./PhotoScrollHandle', () => ({ PhotoScrollHandle: 'PhotoScrollHandle' }));
 vi.mock('react-native-screens/experimental', () => ({ ScrollViewMarker: 'ScrollViewMarker' }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 34, left: 0 }) }));
 import { IndexedMediaList } from './IndexedMediaList';
@@ -28,7 +27,8 @@ describe('Indexed native scroll geometry', () => {
     await act(async () => { vi.advanceTimersByTime(80); });
     expect(collection.loadRange.mock.calls).toEqual([[22656, 22680]]);
     expect(list().props.showsVerticalScrollIndicator).toBe(true);
-    expect(tree.root.findByType('PhotoScrollHandle' as any).props.viewport).toBe(780);
+    expect(tree.root.findAllByType('PhotoScrollHandle' as any)).toHaveLength(0);
+    expect(list().props.onContentSizeChange).toBeUndefined();
     expect(list().props.scrollToOffset).toBeUndefined();
     list().props.renderItem({ item: 0 });
     expect(tile.mock.calls.slice(-3).every(call => call[2] === false)).toBe(true);
@@ -48,6 +48,31 @@ describe('Indexed native scroll geometry', () => {
     await act(async () => { tree.update(render(true)); });
     await act(async () => { vi.advanceTimersByTime(80); });
     expect(collection.loadRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the native list and final row geometry when metadata arrives at the bottom', async () => {
+    vi.useFakeTimers();
+    const collection = { key: 'photos', total: 22680, version: 1,
+      itemAt: (index: number) => ({ id: String(index) }), loadRange: vi.fn() };
+    const render = () => <IndexedMediaList collection={{ ...collection }} columns={3}
+      rowHeight={130} topInset={100} renderItem={() => null} />;
+    await act(async () => { tree = create(render()); });
+    const nativeList = tree.root.findByType('VirtualizedList' as any);
+    await act(async () => {
+      nativeList.props.onLayout({ nativeEvent: { layout: { width: 390, height: 780 } } });
+      nativeList.props.onScroll({ nativeEvent: { contentOffset: { y: 982000 } } });
+      vi.advanceTimersByTime(80);
+    });
+    const finalRow = nativeList.props.getItemLayout(null, 7559);
+    collection.loadRange.mockClear();
+    collection.version++;
+    await act(async () => { tree.update(render()); });
+    expect(tree.root.findByType('VirtualizedList' as any)).toBe(nativeList);
+    expect(nativeList.props.getItemLayout(null, 7559)).toEqual(finalRow);
+    expect(nativeList.props.getItemCount()).toBe(7560);
+    expect(nativeList.props.showsVerticalScrollIndicator).toBe(true);
+    expect(nativeList.props.onContentSizeChange).toBeUndefined();
+    expect(collection.loadRange).not.toHaveBeenCalled();
   });
 
 });

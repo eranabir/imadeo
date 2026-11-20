@@ -1,4 +1,3 @@
-import { PhotoScrollHandle } from './PhotoScrollHandle';
 import { IndexedMediaList } from './IndexedMediaList';
 import type { IndexedCollection } from '../lib/indexedCollection';
 import { dayLabel } from '../lib/day';
@@ -416,16 +415,12 @@ export function AssetGrid({
   }, [assets]);
 
   /*
-   * What the scrubber and the date label are driven by.
+   * What the floating date label is driven by.
    *
-   * The offset lives in an `Animated.Value` so the handle can follow a fling
-   * without a render per frame; the day under the bar is state, because it
-   * changes a few times a second at most and has to reach a `Text`.
+   * Track the offset with the native animated driver. Only the day under the
+   * bar reaches React state; scrolling itself stays with the native list.
    */
   const scrollY = useRef(new Animated.Value(0)).current;
-  const list = useRef<SectionList<Asset[]> | FlatList<Asset>>(null);
-  const [contentHeight, setContentHeight] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
   const [away, markAway] = useScrolledAway();
 
   const [day, markDay, Cell] = useDayAtTop(days, topInset);
@@ -448,7 +443,6 @@ export function AssetGrid({
   ), [scrollY, markAway, markDay, groupByDay]);
 
   const scrolling = {
-    ref: list as never,
     onScroll,
     scrollEventThrottle: 16,
     // Bound decoded images and native views to nearby screens. The default
@@ -456,9 +450,6 @@ export function AssetGrid({
     windowSize: 5,
     maxToRenderPerBatch: 6,
     showsVerticalScrollIndicator: true,
-    onContentSizeChange: (_width: number, height: number) => setContentHeight(height),
-    onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
-      setViewportHeight(event.nativeEvent.layout.height),
   };
 
   const shared = {
@@ -523,13 +514,6 @@ export function AssetGrid({
     </>;
   }
 
-  const handle = !viewing && <PhotoScrollHandle scrollY={scrollY} viewport={viewportHeight} content={contentHeight} topInset={topInset}
-    onSeek={offset => {
-      const target = list.current;
-      if (target && 'scrollToOffset' in target) target.scrollToOffset({ offset, animated: false });
-      else target?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
-    }} />;
-
   if (groupByDay) {
     return (
       <>
@@ -555,7 +539,6 @@ export function AssetGrid({
             {...shared}
           />
         </ScrollViewMarker>
-        {handle}
 
         {/* Under the bar rather than in the grid, and only where the grid is
             cut into days — a folder or a set of results is not a timeline and
@@ -643,7 +626,6 @@ export function AssetGrid({
           }
         />
       </ScrollViewMarker>
-      {handle}
 
     <AssetViewer
       serverUrl={serverUrl}
