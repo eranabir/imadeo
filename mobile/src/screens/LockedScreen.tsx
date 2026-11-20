@@ -1,7 +1,10 @@
+import { useContainerSelection, ContainerActions } from '../components/ContainerActions';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { AssetGrid } from '../components/AssetGrid';
+import { PhotoActions } from '../components/PhotoActions';
+import { SelectionDock } from '../components/SelectionDock';
+import { AssetGrid, useSelection } from '../components/AssetGrid';
 import { AlbumCard, FolderCard, Section } from '../components/Cards';
 import { Header, HeaderAction, useHeaderClearance } from '../components/Header';
 import { VaultSheet, type VaultStatus } from '../components/sheets';
@@ -27,6 +30,8 @@ export function LockedScreen({
   serverUrl: string;
   onBack: () => void;
 }) {
+  const selection = useSelection();
+  const containers = useContainerSelection(selection.clear);
   const router = useRouter();
   const [unlocking, setUnlocking] = useState(false);
   const [locking, setLocking] = useState(false);
@@ -78,6 +83,8 @@ export function LockedScreen({
     setLocking(true);
     try {
       await request(serverUrl, '/auth/vault/lock', { method: 'POST' });
+      containers.clear();
+      selection.clear();
       await status.reload();
     } catch (cause) {
       Alert.alert('Could not lock Locked', cause instanceof Error ? cause.message : 'Try again.');
@@ -90,6 +97,7 @@ export function LockedScreen({
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AssetGrid
         serverUrl={serverUrl}
+        selected={selection.ids} onToggle={selection.toggle} onToggleDay={selection.toggleMany} onStartSelecting={id => { containers.clear(); selection.start(id); }}
         assets={media.items}
         collection={media.collection}
         token={media.token ?? folderTree.token ?? albums.token ?? status.token}
@@ -143,6 +151,7 @@ export function LockedScreen({
                       <FolderCard
                         key={folder.id}
                         folder={folder}
+                        {...containers.bind('folder', folder)}
                         onPress={() =>
                           router.push({
                             pathname: '/folder/[id]',
@@ -169,6 +178,7 @@ export function LockedScreen({
                         <AlbumCard
                           serverUrl={serverUrl}
                           album={album}
+                          {...containers.bind('album', album)}
                           token={albums.token ?? media.token}
                           onPress={() =>
                             router.push({
@@ -193,6 +203,19 @@ export function LockedScreen({
         }
       />
 
+      {unlocked && (containers.items.length ? (
+        <ContainerActions selection={containers} serverUrl={serverUrl} reload={reload} />
+      ) : (
+        <PhotoActions
+          locked
+          allFavorite={selection.ids.length > 0 && selection.ids.every(id => media.items.find(item => item.id === id)?.isFavorite)}
+          serverUrl={serverUrl}
+          ids={selection.ids}
+          onDone={() => { selection.clear(); reload(); }}
+          onClear={selection.clear}
+        />
+      ))}
+      <SelectionDock />
       <Header
         title="Locked"
         subtitle={

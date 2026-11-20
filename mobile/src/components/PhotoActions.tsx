@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { actions } from '../lib/actions';
 import { useSelectionBar, useSelectionDock } from '../selection';
@@ -194,6 +195,7 @@ export function DeviceActions({
   busy = false,
   onClear,
   onBackUp,
+  onShare,
   onRemove,
 }: {
   ids: string[];
@@ -202,6 +204,7 @@ export function DeviceActions({
   busy?: boolean;
   onClear: () => void;
   onBackUp: () => void;
+  onShare?: () => void;
   onRemove: () => void;
 }) {
   const { setActive } = useSelectionBar();
@@ -214,6 +217,7 @@ export function DeviceActions({
   useSelectionDock(
     showing ? (
       <Dock count={ids.length} onClear={onClear}>
+        {onShare && <ToolbarAction icon="shared" systemShare label="Share" onPress={onShare} />}
         {/* Nothing left to send is worth saying rather than hiding: the tick is
             why removing them from the phone is safe. */}
         <ToolbarAction
@@ -252,7 +256,7 @@ export function DeviceActions({
  * The count is not repeated here: the bar at the top of the screen already says
  * how many are picked, and this is where the verbs go.
  */
-function Dock({
+export function Dock({
   error,
   onClear,
   children,
@@ -301,17 +305,19 @@ function Dock({
 }
 
 /** One verb in the toolbar: a glyph over its own word. */
-function ToolbarAction({
+export function ToolbarAction({
   icon,
   label,
   onPress,
   danger,
+  systemShare,
   disabled,
 }: {
   icon: IconName;
   label: string;
   onPress: () => void;
   danger?: boolean;
+  systemShare?: boolean;
   disabled?: boolean;
 }) {
   const tint = disabled ? colors.faint : danger ? colors.danger : colors.text;
@@ -325,7 +331,7 @@ function ToolbarAction({
       style={{ flex: 1 }}
     >
       <View style={{ alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 2 }}>
-        <Icon name={icon} size={22} color={tint} />
+        {systemShare ? <SymbolView name="square.and.arrow.up" size={22} tintColor={tint} /> : <Icon name={icon} size={22} color={tint} />}
         <Text numberOfLines={1} style={{ color: tint, fontSize: 11, fontWeight: '600' }}>
           {label}
         </Text>

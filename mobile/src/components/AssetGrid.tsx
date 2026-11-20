@@ -1,3 +1,4 @@
+import { PhotoScrollHandle } from './PhotoScrollHandle';
 import { IndexedMediaList } from './IndexedMediaList';
 import type { IndexedCollection } from '../lib/indexedCollection';
 import { dayLabel } from '../lib/day';
@@ -423,15 +424,9 @@ export function AssetGrid({
    */
   const scrollY = useRef(new Animated.Value(0)).current;
   const list = useRef<SectionList<Asset[]> | FlatList<Asset>>(null);
+  const [contentHeight, setContentHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [away, markAway] = useScrolledAway();
-
-  /*
-   * One row of tiles, measured rather than assumed: a tile is a square of a
-   * third of the width on one phone and of something else on the next. Only the
-   * tail below the grid is set from it, which a point either way cannot spoil.
-   */
-  const [rowHeight, setRowHeight] = useState(0);
 
   const [day, markDay, Cell] = useDayAtTop(days, topInset);
 
@@ -460,9 +455,8 @@ export function AssetGrid({
     // 21-screen window mounts hundreds of tiles in a large folder.
     windowSize: 5,
     maxToRenderPerBatch: 6,
-    // The platform's own indicator would sit right beside the handle saying the
-    // same thing in grey, and only one of the two can be grabbed.
     showsVerticalScrollIndicator: true,
+    onContentSizeChange: (_width: number, height: number) => setContentHeight(height),
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
   };
@@ -471,22 +465,11 @@ export function AssetGrid({
     ...scrolling,
     // Every cell reports where it sits, which is what the date is read from.
     CellRendererComponent: Cell,
-    /*
-     * Room under the last row for it to be scrolled up to.
-     *
-     * The label names whatever is at the top of the screen, and without this
-     * the final day can never get there — the list runs out first, so the last
-     * photographs in a library are the one stretch it cannot name. A screen
-     * with the bar and one row of tiles taken out of it is exactly the gap
-     * between where the last row ends up and where it has to reach: any less
-     * and the scroll stops short of the last day, any more and it runs on past
-     * the end into empty space.
-     */
     contentContainerStyle: {
       paddingTop: topInset,
       paddingLeft: insets.left,
       paddingRight: insets.right,
-      paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - topInset - rowHeight),
+      paddingBottom: TAB_BAR_CLEARANCE,
     },
     ListHeaderComponent: header,
     refreshControl: onRefresh ? (
@@ -540,6 +523,13 @@ export function AssetGrid({
     </>;
   }
 
+  const handle = !viewing && <PhotoScrollHandle scrollY={scrollY} viewport={viewportHeight} content={contentHeight} topInset={topInset}
+    onSeek={offset => {
+      const target = list.current;
+      if (target && 'scrollToOffset' in target) target.scrollToOffset({ offset, animated: false });
+      else target?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
+    }} />;
+
   if (groupByDay) {
     return (
       <>
@@ -552,13 +542,7 @@ export function AssetGrid({
           // The heading would otherwise sit under the bar it scrolls beneath.
           stickySectionHeadersEnabled={false}
           renderItem={({ item: row }) => (
-            <View
-              style={{ flexDirection: 'row' }}
-              onLayout={(event) => {
-                const height = event.nativeEvent.layout.height;
-                if (Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
-              }}
-            >
+            <View style={{ flexDirection: 'row' }}>
               {row.map((asset) => renderTile(asset, place.get(asset.id) ?? 0))}
               {/* Keeps a short last row aligned with the ones above it rather
                   than spreading its tiles across the width. */}
@@ -571,6 +555,7 @@ export function AssetGrid({
             {...shared}
           />
         </ScrollViewMarker>
+        {handle}
 
         {/* Under the bar rather than in the grid, and only where the grid is
             cut into days — a folder or a set of results is not a timeline and
@@ -658,8 +643,7 @@ export function AssetGrid({
           }
         />
       </ScrollViewMarker>
-
-
+      {handle}
 
     <AssetViewer
       serverUrl={serverUrl}

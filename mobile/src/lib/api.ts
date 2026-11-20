@@ -68,6 +68,7 @@ export interface Folder {
 }
 
 export interface Album {
+  ownerId?: string;
   createdAt?: string;
   id: string;
   owner?: { id: string; name: string | null };

@@ -1,3 +1,4 @@
+import { useContainerSelection, ContainerActions, type ContainerTarget } from '../components/ContainerActions';
 import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Platform, Text, View } from 'react-native';
@@ -45,9 +46,6 @@ interface Props {
 }
 
 type Shelf = 'photos' | 'folders' | 'albums' | 'places' | 'sharing';
-/** Whatever a long press landed on. */
-type Target = { kind: 'folder' | 'album'; id: string; name: string; shared?: boolean };
-
 /**
  * Everything on the server: the whole timeline, the folder tree, the albums.
  *
@@ -64,25 +62,27 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   const router = useRouter();
   const atRoot = folderId === null;
 
+  const me = useResource<{ id: string }>(serverUrl, '/users/me');
   const [shelf, setShelf] = useState<Shelf>('photos');
   const [browseTabHeight, setBrowseTabHeight] = useState(BROWSE_TAB_HEIGHT);
   const browseTabsHeight = browseTabHeight + BROWSE_TAB_GAP * 2;
   const selection = useSelection();
+  const containers = useContainerSelection(selection.clear);
   const [viewMode, setViewMode] = useMediaViewMode();
   const [sort, setSort] = useState<MediaSort>('date');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
 
   const [creating, setCreating] = useState<'folder' | 'album' | null>(null);
-  const [menuFor, setMenuFor] = useState<Target | null>(null);
+  const [menuFor, setMenuFor] = useState<ContainerTarget | null>(null);
   const afterMenu = useRef<(() => void) | null>(null);
   const transitionFromMenu = (next: () => void) => {
     afterMenu.current = next;
     setMenuFor(null);
   };
-  const [renaming, setRenaming] = useState<Target | null>(null);
-  const [moving, setMoving] = useState<Target | null>(null);
-  const [deleting, setDeleting] = useState<Target | null>(null);
-  const [sharingFolder, setSharingFolder] = useState<Target | null>(null);
+  const [renaming, setRenaming] = useState<ContainerTarget | null>(null);
+  const [moving, setMoving] = useState<ContainerTarget | null>(null);
+  const [deleting, setDeleting] = useState<ContainerTarget | null>(null);
+  const [sharingFolder, setSharingFolder] = useState<ContainerTarget | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
   const showing: Shelf = atRoot ? shelf : 'folders';
@@ -207,7 +207,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
   const clearance = useHeaderClearance((atRoot ? browseTabsHeight : 0) + (showSorting ? MEDIA_SORT_HEIGHT : 0));
 
   const bar: HeaderConfig = {
-    title: title ?? 'Browse',
+    title: containers.items.length ? `${containers.items.length} selected` : title ?? 'Browse',
     subtitle,
     icon: (onBack
       ? 'folder'
@@ -258,6 +258,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
           active={shelf}
           onChange={(next) => {
             selection.clear();
+            containers.clear();
             setShelf(next);
           }}
         />
@@ -274,6 +275,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
     setFailure(null);
     try {
       await work();
+      containers.clear();
       reload();
       return true;
     } catch (e) {
@@ -329,13 +331,11 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
               <FolderCard
                 key={folder.id}
                 folder={folder}
+                {...containers.bind('folder', folder, folder.shared)}
                 onPress={() => router.push({
                   pathname: '/folder/[id]',
                   params: { id: folder.id, title: folder.name, ...(locked ? { locked: '1' } : {}) },
                 })}
-                  onLongPress={() =>
-                  setMenuFor({ kind: 'folder', id: folder.id, name: folder.name, shared: folder.shared })
-                }
               />
             ))}
           </View>
@@ -358,12 +358,12 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
                 <AlbumCard
                   serverUrl={serverUrl}
                   album={album}
+                  {...containers.bind('album', album, Boolean(album.ownerId && album.ownerId !== me.data?.id))}
                   token={token}
                   onPress={() => router.push({
                     pathname: '/album/[id]',
                     params: { id: album.id, title: album.name, ...(locked ? { locked: '1' } : {}) },
                   })}
-                  onLongPress={() => setMenuFor({ kind: 'album', id: album.id, name: album.name })}
                   layout={viewMode}
                 />
               </View>
@@ -420,7 +420,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         selected={selection.ids}
         onToggle={selection.toggle}
         onToggleDay={selection.toggleMany}
-        onStartSelecting={selection.start}
+        onStartSelecting={id => { containers.clear(); selection.start(id); }}
         onChanged={reload}
         totalCount={total ?? undefined}
         hasMore={showing === 'photos' ? timeline.hasMore : folderAssets.hasMore}
@@ -448,20 +448,24 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
       />
       )}
 
-      <PhotoActions
-        locked={locked}
-        serverUrl={serverUrl}
-        ids={selection.ids}
-        allFavorite={
-          selection.ids.length > 0 &&
-          selection.ids.every((id) => assets.find((a) => a.id === id)?.isFavorite)
-        }
-        onClear={selection.clear}
-        onDone={() => {
-          selection.clear();
-          reload();
-        }}
-      />
+      {containers.items.length ? (
+        <ContainerActions selection={containers} serverUrl={serverUrl} reload={reload} onOptions={setMenuFor} />
+      ) : (
+        <PhotoActions
+          locked={locked}
+          serverUrl={serverUrl}
+          ids={selection.ids}
+          allFavorite={
+            selection.ids.length > 0 &&
+            selection.ids.every((id) => assets.find((a) => a.id === id)?.isFavorite)
+          }
+          onClear={selection.clear}
+          onDone={() => {
+            selection.clear();
+            reload();
+          }}
+        />
+      )}
 
       <Header {...bar} onBack={onBack} account={atRoot ? <Account /> : undefined}>
         {bar.below}

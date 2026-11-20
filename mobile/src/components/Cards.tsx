@@ -40,12 +40,16 @@ export function FolderCard({
   detail,
   onPress,
   onLongPress,
+  selected,
+  onSelect,
 }: {
   folder: FolderCardData;
   /** Replaces the counts, for listings that do not return them. */
   detail?: string;
   onPress: () => void;
   onLongPress?: () => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const inside = [
     folder.childCount ? count(folder.childCount, 'folder') : null,
@@ -57,7 +61,8 @@ export function FolderCard({
 
   return (
     <Touchable
-      onPress={onPress}
+      onPress={onSelect ?? onPress}
+      selected={selected}
       onLongPress={onLongPress}
       radius={radius.md}
       label={folder.name}
@@ -96,7 +101,7 @@ export function FolderCard({
             </Text>
           )}
         </View>
-        <Icon name="forward" size={16} color={colors.faint} />
+        <Icon name={selected ? "check" : "forward"} size={16} color={selected ? colors.primary : colors.faint} />
       </View>
     </Touchable>
   );
@@ -109,6 +114,8 @@ export function AlbumCard({
   token,
   onPress,
   onLongPress,
+  selected,
+  onSelect,
   layout = 'grid',
 }: {
   serverUrl: string;
@@ -116,12 +123,15 @@ export function AlbumCard({
   token: string | null;
   onPress: () => void;
   onLongPress?: () => void;
+  selected?: boolean;
+  onSelect?: () => void;
   layout?: 'grid' | 'list';
 }) {
   if (layout === 'list') {
     return (
       <Touchable
-        onPress={onPress}
+        onPress={onSelect ?? onPress}
+        selected={selected}
         onLongPress={onLongPress}
         label={album.name}
         radius={radius.md}
@@ -159,7 +169,7 @@ export function AlbumCard({
             </Text>
           </View>
           {album.shared ? <Icon name="shared" size={16} color={colors.primary} /> : null}
-          <Icon name="forward" size={16} color={colors.faint} />
+          <Icon name={selected ? "check" : "forward"} size={16} color={selected ? colors.primary : colors.faint} />
         </View>
       </Touchable>
     );
@@ -167,7 +177,8 @@ export function AlbumCard({
 
   return (
     <Touchable
-      onPress={onPress}
+      onPress={onSelect ?? onPress}
+      selected={selected}
       onLongPress={onLongPress}
       label={album.name}
       radius={radius.md}
@@ -219,6 +230,7 @@ export function AlbumCard({
           </View>
         )}
 
+        {selected && <View style={{ position: 'absolute', top: 4, left: 4, padding: 5, backgroundColor: colors.raised, borderRadius: radius.pill }}><Icon name="check" size={20} color={colors.primary} /></View>}
         {album.shared && (
           <View
             style={{

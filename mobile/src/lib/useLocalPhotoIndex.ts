@@ -7,8 +7,9 @@ import { readLocalDevicePage } from './localDeviceMedia';
 
 const SIZE = 60;
 function legacyAsset(item: AssetMetadata): Legacy.Asset {
-  return { id: item.id, filename: item.filename ?? item.id,
-    uri: Platform.OS === 'ios' ? `ph://${item.id}` : item.id,
+  const id = Platform.OS === 'ios' ? item.id.replace(/^ph:\/\//, '') : item.id;
+  return { id, filename: item.filename ?? item.id,
+    uri: Platform.OS === 'ios' ? `ph://${id}` : item.id,
     mediaType: item.mediaType === MediaType.VIDEO ? 'video' : 'photo',
     mediaSubtypes: [], width: item.width ?? 0, height: item.height ?? 0,
     creationTime: item.creationTime ?? 0, modificationTime: item.modificationTime ?? 0,

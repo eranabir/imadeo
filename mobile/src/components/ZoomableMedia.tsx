@@ -51,7 +51,6 @@ export function ZoomableMedia({
   const startY = useSharedValue(0);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
-  const edgePull = useSharedValue(0);
   const [panEnabled, setPanEnabled] = useState(false);
   const [pagingLocked, setPagingLocked] = useState(false);
   const zoomChange = useRef(onZoomChange);
@@ -122,7 +121,9 @@ export function ZoomableMedia({
         maxY,
       );
     })
-    .onFinalize(() => {
+    // Failed pinch recognition also occurs on ordinary taps and one-finger pans.
+    // Only settle transforms after a pinch actually became active.
+    .onEnd(() => {
       if (scale.value <= REST_SCALE) {
         scale.value = withSpring(1, SPRING);
         translateX.value = withSpring(0, SPRING);
@@ -147,7 +148,6 @@ export function ZoomableMedia({
     .minDistance(2)
     .maxPointers(1)
     .onStart(() => {
-      edgePull.value = 0;
       startX.value = translateX.value;
       startY.value = translateY.value;
     })
@@ -157,14 +157,16 @@ export function ZoomableMedia({
       const requestedX = startX.value + event.translationX;
       translateX.value = clamp(requestedX, -maxX, maxX);
       translateY.value = clamp(startY.value + event.translationY, -maxY, maxY);
-      edgePull.value = requestedX - translateX.value;
     })
     .onEnd((event) => {
       // Panning within the enlarged image stays local; only a deliberate
       // horizontal pull past its edge changes the page.
-      if (onPageSwipe && Math.abs(edgePull.value) >= Math.max(48, width * 0.12) &&
+      const limit = width * (scale.value - 1) / 2;
+      const requested = startX.value + event.translationX;
+      const edgePull = requested - clamp(requested, -limit, limit);
+      if (onPageSwipe && Math.abs(edgePull) >= Math.max(48, width * 0.12) &&
           Math.abs(event.translationX) > Math.abs(event.translationY) * 1.2) {
-        runOnJS(onPageSwipe)(edgePull.value < 0 ? 1 : -1);
+        runOnJS(onPageSwipe)(edgePull < 0 ? 1 : -1);
       }
     });
 
@@ -220,6 +222,7 @@ export function ZoomableMedia({
       <Reanimated.View
         accessible
         accessibilityLabel={accessibilityLabel}
+        accessibilityValue={{ text: panEnabled ? 'Zoomed in' : 'Actual size' }}
         accessibilityHint="Pinch or double tap to zoom. Swipe past an image edge to change photos."
         style={{ width, height, overflow: 'hidden' }}
       >

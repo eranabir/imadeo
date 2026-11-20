@@ -1,7 +1,8 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-vi.mock('react-native', () => ({ Platform: { OS: 'ios' }, View: 'View', VirtualizedList: 'VirtualizedList', useWindowDimensions: () => ({ width: 390, height: 844 }) }));
+vi.mock('react-native', () => ({ Animated: { Value: class { setValue() {} } }, Platform: { OS: 'ios' }, View: 'View', VirtualizedList: 'VirtualizedList', useWindowDimensions: () => ({ width: 390, height: 844 }) }));
+vi.mock('./PhotoScrollHandle', () => ({ PhotoScrollHandle: 'PhotoScrollHandle' }));
 vi.mock('react-native-screens/experimental', () => ({ ScrollViewMarker: 'ScrollViewMarker' }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 34, left: 0 }) }));
 import { IndexedMediaList } from './IndexedMediaList';
@@ -27,6 +28,7 @@ describe('Indexed native scroll geometry', () => {
     await act(async () => { vi.advanceTimersByTime(80); });
     expect(collection.loadRange.mock.calls).toEqual([[22656, 22680]]);
     expect(list().props.showsVerticalScrollIndicator).toBe(true);
+    expect(tree.root.findByType('PhotoScrollHandle' as any).props.viewport).toBe(780);
     expect(list().props.scrollToOffset).toBeUndefined();
     list().props.renderItem({ item: 0 });
     expect(tile.mock.calls.slice(-3).every(call => call[2] === false)).toBe(true);

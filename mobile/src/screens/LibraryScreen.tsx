@@ -1,3 +1,4 @@
+import { shareLibraryPhotos } from '../lib/shareLibraryPhotos';
 import { IndexedMediaList } from '../components/IndexedMediaList';
 import { useLocalPhotoIndex } from '../lib/useLocalPhotoIndex';
 import type { IndexedCollection } from '../lib/indexedCollection';
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   ActivityIndicator,
+  Platform,
   AppState,
   FlatList,
   VirtualizedList,
@@ -739,6 +741,7 @@ export function LibraryScreen({ server }: Props) {
           which is the one moment the tabs are not what the next tap is for. */}
       <DeviceActions
         ids={picked}
+        onShare={Platform.OS === 'ios' ? () => void shareLibraryPhotos(picked) : undefined}
         pending={pickedPending}
         busy={running}
         onClear={() => setPicked([])}
@@ -973,7 +976,7 @@ function DeviceViewer({
                       accessibilityLabel={item.filename}
                       onTap={() => setChrome((on) => !on)}
                       onZoomChange={setZoomed}
-                    onPageSwipe={swipePage}
+                      onPageSwipe={swipePage}
                     >
                       <Image
                         source={item.uri}
@@ -1003,17 +1006,20 @@ function DeviceViewer({
         <ViewerDock collection={stripCollection} visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={leave}
           items={assets.map(item => ({ id: item.id, source: item.uri }))}
           current={at} onSelect={showAt}>
+            {Platform.OS === 'ios' && <ViewerAction icon="shared" label="Share original" tint={DARK.text}
+              disabled={!resolvedAsset} onPress={() => { if (resolvedAsset) void shareLibraryPhotos([resolvedAsset.id]); }} />}
             <ViewerAction
               icon={backedUp ? 'cloud-done' : 'backup'}
               label={backedUp ? `Already on ${host}` : 'Back up now'}
               tint={DARK.text}
-              disabled={backedUp || busy}
+              disabled={!resolvedAsset || backedUp || busy}
               onPress={() => onBackUp(asset)}
             />
 
             <ViewerAction
               icon="info"
               label="Details"
+              disabled={!resolvedAsset}
               tint={DARK.text}
               onPress={() => setDetails(true)}
             />
@@ -1021,6 +1027,7 @@ function DeviceViewer({
             <ViewerAction
               icon="trash"
               label="Remove from this phone"
+              disabled={!resolvedAsset}
               tint={DARK.text}
               onPress={() => setRemoving(true)}
             />

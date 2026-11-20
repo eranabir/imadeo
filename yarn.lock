@@ -2343,6 +2343,7 @@ __metadata:
     expo-secure-store: "npm:~57.0.1"
     expo-sharing: "npm:~57.0.24"
     expo-status-bar: "npm:~57.0.1"
+    expo-symbols: "npm:^57.0.2"
     expo-task-manager: "npm:~57.0.8"
     expo-video: "npm:~57.0.2"
     react: "npm:19.2.3"

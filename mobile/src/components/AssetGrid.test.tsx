@@ -13,6 +13,7 @@ vi.mock('react-native', () => ({
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ left: 0, right: 0, top: 0, bottom: 0 }) }));
 vi.mock('expo-router', () => ({ useFocusEffect: vi.fn() }));
 vi.mock('react-native-screens/experimental', () => ({ ScrollViewMarker: 'ScrollViewMarker' }));
+vi.mock('./PhotoScrollHandle', () => ({ PhotoScrollHandle: 'PhotoScrollHandle' }));
 vi.mock('./AssetViewer', () => ({ AssetViewer: 'AssetViewer' }));
 vi.mock('./AssetThumbnail', () => ({ AssetThumbnail: (props: any) => { mocks.thumbnails(props); return React.createElement('Thumbnail', props); } }));
 vi.mock('./Icon', () => ({ Icon: 'Icon' }));

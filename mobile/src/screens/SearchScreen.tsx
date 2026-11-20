@@ -1,3 +1,4 @@
+import { useContainerSelection, ContainerActions } from '../components/ContainerActions';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { Account } from '../components/Account';
@@ -202,6 +203,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
             active={mode}
             onChange={(next) => {
               selection.clear();
+              containers.clear();
               setMode(next);
             }}
           />
@@ -211,6 +213,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
   };
 
   const selection = useSelection();
+  const containers = useContainerSelection(selection.clear);
   const items = data?.items ?? [];
   const folders = data?.folders ?? [];
   const albums = data?.albums ?? [];
@@ -226,7 +229,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
         topInset={clearance}
         selected={selection.ids}
         onToggle={selection.toggle}
-        onStartSelecting={selection.start}
+        onStartSelecting={id => { containers.clear(); selection.start(id); }}
         onChanged={reload}
         header={
           <View style={{ paddingTop: 14 }}>
@@ -301,6 +304,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                     <FolderCard
                       key={folder.id}
                       folder={folder}
+                      {...containers.bind('folder', folder)}
                       // The places endpoint returns names only, with no counts
                       // to put here. "0 photos" would be a lie about a folder
                       // that matched precisely because of what is in it.
@@ -322,6 +326,7 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
                       <AlbumCard
                         serverUrl={serverUrl}
                         album={album}
+                        {...containers.bind('album', album)}
                         token={token}
                         onPress={() => router.push({ pathname: '/album/[id]', params: { id: album.id, title: album.name } })}
                       />
@@ -418,19 +423,23 @@ export function SearchScreen({ serverUrl }: { serverUrl: string }) {
         }
       />
 
-      <PhotoActions
-        serverUrl={serverUrl}
-        ids={selection.ids}
-        allFavorite={
-          selection.ids.length > 0 &&
-          selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)
-        }
-        onClear={selection.clear}
-        onDone={() => {
-          selection.clear();
-          reload();
-        }}
-      />
+      {containers.items.length ? (
+        <ContainerActions selection={containers} serverUrl={serverUrl} reload={reload} />
+      ) : (
+        <PhotoActions
+          serverUrl={serverUrl}
+          ids={selection.ids}
+          allFavorite={
+            selection.ids.length > 0 &&
+            selection.ids.every((id) => items.find((a) => a.id === id)?.isFavorite)
+          }
+          onClear={selection.clear}
+          onDone={() => {
+            selection.clear();
+            reload();
+          }}
+        />
+      )}
       <Header {...bar} account={<Account />}>
         {bar.below}
       </Header>
