@@ -406,6 +406,7 @@ export function BrowseScreen({ serverUrl, folderId, title, onBack, locked = fals
         viewMode={viewMode}
         serverUrl={serverUrl}
         assets={assets}
+        collection={showing === 'photos' ? timeline.collection : !atRoot ? folderAssets.collection : undefined}
         token={token}
         loading={loading}
         onRefresh={reload}

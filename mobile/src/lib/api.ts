@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { refreshPages } from './pagedRefresh';
+import { usePageWindow } from './usePageWindow';
 import {
   expireSession,
   onTokenChanged,
@@ -488,114 +488,31 @@ export function useResource<T>(
   return { data, loadedPath, token, error, loading, reload };
 }
 
-/**
- * A paged resource for long photo collections. Native lists already recycle
- * cells; this keeps their backing array bounded to the pages the user reached
- * instead of downloading a fixed, incomplete first 300 or 500 photos.
- */
-export function usePagedResource<T>(
+/** Fixed global positions with a bounded, random-access metadata page cache. */
+export function usePagedResource<T extends { id: string }>(
   serverUrl: string,
   path: string | null,
-  { size = 150, itemsKey = 'items' }: { size?: number; itemsKey?: PageItemsKey } = {},
+  { size = 60, itemsKey = 'items' }: { size?: number; itemsKey?: PageItemsKey } = {},
 ) {
-  const [items, setItems] = useState<T[]>([]);
-  const [pagination, setPagination] = useState<Paged<T>['pagination'] | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(path !== null);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  useEffect(() => onTokenChanged(setToken), []);
-  const page = useRef(0);
-  const generation = useRef(0);
+  const fetchPage = useCallback(async (page: number, signal: AbortSignal) => {
+    if (path === null) return { items: [] as T[], total: 0 };
+    const separator = path.includes('?') ? '&' : '?';
+    const body = await request<Paged<T> | AssetPage<T>>(serverUrl,
+      `${path}${separator}page=${page}&size=${size}`, { signal });
+    const items = itemsKey === 'assets' ? ('assets' in body ? body.assets : undefined)
+      : ('items' in body ? body.items : undefined);
+    if (!Array.isArray(items)) throw new Error('The server returned an invalid media page.');
+    return { items, total: body.pagination?.total ?? items.length };
+  }, [serverUrl, path, size, itemsKey]);
+  const resource = usePageWindow(`${serverUrl}${path ?? ''}`, fetchPage, path !== null, size);
+  const token = useToken();
   const seen = useRevision();
-
-  const load = useCallback(
-    async (nextPage: number, replace: boolean, silent = false) => {
-      if (path === null) return;
-      const mine = ++generation.current;
-      if (replace) {
-        if (!silent) setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-      setError(null);
-      try {
-        const separator = path.includes('?') ? '&' : '?';
-        const fetchPage = async (requestedPage: number) => {
-          const body = await request<Paged<T> | AssetPage<T>>(serverUrl,
-            `${path}${separator}page=${requestedPage}&size=${size}`);
-          const values = itemsKey === 'assets'
-            ? ('assets' in body ? body.assets : undefined)
-            : ('items' in body ? body.items : undefined);
-          if (!Array.isArray(values)) throw new Error('The server returned an invalid media page.');
-          return { items: values, pagination: body.pagination };
-        };
-        const body = replace
-          ? await refreshPages(page.current, fetchPage)
-          : await fetchPage(nextPage);
-        const auth = await storedToken();
-        if (mine !== generation.current) return;
-        const nextItems = body.items;
-        page.current = body.pagination?.page ?? nextPage;
-        setItems((current) => (replace ? nextItems : [...current, ...nextItems]));
-        setPagination(body.pagination ?? null);
-        setToken(auth);
-      } catch (cause) {
-        if (mine !== generation.current) return;
-        setError(
-          reachability === 'reachable'
-            ? (cause instanceof Error ? cause.message : 'Something went wrong.')
-            : null,
-        );
-      } finally {
-        if (mine === generation.current) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [itemsKey, path, serverUrl, size],
-  );
-
-  const reload = useCallback(async (silent = false) => {
-    if (path === null) {
-      setItems([]);
-      setPagination(null);
-      setLoading(false);
-      return;
-    }
-    await load(1, true, silent);
-  }, [path, load]);
-
+  const lastRevision = useRef(seen);
   useEffect(() => {
-    page.current = 0;
-    setItems([]);
-    setPagination(null);
-    void reload();
-    return () => { generation.current++; };
-  }, [reload]);
-
-  const seenRef = useRef(seen);
-  useEffect(() => {
-    if (seenRef.current === seen) return;
-    seenRef.current = seen;
-    void reload(true);
-  }, [reload, seen]);
-
-  useReloadOnFocus(reload);
-
-  // Not every endpoint supplies `pages`; page, size and total are the stable
-  // pagination contract and answer the same question without guessing.
-  const hasMore = Boolean(
-    pagination && pagination.page * pagination.size < pagination.total,
-  );
-  const loadMore = useCallback(() => {
-    if (!hasMore || loadingMore || loading) return;
-    void load(page.current + 1, false);
-  }, [hasMore, loadingMore, loading, load]);
-
-  return { items, pagination, token, error, loading, loadingMore, hasMore, reload, loadMore };
+    if (lastRevision.current !== seen) { lastRevision.current = seen; void resource.reload(); }
+  }, [seen, resource.reload]);
+  useReloadOnFocus(resource.reload);
+  return { ...resource, token };
 }
 
 /** The session token on its own, for screens that only render thumbnails. */

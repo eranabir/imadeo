@@ -28,6 +28,7 @@ export function FavoritesScreen({ serverUrl, onBack }: {
       <AssetGrid
         serverUrl={serverUrl}
         assets={media.items}
+        collection={media.collection}
         token={media.token}
         loading={media.loading}
         onRefresh={media.reload}

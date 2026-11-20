@@ -154,6 +154,7 @@ export function DeviceLibraryScreen({ serverUrl, deviceId, title, onBack }: Deta
       <AssetGrid
         serverUrl={serverUrl}
         assets={assets.items}
+        collection={assets.collection}
         token={assets.token}
         loading={assets.loading || device.loading}
         onRefresh={() => Promise.all([device.reload(), assets.reload()])}

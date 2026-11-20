@@ -63,7 +63,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBa
     }
   };
 
-  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<SubjectAsset>(
+  const { items, collection, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<SubjectAsset>(
     serverUrl,
     `/people-and-pets/${subjectId}/assets?sortBy=${sort}&order=${order}`,
   );
@@ -103,6 +103,7 @@ export function SubjectScreen({ serverUrl, subjectId, title, kind, species, onBa
       <AssetGrid
         serverUrl={serverUrl}
         assets={items}
+        collection={collection}
         token={token}
         loading={loading}
         onRefresh={reload}

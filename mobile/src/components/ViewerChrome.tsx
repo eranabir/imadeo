@@ -1,3 +1,4 @@
+import type { IndexedCollection } from '../lib/indexedCollection';
 import { Children, isValidElement, type ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { DARK, radius } from '../theme';
@@ -39,9 +40,10 @@ export function ViewerHeader({ visible, width, insets, title, subtitle }: Chrome
 }
 
 /** One trailing axis for navigation, grouped actions and deletion, as in Photos. */
-export function ViewerDock({ visible, width, height, insets, safeBottom, items, current, onSelect, onClose, children }: ChromeProps & {
+export function ViewerDock({ visible, width, height, insets, safeBottom, items, collection, current, onSelect, onClose, children }: ChromeProps & {
   safeBottom: number;
   items: ViewerFilmstripItem[];
+  collection?: IndexedCollection<ViewerFilmstripItem>;
   current: number;
   onSelect: (index: number) => void;
   onClose: () => void;
@@ -49,7 +51,7 @@ export function ViewerDock({ visible, width, height, insets, safeBottom, items, 
 }) {
   const rail = viewerRailFrame(width, height, insets, safeBottom);
   const frame = viewerChromeFrame(width, insets.left, Math.max(insets.right, rail.right + rail.width));
-  const stripWidth = filmstripViewportWidth(frame.width, items.length);
+  const stripWidth = filmstripViewportWidth(frame.width, collection?.total ?? items.length);
   const stripFrame = { left: frame.left + (frame.width - stripWidth) / 2, width: stripWidth };
   const actions = Children.toArray(children);
   const icon = (node: ReactNode) => isValidElement<{ icon?: string }>(node) ? node.props.icon : undefined;
@@ -61,7 +63,7 @@ export function ViewerDock({ visible, width, height, insets, safeBottom, items, 
   return <>
     <View style={{ position: 'absolute', bottom: safeBottom + 12, ...stripFrame,
       height: VIEWER_FILMSTRIP_HEIGHT, display: visible ? 'flex' : 'none' }}>
-      <ViewerFilmstrip width={stripWidth} items={items} current={current} onSelect={onSelect} />
+      <ViewerFilmstrip width={stripWidth} collection={collection} items={items} current={current} onSelect={onSelect} />
     </View>
     <View pointerEvents="box-none" style={{ position: 'absolute', ...rail, display: visible ? 'flex' : 'none' }}>
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}

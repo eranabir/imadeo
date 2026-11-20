@@ -15,7 +15,7 @@ interface Props {
 
 /** Everything taken in one town or city. */
 export function PlaceScreen({ serverUrl, city, title, onBack }: Props) {
-  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
+  const { items, collection, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/assets?city=${encodeURIComponent(city)}&sortBy=date&order=desc`,
   );
@@ -29,6 +29,7 @@ export function PlaceScreen({ serverUrl, city, title, onBack }: Props) {
       <AssetGrid
         serverUrl={serverUrl}
         assets={items}
+        collection={collection}
         token={token}
         loading={loading}
         onRefresh={reload}

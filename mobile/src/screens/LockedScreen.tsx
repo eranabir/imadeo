@@ -91,6 +91,7 @@ export function LockedScreen({
       <AssetGrid
         serverUrl={serverUrl}
         assets={media.items}
+        collection={media.collection}
         token={media.token ?? folderTree.token ?? albums.token ?? status.token}
         loading={loading}
         onRefresh={reload}

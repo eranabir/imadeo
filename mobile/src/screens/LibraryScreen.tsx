@@ -1,10 +1,13 @@
-import { fullScrollHeight, usePaginatedSeek } from '../components/usePaginatedSeek';
+import { IndexedMediaList } from '../components/IndexedMediaList';
+import { useLocalPhotoIndex } from '../lib/useLocalPhotoIndex';
+import type { IndexedCollection } from '../lib/indexedCollection';
+import type { ViewerFilmstripItem } from '../components/ViewerFilmstrip';
+import { dayLabel } from '../lib/day';
 import { ViewerAction } from '../components/ViewerButton';
 import { photoColumns } from '../lib/layout';
 import { isRegularIPhone } from '../lib/deviceLayout';
 import { MediaSortControl, MEDIA_SORT_HEIGHT, type MediaSort } from '../components/MediaSort';
 import { useMediaViewMode } from '../lib/viewMode';
-import { readLocalDevicePage } from '../lib/localDeviceMedia';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from 'expo-router';
@@ -19,12 +22,13 @@ import { useFocusEffect } from 'expo-router';
  * imported the same way here for the same reason.
  */
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   ActivityIndicator,
   AppState,
   FlatList,
+  VirtualizedList,
   useWindowDimensions,
   Linking,
   Modal,
@@ -50,7 +54,7 @@ import {
 import { ZoomableMedia } from '../components/ZoomableMedia';
 import { withoutViewerItem } from '../components/viewerItems';
 import { useGrowFrom, type Rect } from '../components/grow';
-import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from '../components/Scrubber';
+import { DateLabel } from '../components/Scrubber';
 import { Account } from '../components/Account';
 import { BackupProgressScreen } from './BackupProgressScreen';
 import { ViewerHeader, ViewerDock } from '../components/ViewerChrome';
@@ -126,9 +130,6 @@ export function LibraryScreen({ server }: Props) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const refreshGeneration = useRef(0);
-  const [endCursor, setEndCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [pending, setPending] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +146,7 @@ export function LibraryScreen({ server }: Props) {
   const [viewing, setViewing] = useState<{
     asset: MediaLibrary.Asset;
     from: Rect | null;
+    at?: number;
   } | null>(null);
 
   /** The per-item backup list, opened from the progress bar. */
@@ -157,16 +159,18 @@ export function LibraryScreen({ server }: Props) {
   const [stopping, setStopping] = useState(false);
   /** Read inside the upload loop, so Stop takes effect on the next item. */
   const stop = useRef(false);
-  /** Prevents two end-of-list events from requesting the same page. */
-  const pageInFlight = useRef(false);
   /** Invalidates a page request when a fresh library load starts. */
   const libraryVersion = useRef(0);
   /** Deletions can arrive once from our call and again from Photos' listener. */
   const appliedDeletions = useRef(new Map<string, number>());
   const hiddenBackupIDs = useRef(new Set<string>());
+  const [exclusionRevision, setExclusionRevision] = useState(0);
+  const [indexReady, setIndexReady] = useState(false);
   const hideExcluded = useCallback((ids: ReadonlySet<string>) => {
     // In-flight metadata readers share this set, so new exclusions also apply
     // to a native page that was already requested before backup completed.
+    const changed = ids.size !== hiddenBackupIDs.current.size || [...ids].some(id => !hiddenBackupIDs.current.has(id));
+    if (changed) setExclusionRevision(value => value + 1);
     hiddenBackupIDs.current.clear();
     ids.forEach(id => hiddenBackupIDs.current.add(id));
     setAssets(current => current.filter(asset => !ids.has(asset.id)));
@@ -181,6 +185,12 @@ export function LibraryScreen({ server }: Props) {
   );
   const selectionBar = useSelectionBar();
 
+  const nativePhotos = useLocalPhotoIndex(indexReady && Boolean(permission?.granted || permission?.accessPrivileges === 'limited'),
+    sort, order, hiddenBackupIDs.current, exclusionRevision);
+  useEffect(() => { setAssets(nativePhotos.items); setTotal(nativePhotos.pagination?.total ?? null); },
+    [nativePhotos.items, nativePhotos.pagination?.total]);
+  useEffect(() => { nativePhotos.collection.retain?.(picked); }, [nativePhotos.collection.retain, picked]);
+
   const load = useCallback(async () => {
     // Limited access still reads — of the subset that was shared.
     if (!permission?.granted && permission?.accessPrivileges !== 'limited') return;
@@ -191,13 +201,8 @@ export function LibraryScreen({ server }: Props) {
       const hidden = await excludedBackupIds(serverUrl);
       if (version !== libraryVersion.current) return;
       hideExcluded(hidden);
-      const page = await readLocalDevicePage(MediaLibrary.getAssetsAsync, sort, order, PAGE,
-        undefined, () => version === libraryVersion.current, hiddenBackupIDs.current);
-      if (!page || version !== libraryVersion.current) return;
-      setAssets(page.assets);
-      setTotal(page.totalCount);
-      setEndCursor(page.endCursor || null);
-      setHasMore(page.hasNextPage);
+      setIndexReady(true);
+      void nativePhotos.reload();
       // Both go through the server so a fresh install does not report a phone
       // full of photos as un-backed-up when they are all already there.
       const [nextPending, nextUploaded] = await Promise.all([
@@ -214,39 +219,13 @@ export function LibraryScreen({ server }: Props) {
     } finally {
       if (version === libraryVersion.current) setLoading(false);
     }
-  }, [permission?.granted, permission?.accessPrivileges, serverUrl, sort, order, hideExcluded]);
-
-  const loadMore = useCallback(async () => {
-    if (loading || !hasMore || !endCursor || pageInFlight.current) return;
-    const version = libraryVersion.current;
-    pageInFlight.current = true;
-    setLoadingMore(true);
-    try {
-      const page = await readLocalDevicePage(MediaLibrary.getAssetsAsync, sort, order, PAGE,
-        endCursor, () => version === libraryVersion.current, hiddenBackupIDs.current);
-      if (!page || version !== libraryVersion.current) return;
-      setAssets((current) => {
-        const known = new Set(current.map((asset) => asset.id));
-        return [...current, ...page.assets.filter((asset) => !known.has(asset.id))];
-      });
-      setEndCursor(page.endCursor || null);
-      setHasMore(page.hasNextPage);
-    } catch (cause) {
-      if (version === libraryVersion.current) {
-        setError(cause instanceof Error ? cause.message : 'Could not load more photos.');
-      }
-    } finally {
-      pageInFlight.current = false;
-      if (version === libraryVersion.current) setLoadingMore(false);
-    }
-  }, [endCursor, hasMore, loading, sort, order]);
+  }, [permission?.granted, permission?.accessPrivileges, serverUrl, sort, order, hideExcluded, nativePhotos.reload]);
 
   useFocusEffect(useCallback(() => {
     void load();
     return () => {
       libraryVersion.current++;
       refreshGeneration.current++;
-      pageInFlight.current = false;
       setRefreshing(false);
     };
   }, [load]));
@@ -255,8 +234,6 @@ export function LibraryScreen({ server }: Props) {
     setRefreshing(true);
     try { await load(); } finally { if (mine === refreshGeneration.current) setRefreshing(false); }
   };
-
-
 
 
   /**
@@ -369,16 +346,13 @@ export function LibraryScreen({ server }: Props) {
     for (const id of fresh) appliedDeletions.current.set(id, now);
     const gone = new Set(ids);
 
-    setAssets((current) => {
-      const next = current.filter((asset) => !gone.has(asset.id));
-      if (next.length !== current.length) setEndCursor(next.at(-1)?.id ?? null);
-      return next;
-    });
+    setAssets(current => current.filter(asset => !gone.has(asset.id)));
+    void nativePhotos.reload();
     setPicked((current) => current.filter((id) => !gone.has(id)));
     if (fresh.length > 0) {
       setTotal((current) => current === null ? null : Math.max(0, current - fresh.length));
     }
-  }, []);
+  }, [nativePhotos.reload]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -566,33 +540,9 @@ export function LibraryScreen({ server }: Props) {
         </Touchable>
       ) : undefined,
   };
-  /* The rail and the label, exactly as the server-side grid drives them. */
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const list = useRef<SectionList<MediaLibrary.Asset[]>>(null);
-  const [contentHeight, setContentHeight] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
-  const [seeking, setSeeking] = useState(false);
-  const [away, markAway] = useScrolledAway();
-
-  /* Only the tail below the grid is set from this; the date is not. */
-  const [rowHeight, setRowHeight] = useState(0);
-
-  const [day, markDay, Cell] = useDayAtTop(sections, clearance);
-
-  const scrollTo = useCallback((offset: number) => {
-    list.current?.getScrollResponder()?.scrollTo({ y: offset, animated: false });
-  }, []);
-
-  const fullHeight = fullScrollHeight(contentHeight, assets.length, hasMore ? (total ?? assets.length) : assets.length,
-    columns, rowHeight || (windowWidth - insets.left - insets.right) / columns);
-  const { seek, cancel: cancelSeek, begin: beginSeek, fraction: seekPosition } = usePaginatedSeek({
-    contentHeight: fullHeight, loadedHeight: contentHeight, viewportHeight,
-    loadedCount: assets.length, hasMore, loadingMore, onLoadMore: loadMore, scrollTo,
-  });
-  const dragSeek = useCallback((dragging: boolean) => {
-    if (dragging) beginSeek();
-    setSeeking(dragging);
-  }, [beginSeek]);
+  const [day, setDay] = useState<string | undefined>();
+  const away = true;
+  const topItem = useCallback((asset: MediaLibrary.Asset | undefined) => setDay(asset ? dayLabel(asset.creationTime) : undefined), []);
 
   /*
    * The gate stands here, below every hook.
@@ -642,40 +592,13 @@ export function LibraryScreen({ server }: Props) {
         left the screen exactly when a run was worth watching, and it cost a
         third of the first screenful before a single photo was visible.
       */}
-      <ScrollViewMarker style={{ flex: 1 }}>
-        <SectionList
-        sections={sections}
-        // A deletion repacks the three-column rows. Their positions are stable;
-        // their first asset is not, so key by position to preserve mounted images.
-        keyExtractor={(_row, index) => `row-${index}`}
-        stickySectionHeadersEnabled={false}
-        ref={list}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-          useNativeDriver: false,
-          listener: (event: { nativeEvent: { contentOffset: { y: number } } }) => {
-            markAway(event.nativeEvent.contentOffset.y);
-            markDay(event.nativeEvent.contentOffset.y);
-          },
-        })}
-        scrollEnabled={!seeking}
-        onScrollBeginDrag={cancelSeek}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={(_, height) => setContentHeight(height)}
-        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
-        onEndReached={seekPosition === null && !seeking ? () => void loadMore() : undefined}
-        onEndReachedThreshold={0.7}
-        // Every cell reports where it sits, which is what the date is read from.
-        CellRendererComponent={Cell}
-        // Room under the last row for it to be scrolled up to, so the label can
-        // name the final day the way it names every other one — a screen less
-        // the bar and one row, which lands the last row exactly at the bar.
-        contentContainerStyle={{
-          paddingLeft: insets.left,
-          paddingRight: insets.right,
-          paddingTop: clearance,
-          paddingBottom: Math.max(TAB_BAR_CLEARANCE, viewportHeight - clearance - rowHeight),
-        }}
+      <IndexedMediaList
+        active={!viewing}
+        collection={nativePhotos.collection}
+        columns={columns}
+        rowHeight={viewMode === 'list' ? 80 : available => available / columns}
+        topInset={clearance}
+        onTopItem={sort === 'date' ? topItem : undefined}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -686,10 +609,10 @@ export function LibraryScreen({ server }: Props) {
             progressViewOffset={clearance}
           />
         }
-        ListHeaderComponent={
-          error || progress?.failed || permission.accessPrivileges === 'limited' ? (
+        header={
+          error || nativePhotos.error || progress?.failed || permission.accessPrivileges === 'limited' ? (
             <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 8 }}>
-              {error && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error}</Text>}
+              {(error || nativePhotos.error) && <Text style={{ color: colors.danger, fontSize: 13.5 }}>{error ?? nativePhotos.error}</Text>}
 
               {/*
                 The way back into the run's account once it has finished.
@@ -725,36 +648,14 @@ export function LibraryScreen({ server }: Props) {
             </View>
           ) : null
         }
-        renderItem={({ item: row }) => (
-          <View
-            style={{ flexDirection: 'row' }}
-            onLayout={(event) => {
-              const height = event.nativeEvent.layout.height;
-              if (Math.abs(height - rowHeight) > 0.5) setRowHeight(height);
-            }}
-          >
-            {row.map((item) => (
-              <Tile
-                key={item.id}
-                listMode={viewMode === 'list'}
-                columns={columns}
-                asset={item}
-                on={picked.includes(item.id)}
-                sent={uploaded.has(item.id)}
-                selecting={picked.length > 0}
-                onToggle={toggle}
-                onOpen={(asset, from) => setViewing({ asset, from })}
-              />
-            ))}
-            {/* Keeps a day's last row aligned with the ones above it rather
-                than stretching two photos across the full width. */}
-            {row.length < columns &&
-              Array.from({ length: columns - row.length }).map((_, index) => (
-                <View key={`gap-${index}`} style={{ flex: 1 / columns }} />
-              ))}
-          </View>
-        )}
-        ListEmptyComponent={
+        renderItem={(item, at, visible) => <Tile
+          key={item.id} listMode={viewMode === 'list'} columns={columns}
+          asset={item} on={picked.includes(item.id)} sent={uploaded.has(item.id)}
+          selecting={picked.length > 0} onToggle={toggle}
+          onOpen={(asset, from) => setViewing({ asset, from, at })}
+          visible={visible}
+        />}
+        empty={
           loading ? null : (
             <Empty
               icon="phone"
@@ -763,15 +664,7 @@ export function LibraryScreen({ server }: Props) {
             />
           )
         }
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={{ paddingVertical: 22, alignItems: 'center' }}>
-              <ActivityIndicator color={colors.primary} />
-            </View>
-          ) : null
-        }
-        />
-      </ScrollViewMarker>
+      />
 
       <Header {...bar} account={<Account />}>
         {bar.below}
@@ -803,17 +696,6 @@ export function LibraryScreen({ server }: Props) {
         )}
       </View>}
 
-      <Scrubber
-        scrollY={scrollY}
-        contentHeight={fullHeight}
-        position={seekPosition}
-        viewportHeight={viewportHeight}
-        topInset={clearance}
-        visible={away || seeking}
-        onSeek={seek}
-        onDrag={dragSeek}
-      />
-
       {/*
         The device photo, full screen.
 
@@ -824,14 +706,12 @@ export function LibraryScreen({ server }: Props) {
       {viewing && (
         <DeviceViewer
           assets={assets}
-          start={assets.findIndex((asset) => asset.id === viewing.asset.id)}
+          start={viewing.at ?? assets.findIndex((asset) => asset.id === viewing.asset.id)}
+          collection={nativePhotos.collection}
           from={viewing.from}
           host={server.name}
           uploaded={uploaded}
           busy={running}
-          hasMore={hasMore}
-          loadingMore={loadingMore}
-          onLoadMore={loadMore}
           onClose={() => setViewing(null)}
           onBackUp={(asset) => void backUp([asset.id])}
           onRemove={(asset) => removeFromPhone([asset.id])}
@@ -900,19 +780,18 @@ export function LibraryScreen({ server }: Props) {
  */
 function DeviceViewer({
   assets: sourceAssets,
+  collection,
   start,
   from,
   host,
   uploaded,
   busy,
-  hasMore,
-  loadingMore,
-  onLoadMore,
   onClose,
   onBackUp,
   onRemove,
 }: {
   assets: MediaLibrary.Asset[];
+  collection?: IndexedCollection<MediaLibrary.Asset>;
   start: number;
   /** The tile this was opened from, when it could be measured in time. */
   from: Rect | null;
@@ -920,9 +799,6 @@ function DeviceViewer({
   /** Which of these the server already holds. */
   uploaded: Set<string>;
   busy: boolean;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onLoadMore: () => Promise<void>;
   onClose: () => void;
   onBackUp: (asset: MediaLibrary.Asset) => void;
   onRemove: (asset: MediaLibrary.Asset) => Promise<boolean>;
@@ -940,14 +816,15 @@ function DeviceViewer({
   const [assets, setAssets] = useState(sourceAssets);
   const removedIds = useRef(new Set<string>());
   useEffect(() => {
+    if (collection) return;
     setAssets((current) => {
       const known = new Set(current.map((item) => item.id));
       const added = sourceAssets.filter((item) => !known.has(item.id) && !removedIds.current.has(item.id));
       return added.length ? [...current, ...added] : current;
     });
-  }, [sourceAssets]);
+  }, [sourceAssets, collection?.key]);
   const insets = useSafeAreaInsets();
-  const pager = useRef<FlatList<MediaLibrary.Asset>>(null);
+  const pager = useRef<VirtualizedList<number>>(null);
   const opened = useRef(Math.max(0, start)).current;
   const [at, setAt] = useState(opened);
   /** The bar over the photograph, which a tap puts out of the way. */
@@ -960,7 +837,18 @@ function DeviceViewer({
   const resuming = useViewerPagerAnchor(pager, width, atRef);
 
 
-  const asset = assets[at] ?? assets[opened];
+  const total = collection?.total ?? assets.length;
+  const resolvedAsset = collection ? collection.itemAt(at) : assets[at];
+  const lastAsset = useRef(resolvedAsset ?? collection?.itemAt(opened) ?? assets[0]);
+  if (resolvedAsset) lastAsset.current = resolvedAsset;
+  const asset = resolvedAsset ?? lastAsset.current;
+  useEffect(() => { collection?.loadRange(Math.max(0, at - 2), at + 3); }, [at, collection?.key, collection?.loadRange]);
+  const stripCollection = useMemo<IndexedCollection<ViewerFilmstripItem> | undefined>(() => collection ? ({
+    ...collection, itemAt: index => {
+      const item = collection.itemAt(index);
+      return item ? { id: item.id, source: item.uri } : undefined;
+    },
+  }) : undefined, [collection]);
 
   /*
    * Back into the tile only while that tile is still the photograph on screen.
@@ -996,7 +884,7 @@ function DeviceViewer({
   const mediaWidth = Math.max(1, width);
 
   const showAt = (next: number) => {
-    const bounded = Math.max(0, Math.min(assets.length - 1, next));
+    const bounded = Math.max(0, Math.min(total - 1, next));
     resuming.current = false;
     setZoomed(false);
     setAt(bounded);
@@ -1005,7 +893,7 @@ function DeviceViewer({
 
   const swipePage = (direction: -1 | 1) => {
     const next = at + direction;
-    if (next < 0 || next >= assets.length) return;
+    if (next < 0 || next >= total) return;
     showAt(next);
   };
 
@@ -1022,14 +910,17 @@ function DeviceViewer({
 
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
-          <FlatList
+          <VirtualizedList<number>
             ref={pager}
-            data={assets}
+            data={collection ?? assets}
+            extraData={collection?.version}
+            getItem={(_data, index) => index}
+            getItemCount={() => total}
             horizontal
             pagingEnabled
             scrollEnabled={!scrubbing && !zoomed}
             showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
+            keyExtractor={index => `local-photo-${index}`}
             initialScrollIndex={opened}
             // Every page is exactly the screen's width, so the list never has to
             // measure anything to know where a given photo starts.
@@ -1048,18 +939,15 @@ function DeviceViewer({
             windowSize={3}
             initialNumToRender={1}
             maxToRenderPerBatch={2}
-            onEndReached={() => {
-              if (hasMore) void onLoadMore();
+            onScroll={event => {
+              const next = Math.round(event.nativeEvent.contentOffset.x / width);
+              collection?.loadRange(Math.max(0, next - 2), next + 3);
             }}
-            onEndReachedThreshold={0.8}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator color={colors.primary} />
-                </View>
-              ) : null
-            }
-            renderItem={({ item, index }) => (
+            scrollEventThrottle={100}
+            renderItem={({ item: index }) => {
+              const item = collection ? collection.itemAt(index) : assets[index];
+              if (!item) return <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={colors.primary} /></View>;
+              return (
               <View style={{ width, height, justifyContent: 'center' }}>
                 {item.mediaType === 'video' ? (
                   <DeviceVideoPage
@@ -1100,19 +988,19 @@ function DeviceViewer({
                   </View>
                 )}
               </View>
-            )}
+            ); }}
           />
         </Animated.View>
 
         <ViewerHeader visible={chrome} width={width} height={height} insets={insets}
           title={asset.filename}
           subtitle={[
-            `${at + 1} of ${assets.length}`,
+            `${at + 1} of ${total}`,
             taken ? taken.toLocaleDateString() : null,
             asset.mediaType === 'video' ? runningTime(asset.duration) : null,
           ].filter(Boolean).join(' · ')} />
 
-        <ViewerDock visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={leave}
+        <ViewerDock collection={stripCollection} visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={leave}
           items={assets.map(item => ({ id: item.id, source: item.uri }))}
           current={at} onSelect={showAt}>
             <ViewerAction
@@ -1156,6 +1044,11 @@ function DeviceViewer({
           onClose={() => setRemoving(false)}
           onConfirm={async () => {
             if (!await onRemove(asset)) return false;
+            if (collection) {
+              if (total <= 1) leave();
+              else showAt(Math.min(at, total - 2));
+              return true;
+            }
             removedIds.current.add(asset.id);
             const { items: remaining, index: next } = withoutViewerItem(assets, at, asset.id);
             if (!remaining.length) leave();
@@ -1327,6 +1220,7 @@ function Tile({
   columns,
   listMode = false,
   asset: item,
+  visible = true,
   on,
   sent,
   selecting,
@@ -1336,6 +1230,7 @@ function Tile({
   columns: number;
   listMode?: boolean;
   asset: MediaLibrary.Asset;
+  visible?: boolean;
   on: boolean;
   sent: boolean;
   selecting: boolean;
@@ -1393,7 +1288,7 @@ function Tile({
                   has already generated — including for videos, which is why no
                   decoding is needed here at all. */}
               <Image
-                source={item.uri}
+                source={visible ? item.uri : null}
                 style={{
                   width: '100%',
                   height: '100%',

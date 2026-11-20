@@ -1,14 +1,16 @@
+import type { IndexedCollection } from '../lib/indexedCollection';
+import type { ViewerFilmstripItem } from './ViewerFilmstrip';
 import { ViewerAction, ViewerActionGroup } from './ViewerButton';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { autoplayVideos } from '../lib/preferences';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Alert,
-  FlatList,
+  VirtualizedList,
   Modal,
   Platform,
   StyleSheet,
@@ -70,6 +72,7 @@ interface Props {
   serverUrl: string;
   token: string | null;
   assets: Asset[];
+  collection?: IndexedCollection<Asset>;
   /** Which one was tapped. Null closes the viewer. */
   index: number | null;
   /** The tile it was tapped on, when it could be measured in time. */
@@ -90,13 +93,13 @@ interface Props {
  * cover a pushed folder screen as readily as a tab — and it is genuinely modal,
  * with its own back behaviour and nothing underneath worth showing.
  */
-export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, from, onClose, onChanged }: Props) {
+export function AssetViewer({ serverUrl, token, assets: sourceAssets, collection, index, from, onClose, onChanged }: Props) {
   // Keep the open browsing session stable while the grid refreshes in the
   // background. Deletion changes this snapshot only after the server confirms.
   const [assets, setAssets] = useState(sourceAssets);
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const list = useRef<FlatList<Asset>>(null);
+  const list = useRef<VirtualizedList<number>>(null);
 
   const [current, setCurrent] = useState(index ?? 0);
   const [chrome, setChrome] = useState(true);
@@ -136,6 +139,22 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
     currentRef.current = current;
   }, [current]);
 
+  const total = collection?.total ?? assets.length;
+  const resolvedAsset = collection ? collection.itemAt(current) : assets[current];
+  const lastAsset = useRef<Asset | undefined>(resolvedAsset);
+  if (resolvedAsset) lastAsset.current = resolvedAsset;
+  useEffect(() => {
+    if (index !== null) collection?.loadRange(Math.max(0, current - 2), current + 3);
+  }, [index, current, collection?.key, collection?.loadRange]);
+  const stripCollection = useMemo<IndexedCollection<ViewerFilmstripItem> | undefined>(() => collection ? ({
+    ...collection,
+    itemAt: at => {
+      const item = collection.itemAt(at);
+      return item ? { id: item.id, source: { uri: `${serverUrl}/api/assets/${item.id}/thumbnail`,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined } } : undefined;
+    },
+  }) : undefined, [collection, serverUrl, token]);
+
   /*
    * Back into the tile only while that tile is still the photograph on screen.
    * After a swipe the one it was opened from is somewhere else entirely, and
@@ -148,12 +167,12 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
 
   if (!mounted) return null;
 
-  const asset = assets[current];
+  const asset = resolvedAsset ?? lastAsset.current;
   if (!asset) return null;
 
   const swipePage = (direction: -1 | 1) => {
     const next = current + direction;
-    if (next < 0 || next >= assets.length) return;
+    if (next < 0 || next >= total) return;
     showAt(next);
   };
 
@@ -203,7 +222,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
   };
 
   const showAt = (next: number) => {
-    const bounded = Math.max(0, Math.min(assets.length - 1, next));
+    const bounded = Math.max(0, Math.min(total - 1, next));
     resuming.current = false;
     setZoomed(false);
     setCurrent(bounded);
@@ -223,10 +242,13 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
 
 
         <Animated.View style={[StyleSheet.absoluteFill, grown]}>
-        <FlatList
+        <VirtualizedList<number>
           ref={list}
-          data={assets}
-          keyExtractor={(item) => item.id}
+          data={collection ?? assets}
+          extraData={collection?.version}
+          getItem={(_data, at) => at}
+          getItemCount={() => total}
+          keyExtractor={at => `photo-${at}`}
           horizontal
           pagingEnabled
           scrollEnabled={!scrubbing && !zoomed}
@@ -252,7 +274,15 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
           windowSize={3}
           initialNumToRender={1}
           maxToRenderPerBatch={2}
-          renderItem={({ item, index: i }) => (
+          onScroll={event => {
+            const at = Math.round(event.nativeEvent.contentOffset.x / width);
+            collection?.loadRange(Math.max(0, at - 2), at + 3);
+          }}
+          scrollEventThrottle={100}
+          renderItem={({ item: i }) => {
+            const item = collection ? collection.itemAt(i) : assets[i];
+            if (!item) return <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={DARK.text} /></View>;
+            return (
             <View style={{ width, height, alignItems: 'center', justifyContent: 'center' }}>
               {item.type === 'VIDEO' ? (
                 <VideoPage
@@ -291,18 +321,18 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
                 </View>
               )}
             </View>
-          )}
+          ); }}
         />
         </Animated.View>
 
         <ViewerHeader visible={chrome} width={width} height={height} insets={insets}
-          title={asset.originalFileName ?? 'Photo'}
+          title={resolvedAsset ? asset.originalFileName ?? 'Photo' : 'Loading photo…'}
           subtitle={[
             asset.localDateTime ? new Date(asset.localDateTime).toLocaleDateString() : null,
             formatDuration(asset.duration),
           ].filter(Boolean).join(' · ')} />
 
-        <ViewerDock visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={onClose}
+        <ViewerDock collection={stripCollection} visible={chrome} width={width} height={height} insets={insets} safeBottom={safeBottom} onClose={onClose}
           items={assets.map(item => ({
             id: item.id,
             source: {
@@ -315,7 +345,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
               icon="rotate"
               label="Rotate clockwise"
               tint={DARK.text}
-              disabled={busy}
+              disabled={busy || !resolvedAsset}
               onPress={async () => {
                 const next = ((rotation + 90) % 360) as 0 | 90 | 180 | 270;
                 setRotations((current) => ({ ...current, [asset.id]: next }));
@@ -329,7 +359,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
               icon={favorite ? 'heart-filled' : 'heart'}
               label={favorite ? 'Remove from favourites' : 'Favourite'}
               tint={favorite ? DARK.danger : DARK.text}
-              disabled={busy}
+              disabled={busy || !resolvedAsset}
               onPress={async () => {
                 setFavorites((f) => ({ ...f, [asset.id]: !favorite }));
                 if (!await run(() => actions.favorite(serverUrl, [asset.id], !favorite))) {
@@ -341,13 +371,13 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
               icon={locked ? 'unlock' : 'lock'}
               label={locked ? 'Remove from Locked' : 'Move to Locked'}
               tint={DARK.text}
-              disabled={busy}
+              disabled={busy || !resolvedAsset}
               onPress={() => void setLock(!locked)}
             />
 
-            <ViewerAction icon="shared" label="Share original" tint={DARK.text} disabled={busy}
+            <ViewerAction icon="shared" label="Share original" tint={DARK.text} disabled={busy || !resolvedAsset}
               onPress={() => void run(() => exportAsset(serverUrl, asset, 'share'))} />
-            <ViewerAction icon="download" label="Download to Photos" tint={DARK.text} disabled={busy}
+            <ViewerAction icon="download" label="Download to Photos" tint={DARK.text} disabled={busy || !resolvedAsset}
               onPress={async () => {
                 if (await run(() => exportAsset(serverUrl, asset, 'download'))) {
                   Alert.alert('Saved to Photos', 'The original is now in your photo library.');
@@ -357,7 +387,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
               icon="trash"
               label="Move to trash"
               tint={DARK.text}
-              disabled={busy}
+              disabled={busy || !resolvedAsset}
               onPress={() => setTrashing(true)}
             />
         </ViewerDock>
@@ -389,6 +419,11 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, index, fro
           onConfirm={async () => {
             const saved = await run(() => actions.trash(serverUrl, [asset.id]));
             if (saved) {
+              if (collection) {
+                if (total <= 1) onClose();
+                else showAt(Math.min(current, total - 2));
+                return true;
+              }
               const { items: remaining, index: next } = withoutViewerItem(assets, current, asset.id);
               if (!remaining.length) onClose();
               else {

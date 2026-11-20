@@ -1,4 +1,6 @@
-import { fullScrollHeight, usePaginatedSeek } from './usePaginatedSeek';
+import { IndexedMediaList } from './IndexedMediaList';
+import type { IndexedCollection } from '../lib/indexedCollection';
+import { dayLabel } from '../lib/day';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { photoColumns } from '../lib/layout';
@@ -30,7 +32,7 @@ import { AssetThumbnail } from './AssetThumbnail';
 import { type Rect } from './grow';
 import { Icon, type IconName } from './Icon';
 import { GridSkeleton, ListSkeleton } from './Loading';
-import { DateLabel, Scrubber, useDayAtTop, useScrolledAway } from './Scrubber';
+import { DateLabel, useDayAtTop, useScrolledAway } from './Scrubber';
 import { Touchable } from './ui';
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<Asset>);
@@ -39,6 +41,7 @@ const AnimatedSectionList = Animated.createAnimatedComponent(SectionList<Asset[]
 interface Props {
   serverUrl: string;
   assets: Asset[];
+  collection?: IndexedCollection<Asset>;
   token: string | null;
   loading?: boolean;
   onRefresh?: () => void | Promise<unknown>;
@@ -96,6 +99,7 @@ interface Props {
 export function AssetGrid({
   serverUrl,
   assets,
+  collection,
   token,
   loading = false,
   onRefresh,
@@ -174,7 +178,7 @@ export function AssetGrid({
    * that is what the viewer pages through — a row-relative index would open the
    * wrong photograph on every day but the first.
    */
-  const renderTile = (item: Asset, at: number) => {
+  const renderTile = (item: Asset, at: number, visible = true) => {
     const length = formatDuration(item.duration);
     const on = selected?.includes(item.id) ?? false;
 
@@ -208,6 +212,7 @@ export function AssetGrid({
             }}
           >
             <AssetThumbnail
+              enabled={visible}
               serverUrl={serverUrl} assetId={item.id} token={token}
               style={{
                 width: '100%',
@@ -281,7 +286,7 @@ export function AssetGrid({
     );
   };
 
-  const renderListItem = (item: Asset, at: number) => {
+  const renderListItem = (item: Asset, at: number, visible = true) => {
     const length = formatDuration(item.duration);
     const on = selected?.includes(item.id) ?? false;
     const date = item.localDateTime
@@ -304,7 +309,8 @@ export function AssetGrid({
           if (nativeEvent.actionName === 'longpress') onStartSelecting?.(item.id);
         }}
         accessibilityState={selecting ? { checked: on } : undefined}
-        style={{ marginHorizontal: 16, marginBottom: 8 }}
+        key={item.id}
+        style={{ flex: 1, marginHorizontal: 16, marginBottom: 8 }}
       >
         <View
           style={{
@@ -335,6 +341,7 @@ export function AssetGrid({
           ) : null}
           <View style={{ width: 56, height: 56 }}>
             <AssetThumbnail
+              enabled={visible}
               serverUrl={serverUrl} assetId={item.id} token={token}
               style={{
                 width: 56,
@@ -416,9 +423,7 @@ export function AssetGrid({
    */
   const scrollY = useRef(new Animated.Value(0)).current;
   const list = useRef<SectionList<Asset[]> | FlatList<Asset>>(null);
-  const [contentHeight, setContentHeight] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
-  const [seeking, setSeeking] = useState(false);
   const [away, markAway] = useScrolledAway();
 
   /*
@@ -430,27 +435,11 @@ export function AssetGrid({
 
   const [day, markDay, Cell] = useDayAtTop(days, topInset);
 
-  const scrollTo = useCallback((offset: number) => {
-    // `scrollTo` on the underlying scroll view rather than `scrollToLocation`:
-    // the handle is working in pixels, and section indices cannot answer where
-    // 43% of the way down is.
-    (list.current as SectionList<Asset[]> | null)
-      ?.getScrollResponder()
-      ?.scrollTo({ y: offset, animated: false });
+  const [indexedDay, setIndexedDay] = useState<string | undefined>();
+  const topItem = useCallback((item: Asset | undefined) => {
+    setIndexedDay(item ? dayLabel(item.localDateTime) : undefined);
   }, []);
-
-  const fullHeight = fullScrollHeight(contentHeight, assets.length,
-    hasMore ? (totalCount ?? assets.length) : assets.length, viewMode === 'list' ? 1 : columns,
-    viewMode === 'list' ? 80 : rowHeight || (width - insets.left - insets.right) / columns);
-  const { seek, cancel: cancelSeek, begin: beginSeek, fraction: seekPosition } = usePaginatedSeek({
-    contentHeight: fullHeight, loadedHeight: contentHeight, viewportHeight,
-    loadedCount: assets.length, hasMore, loadingMore, onLoadMore, scrollTo,
-  });
-
-  const dragSeek = useCallback((dragging: boolean) => {
-    if (dragging) beginSeek();
-    setSeeking(dragging);
-  }, [beginSeek]);
+  useEffect(() => { collection?.retain?.(selected ?? []); }, [collection?.retain, selected]);
 
   const onScroll = useMemo(() => Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
@@ -466,8 +455,6 @@ export function AssetGrid({
   const scrolling = {
     ref: list as never,
     onScroll,
-    scrollEnabled: !seeking,
-    onScrollBeginDrag: cancelSeek,
     scrollEventThrottle: 16,
     // Bound decoded images and native views to nearby screens. The default
     // 21-screen window mounts hundreds of tiles in a large folder.
@@ -475,8 +462,7 @@ export function AssetGrid({
     maxToRenderPerBatch: 6,
     // The platform's own indicator would sit right beside the handle saying the
     // same thing in grey, and only one of the two can be grabbed.
-    showsVerticalScrollIndicator: false,
-    onContentSizeChange: (_: number, height: number) => setContentHeight(height),
+    showsVerticalScrollIndicator: true,
     onLayout: (event: { nativeEvent: { layout: { height: number } } }) =>
       setViewportHeight(event.nativeEvent.layout.height),
   };
@@ -522,9 +508,37 @@ export function AssetGrid({
         {emptyExtra}
       </Empty>
     ),
-    onEndReached: hasMore && !loadingMore && !seeking && seekPosition === null ? onLoadMore : undefined,
+    onEndReached: hasMore && !loadingMore ? onLoadMore : undefined,
     onEndReachedThreshold: 1.5,
   };
+
+  if (collection) {
+    const title = indexedDay;
+    return <>
+      <IndexedMediaList
+        active={!viewing}
+        collection={collection}
+        columns={viewMode === 'list' ? 1 : columns}
+        rowHeight={viewMode === 'list' ? 80 : available => available / columns}
+        topInset={topInset}
+        header={header}
+        refreshControl={shared.refreshControl}
+        renderItem={viewMode === 'list' ? renderListItem : renderTile}
+        onTopItem={groupByDay ? topItem : undefined}
+        empty={shared.ListEmptyComponent}
+      />
+      {groupByDay && title && <View pointerEvents={selecting ? 'box-none' : 'none'}
+        style={{ position: 'absolute', top: topInset + 6, left: 0, right: 0 }}>
+        {selecting && onToggleDay
+          ? <DaySelectionLabel title={title} ids={assets.filter(item => dayLabel(item.localDateTime) === title).map(item => item.id)}
+              selected={selected ?? []} onToggleDay={onToggleDay} />
+          : <DateLabel visible>{title}</DateLabel>}
+      </View>}
+      <AssetViewer serverUrl={serverUrl} token={token} assets={assets} collection={collection}
+        index={viewing?.at ?? null} from={viewing?.from ?? null}
+        onClose={() => setViewing(null)} onChanged={() => onChanged?.()} />
+    </>;
+  }
 
   if (groupByDay) {
     return (
@@ -588,22 +602,6 @@ export function AssetGrid({
           </View>
         )}
 
-        {/* On every grid, not only the ones cut into days: a folder of two
-            thousand photographs is as hard to get through as a timeline, and
-            the rail hides itself when there is nowhere to go. */}
-        {(
-          <Scrubber
-            scrollY={scrollY}
-            contentHeight={fullHeight}
-        position={seekPosition}
-            viewportHeight={viewportHeight}
-            topInset={topInset}
-            visible={away || seeking}
-            onSeek={seek}
-            onDrag={dragSeek}
-          />
-        )}
-
         <AssetViewer
           serverUrl={serverUrl}
           token={token}
@@ -646,7 +644,7 @@ export function AssetGrid({
           renderItem={({ item, index }) =>
             viewMode === 'list' ? renderListItem(item, index) : renderTile(item, index)
           }
-          onEndReached={hasMore && !loadingMore && !seeking && seekPosition === null ? onLoadMore : undefined}
+          onEndReached={hasMore && !loadingMore ? onLoadMore : undefined}
           onEndReachedThreshold={1.5}
           ListEmptyComponent={
             !showEmptyState ? null : loading ? (
@@ -661,16 +659,7 @@ export function AssetGrid({
         />
       </ScrollViewMarker>
 
-      <Scrubber
-        scrollY={scrollY}
-        contentHeight={fullHeight}
-        position={seekPosition}
-        viewportHeight={viewportHeight}
-        topInset={topInset}
-        visible={away || seeking}
-        onSeek={seek}
-        onDrag={dragSeek}
-      />
+
 
     <AssetViewer
       serverUrl={serverUrl}

@@ -34,7 +34,7 @@ interface Props {
 export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false }: Props) {
   const [sort, setSort] = useState<MediaSort>('date');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
-  const { items, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
+  const { items, collection, pagination, token, error, loading, reload, hasMore, loadingMore, loadMore } = usePagedResource<Asset>(
     serverUrl,
     `/albums/${albumId}?sortBy=${sort}&order=${order}`,
     { itemsKey: 'assets' },
@@ -87,6 +87,7 @@ export function AlbumScreen({ serverUrl, albumId, title, onBack, locked = false 
       <AssetGrid
         serverUrl={serverUrl}
         assets={items}
+        collection={collection}
         token={token}
         loading={loading}
         onRefresh={reload}
