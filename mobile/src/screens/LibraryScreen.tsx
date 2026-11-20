@@ -202,7 +202,7 @@ export function LibraryScreen({ server }: Props) {
       if (version !== libraryVersion.current) return;
       hideExcluded(hidden);
       setIndexReady(true);
-      void nativePhotos.reload();
+      if (indexReady) void nativePhotos.reload();
       // Both go through the server so a fresh install does not report a phone
       // full of photos as un-backed-up when they are all already there.
       const [nextPending, nextUploaded] = await Promise.all([
@@ -219,7 +219,7 @@ export function LibraryScreen({ server }: Props) {
     } finally {
       if (version === libraryVersion.current) setLoading(false);
     }
-  }, [permission?.granted, permission?.accessPrivileges, serverUrl, sort, order, hideExcluded, nativePhotos.reload]);
+  }, [permission?.granted, permission?.accessPrivileges, serverUrl, sort, order, hideExcluded, indexReady, nativePhotos.reload]);
 
   useFocusEffect(useCallback(() => {
     void load();

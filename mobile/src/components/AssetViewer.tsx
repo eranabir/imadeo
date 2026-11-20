@@ -102,6 +102,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, collection
   const list = useRef<VirtualizedList<number>>(null);
 
   const [current, setCurrent] = useState(index ?? 0);
+  const [opening, setOpening] = useState(index);
   const [chrome, setChrome] = useState(true);
   const [scrubbing, setScrubbing] = useState(false);
   const [zoomed, setZoomed] = useState(false);
@@ -124,6 +125,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, collection
   useEffect(() => {
     if (index === null) return;
     opened.current = index;
+    setOpening(index);
     setAssets(sourceAssets);
     setCurrent(index);
     setChrome(true);
@@ -144,8 +146,8 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, collection
   const lastAsset = useRef<Asset | undefined>(resolvedAsset);
   if (resolvedAsset) lastAsset.current = resolvedAsset;
   useEffect(() => {
-    if (index !== null) collection?.loadRange(Math.max(0, current - 2), current + 3);
-  }, [index, current, collection?.key, collection?.loadRange]);
+    if (index !== null && opening === index) collection?.loadRange(Math.max(0, current - 2), current + 3);
+  }, [index, opening, current, collection?.key, collection?.loadRange]);
   const stripCollection = useMemo<IndexedCollection<ViewerFilmstripItem> | undefined>(() => collection ? ({
     ...collection,
     itemAt: at => {
@@ -165,7 +167,7 @@ export function AssetViewer({ serverUrl, token, assets: sourceAssets, collection
     index !== null,
   );
 
-  if (!mounted) return null;
+  if (!mounted || (index !== null && opening !== index)) return null;
 
   const asset = resolvedAsset ?? lastAsset.current;
   if (!asset) return null;

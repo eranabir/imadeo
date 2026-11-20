@@ -12,8 +12,8 @@ export function usePageWindow<T extends { id: string }>(key: string,
   }, [cache, enabled]);
   const collection = useMemo<IndexedCollection<T>>(() => ({
     key, total: cache.total ?? 0, version: cache.version,
-    itemAt: cache.itemAt, loadRange: cache.loadRange, retain: cache.retain,
-  }), [cache, key, cache.version]);
+    itemAt: cache.itemAt, loadRange: enabled ? cache.loadRange : () => undefined, retain: cache.retain,
+  }), [cache, key, cache.version, enabled]);
   const items = useMemo(() => cache.items, [cache, cache.version]);
   return { collection, items, error: cache.error,
     loading: enabled && cache.total === null && !cache.error,
